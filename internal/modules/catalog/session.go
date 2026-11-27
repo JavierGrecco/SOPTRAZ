@@ -4,7 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt""
+	"fmt"
 	"sync"
 
 	"github.com/JavierGrecco/SOPTRAZ/internal/modules/artifact"
