@@ -47,6 +47,7 @@ Cada procedimiento mutante requiere detección de objetivo, confirmación de dis
 - Rechazar claves JSON duplicadas en todos los niveles y bytes UTF-8 inválidos antes de canonicalizar; probar idempotencia del normalizador con fuzz seeds.
 - Probar concurrencia de escritores y persistencia tras cerrar/reabrir la base.
 - No confundir hash chain local con almacenamiento WORM; checkpoints externos firmados se probarán por separado.
+- Ejecutar fuzzing acotado del normalizador JSON en CI y conservar los casos interesantes como corpus reproducible cuando se confirme una regresión.
 
 ## Analítica Python
 

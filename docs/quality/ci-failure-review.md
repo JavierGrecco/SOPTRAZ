@@ -3,11 +3,11 @@
 **Revisión:** 2026-11-27  
 **Repositorio:** `JavierGrecco/SOPTRAZ`  
 **Rama auditada:** `main`  
-**Alcance:** 23 ejecuciones de Actions disponibles al 27 de noviembre de 2026, hasta el commit `b71fbe9`.
+**Alcance:** 25 ejecuciones de Actions disponibles al 27 de noviembre de 2026, hasta el commit `268b6cd`.
 
 ## Resultado ejecutivo
 
-Se revisaron 23 ejecuciones: **18 pushes del CI principal en main (10 fallidos, 8 exitosos), 1 PR de Dependabot exitoso y 4 ejecuciones dinámicas de Dependabot exitosas; no hubo cancelaciones**. Las diez fallidas se explican por cinco familias de causa raíz, algunas repetidas tras cada push. La última ejecución principal, [#19](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46063747648), sobre `b71fbe9`, terminó verde en Windows, macOS, Ubuntu y Race Detector.
+Se revisaron 25 ejecuciones: **20 pushes del CI principal en main (10 fallidos y 10 exitosos), 1 PR de Dependabot exitoso y 4 ejecuciones dinámicas de Dependabot exitosas; no hubo cancelaciones**. Las diez fallidas se explican por cinco familias de causa raíz, algunas repetidas tras cada push. La última ejecución principal, [#21](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46065064799), sobre `268b6cd`, terminó verde en Windows, macOS, Ubuntu, Race Detector y fuzzing de payloads.
 
 La revisión no atribuye cada job rojo a una causa distinta. Cuando tres runners fallan en el mismo paso con el mismo mensaje, se cuenta como una sola causa reproducida en tres plataformas.
 
@@ -42,6 +42,8 @@ La ejecución posterior al arreglo de imports es [#12](https://github.com/Javier
 | [#17](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46063349335) | PR Dependabot #2 | Los cuatro jobs verdes al probar setup-go v7.1.0 antes de integrarlo. |
 | [#18](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46063592417) | `0787433` | Los cuatro jobs verdes tras actualizar la documentación de la auditoría de CI. |
 | [#19](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46063747648) | `b71fbe9` | Los cuatro jobs verdes tras integrar setup-go v7.1.0 en main. |
+| [#20](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46064474486) | `074c47f` | Los cuatro jobs verdes tras incorporar ADR-0013 y el diseño de checkpoint firmado / bundle Field → Hub. |
+| [#21](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46065064799) | `268b6cd` | Los cinco jobs verdes: módulo, formato, vet, tests Windows/macOS/Ubuntu, Race Detector y fuzz de payloads JSON (16.810 ejecuciones, 66 casos interesantes nuevos, sin fallo). |
 
 ## Causas raíz y correcciones permanentes
 
@@ -103,4 +105,4 @@ El run #14 fue introducido por una corrección de integración nuestra: el blob 
 
 ## Límites de esta auditoría
 
-Las 23 ejecuciones examinadas corresponden al historial disponible del repositorio al 2026-11-27. El run #17 corresponde al PR de Dependabot; los cuatro runs dinámicos de Dependabot se identifican por separado y no se mezclan con los 18 pushes del CI principal. La revisión no afirma que se hayan ejecutado pruebas locales en el Mac del usuario. La evidencia de compatibilidad descrita arriba proviene de los GitHub runners y de los logs asociados a los commits citados.
+Las 25 ejecuciones examinadas corresponden al historial disponible del repositorio al 2026-11-27. El run #17 corresponde al PR de Dependabot; los cuatro runs dinámicos de Dependabot se identifican por separado y no se mezclan con los 18 pushes del CI principal. La revisión no afirma que se hayan ejecutado pruebas locales en el Mac del usuario. La evidencia de compatibilidad descrita arriba proviene de los GitHub runners y de los logs asociados a los commits citados.

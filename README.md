@@ -38,7 +38,7 @@ Ambas ediciones compartirán contratos, procedimientos, motor de ejecución, dia
 
 ## Estado del proyecto
 
-**Etapa: fundación arquitectónica y núcleo inicial.** La CLI Go permite consultar versión, información no identificable del host y validar manifiestos, acciones, intervenciones y eventos JSON. El dominio de auditoría y su adaptador SQLite ya permiten anexar y verificar eventos encadenados por intervención. Todavía no hay reparaciones de sistemas ni UI de Field/Hub.
+**Etapa: fundación arquitectónica y núcleo inicial.** La CLI Go permite consultar versión, información no identificable del host y validar manifiestos, acciones, intervenciones y eventos JSON. El dominio de auditoría y su adaptador SQLite permiten anexar y verificar eventos encadenados por intervención; el normalizador rechaza claves JSON duplicadas y UTF-8 inválido, y el fuzzing comprueba su idempotencia. Todavía no hay reparaciones de sistemas ni UI de Field/Hub.
 
 ## Documentación
 
@@ -54,6 +54,7 @@ Ambas ediciones compartirán contratos, procedimientos, motor de ejecución, dia
 - [Contratos ejecutables](docs/contracts/README.md)
 - [Calidad y pruebas](docs/quality/testing-strategy.md)
 - [Revisión de fallos de CI](docs/quality/ci-failure-review.md)
+- [Checkpoint firmado y exportación Field → Hub](docs/architecture/audit-checkpoint-design.md)
 - [Roadmap](docs/roadmap/README.md)
 - [Registro de decisiones](docs/decisions/README.md)
 - [Contribución](CONTRIBUTING.md)
