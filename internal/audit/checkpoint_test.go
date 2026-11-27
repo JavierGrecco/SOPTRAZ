@@ -4,7 +4,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
+	"math/big"
 	"encoding/hex"
 	"errors"
 	"strings"
@@ -113,17 +118,22 @@ func TestCheckpointRejectsInvalidSignatureEncoding(t *testing.T) {
 	}
 }
 
-func TestCheckpointDigestIsDeterministicAndChainSensitive(t *testing.T) {
+func TestCheckpointDigestIsVerifiedStatementDigestAndChainSensitive(t *testing.T) {
 	checkpoint, privateKey := checkpointTestValue(t)
-	first, err := SignCheckpoint(checkpoint, privateKey)
+	signed, err := SignCheckpoint(checkpoint, privateKey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	digest1, err := CheckpointDigest(first)
+	publicKey := privateKey.Public().(ed25519.PublicKey)
+	resolver := checkpointTestResolver{
+		keyID: signed.Checkpoint.KeyID,
+		key: CheckpointPublicKey{SignatureAlgorithm: CheckpointSignatureAlgorithm, Ed25519: publicKey},
+	}
+	digest1, err := CheckpointDigest(context.Background(), signed, resolver)
 	if err != nil {
 		t.Fatal(err)
 	}
-	digest2, err := CheckpointDigest(first)
+	digest2, err := CheckpointDigest(context.Background(), signed, resolver)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,13 +148,148 @@ func TestCheckpointDigestIsDeterministicAndChainSensitive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	digestNext, err := CheckpointDigest(signedNext)
+	digestNext, err := CheckpointDigest(context.Background(), signedNext, resolver)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if digestNext == digest1 {
 		t.Fatal("next checkpoint digest must differ from its predecessor")
 	}
+}
+
+func TestECDSAP256CheckpointSignVerifyAndCanonicalDigest(t *testing.T) {
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey := CheckpointPublicKey{
+		SignatureAlgorithm: CheckpointSignatureAlgorithmECDSAP256SHA256,
+		ECDSAP256:           &privateKey.PublicKey,
+	}
+	identity, err := CheckpointKeyIdentityFromPublicKey(publicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpoint, err := NewCheckpointWithIdentity(
+		"2aef4e6d-9d50-4cb6-9c96-22a26abf1587",
+		12,
+		strings.Repeat("a", 64),
+		"",
+		identity,
+		time.Date(2026, 11, 27, 20, 45, 0, 0, time.UTC),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := checkpointTestECDSASigner{privateKey: privateKey}
+	first, err := SignCheckpointWithSigner(context.Background(), checkpoint, signer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := SignCheckpointWithSigner(context.Background(), checkpoint, signer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver := checkpointTestResolver{keyID: identity.KeyID, key: publicKey}
+	if err := VerifyCheckpointWithTrustStore(context.Background(), first, resolver); err != nil {
+		t.Fatalf("first signature verification: %v", err)
+	}
+	if err := VerifyCheckpointWithTrustStore(context.Background(), second, resolver); err != nil {
+		t.Fatalf("second signature verification: %v", err)
+	}
+	digest1, err := CheckpointDigest(context.Background(), first, resolver)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest2, err := CheckpointDigest(context.Background(), second, resolver)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if digest1 != digest2 {
+		t.Fatalf("same canonical ECDSA statement produced different digests: %s != %s", digest1, digest2)
+	}
+}
+
+func TestECDSAP256RejectsHighSSignature(t *testing.T) {
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey := CheckpointPublicKey{
+		SignatureAlgorithm: CheckpointSignatureAlgorithmECDSAP256SHA256,
+		ECDSAP256:           &privateKey.PublicKey,
+	}
+	identity, err := CheckpointKeyIdentityFromPublicKey(publicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpoint, err := NewCheckpointWithIdentity("2aef4e6d-9d50-4cb6-9c96-22a26abf1587", 1, strings.Repeat("c", 64), "", identity, time.Date(2026, 11, 27, 20, 45, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	signed, err := SignCheckpointWithSigner(context.Background(), checkpoint, checkpointTestECDSASigner{privateKey: privateKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	signature, err := base64.StdEncoding.DecodeString(signed.Signature)
+	if err != nil {
+		t.Fatal(err)
+	}
+	order := elliptic.P256().Params().N
+	s := new(big.Int).SetBytes(signature[32:])
+	s.Sub(order, s)
+	s.FillBytes(signature[32:])
+	signed.Signature = base64.StdEncoding.EncodeToString(signature)
+	if err := VerifySignedCheckpointWithPublicKey(signed, publicKey); err == nil || !strings.Contains(err.Error(), "high-S") {
+		t.Fatalf("high-S signature error = %v, want canonicality rejection", err)
+	}
+}
+
+func TestCheckpointDigestRejectsInvalidSignatureBeforeReturningAnchor(t *testing.T) {
+	checkpoint, privateKey := checkpointTestValue(t)
+	signed, err := SignCheckpoint(checkpoint, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey := privateKey.Public().(ed25519.PublicKey)
+	resolver := checkpointTestResolver{keyID: signed.Checkpoint.KeyID, key: CheckpointPublicKey{SignatureAlgorithm: CheckpointSignatureAlgorithm, Ed25519: publicKey}}
+	signature, err := base64.StdEncoding.DecodeString(signed.Signature)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signature[0] ^= 0x01
+	signed.Signature = base64.StdEncoding.EncodeToString(signature)
+	if _, err := CheckpointDigest(context.Background(), signed, resolver); err == nil {
+		t.Fatal("digest must not be returned for an invalid signature")
+	}
+}
+
+type checkpointTestECDSASigner struct {
+	privateKey *ecdsa.PrivateKey
+}
+
+func (signer checkpointTestECDSASigner) Identity(_ context.Context) (CheckpointKeyIdentity, error) {
+	return CheckpointKeyIdentityFromPublicKey(CheckpointPublicKey{
+		SignatureAlgorithm: CheckpointSignatureAlgorithmECDSAP256SHA256,
+		ECDSAP256:           &signer.privateKey.PublicKey,
+	})
+}
+
+func (signer checkpointTestECDSASigner) Sign(_ context.Context, message []byte) ([]byte, error) {
+	digest := sha256.Sum256(message)
+	r, s, err := ecdsa.Sign(rand.Reader, signer.privateKey, digest[:])
+	if err != nil {
+		return nil, err
+	}
+	order := elliptic.P256().Params().N
+	halfOrder := new(big.Int).Rsh(new(big.Int).Set(order), 1)
+	if s.Cmp(halfOrder) > 0 {
+		s.Sub(order, s)
+	}
+	signature := make([]byte, 64)
+	r.FillBytes(signature[:32])
+	s.FillBytes(signature[32:])
+	return signature, nil
 }
 
 func TestCheckpointSigningBytesAreStableAndVersioned(t *testing.T) {
@@ -198,16 +343,16 @@ func TestCheckpointValidateRejectsNonCanonicalTimestampAndHashes(t *testing.T) {
 
 type checkpointTestResolver struct {
 	keyID string
-	key   ed25519.PublicKey
+	key   CheckpointPublicKey
 	err   error
 }
 
-func (resolver checkpointTestResolver) ResolvePublicKey(_ context.Context, keyID string) (ed25519.PublicKey, error) {
+func (resolver checkpointTestResolver) ResolvePublicKey(_ context.Context, keyID string) (CheckpointPublicKey, error) {
 	if resolver.err != nil {
-		return nil, resolver.err
+		return CheckpointPublicKey{}, resolver.err
 	}
 	if keyID != resolver.keyID {
-		return nil, errors.New("key ID desconocido")
+		return CheckpointPublicKey{}, errors.New("key ID desconocido")
 	}
 	return resolver.key, nil
 }
