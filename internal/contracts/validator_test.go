@@ -38,6 +38,13 @@ func TestExampleContractsValidate(t *testing.T) {
 	}
 }
 
+func TestArtifactDescriptorRejectsMalformedSemanticVersion(t *testing.T) {
+	raw := string(readExample(t, "artifact-descriptor.example.json"))
+	invalid := strings.Replace(raw, `"version": "5.24.1"`, `"version": "5.24."`, 1)
+	if err := ValidateDocument("artifact", []byte(invalid)); err == nil {
+		t.Fatal("artifact descriptor must reject malformed SemVer")
+	}
+}
 func TestArtifactDescriptorRejectsInvalidSizeAndPlatform(t *testing.T) {
 	raw := string(readExample(t, "artifact-descriptor.example.json"))
 	invalid := strings.Replace(raw, `"sizeBytes": 1048576`, `"sizeBytes": 0`, 1)

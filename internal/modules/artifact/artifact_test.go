@@ -113,6 +113,18 @@ func TestCurrentPlatformMatchesGoRuntime(t *testing.T) {
 		t.Fatalf("CurrentPlatform() = %#v, runtime = %s/%s", platform, runtime.GOOS, runtime.GOARCH)
 	}
 }
+func TestDescriptorRejectsMalformedSemanticVersion(t *testing.T) {
+	base := testDescriptor([]byte("bytes"))
+	for _, version := range []string{"5.24.", "5.24", "05.24.1", "v5.24.1", "5.24.1.2"} {
+		t.Run(version, func(t *testing.T) {
+			value := base
+			value.Version = version
+			if err := value.Validate(); err == nil {
+				t.Fatalf("version %q must be rejected", version)
+			}
+		})
+	}
+}
 func TestDescriptorRejectsInvalidExpectedSize(t *testing.T) {
 	base := testDescriptor([]byte("bytes"))
 	for _, size := range []int64{0, -1, DefaultMaxArtifactBytes + 1} {
