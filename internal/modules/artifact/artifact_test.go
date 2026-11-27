@@ -243,7 +243,7 @@ func TestResolveRejectsChangedArtifactBytes(t *testing.T) {
 
 func TestDescriptorRejectsTraversalAndNonCanonicalPaths(t *testing.T) {
 	base := testDescriptor([]byte("bytes"))
-	for _, candidate := range []string{"../escape", "osquery/../escape", "/absolute/path", `osquery\\binary`, "osquery//binary", "osquery/./binary"} {
+	for _, candidate := range []string{"../escape", "osquery/../escape", "/absolute/path", `osquery\\binary`, "osquery//binary", "osquery/./binary", "osquery/"} {
 		t.Run(candidate, func(t *testing.T) {
 			value := base
 			value.RelativePath = candidate
