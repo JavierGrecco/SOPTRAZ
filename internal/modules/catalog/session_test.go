@@ -4,10 +4,12 @@ import (
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
 
+	"github.com/JavierGrecco/SOPTRAZ/internal/modules/artifact"
 	"github.com/theupdateframework/go-tuf/v2/metadata"
 )
 
@@ -19,6 +21,7 @@ type tufRepositoryFixture struct {
 	targetPath    string
 	targetBytes   []byte
 	targetSHA256  string
+	descriptor    artifact.Descriptor
 }
 
 func makeTUFRepositoryFixture(t *testing.T, timestampExpiry time.Time) tufRepositoryFixture {
@@ -62,10 +65,28 @@ func makeTUFRepositoryFixture(t *testing.T, timestampExpiry time.Time) tufReposi
 	targetPath := "osquery/5.24.1/linux-amd64/osqueryi"
 	targetBytes := []byte("trusted osquery fixture payload")
 	targetDigest := sha256.Sum256(targetBytes)
+	descriptor := artifact.Descriptor{
+		SchemaVersion: artifact.ArtifactDescriptorSchemaVersion,
+		ID:            "soptraz.osquery",
+		Version:       "5.24.1",
+		OS:            "linux",
+		Architecture:  "amd64",
+		RelativePath:  targetPath,
+		SHA256:        hex.EncodeToString(targetDigest[:]),
+		SizeBytes:     int64(len(targetBytes)),
+		License:       "Apache-2.0 OR GPL-2.0-only",
+		SourceURI:     "https://github.com/osquery/osquery/releases/tag/5.24.1",
+	}
+	customJSON, err := json.Marshal(descriptor)
+	if err != nil {
+		t.Fatalf("marshal artifact descriptor: %v", err)
+	}
+	custom := json.RawMessage(customJSON)
 	targets := metadata.Targets(expiry)
 	targets.Signed.Targets[targetPath] = &metadata.TargetFiles{
 		Length: int64(len(targetBytes)),
 		Hashes: metadata.Hashes{"sha256": metadata.HexBytes(targetDigest[:])},
+		Custom: &custom,
 	}
 	if _, err := targets.Sign(targetsKey.signer); err != nil {
 		t.Fatalf("sign targets: %v", err)
@@ -112,6 +133,7 @@ func makeTUFRepositoryFixture(t *testing.T, timestampExpiry time.Time) tufReposi
 		targetPath:    targetPath,
 		targetBytes:   targetBytes,
 		targetSHA256:  hex.EncodeToString(targetDigest[:]),
+		descriptor:    descriptor,
 	}
 }
 
@@ -249,3 +271,109 @@ func TestMetadataSessionRejectsNonPortableTargetPaths(t *testing.T) {
 		})
 	}
 }
+
+func applyValidMetadataChain(t *testing.T, session *MetadataSession, fixture tufRepositoryFixture) {
+	t.Helper()
+	if err := session.UpdateTimestamp(fixture.timestampJSON); err != nil {
+		t.Fatalf("UpdateTimestamp() error = %v", err)
+	}
+	if err := session.UpdateSnapshot(fixture.snapshotJSON); err != nil {
+		t.Fatalf("UpdateSnapshot() error = %v", err)
+	}
+	if err := session.UpdateTargets(fixture.targetsJSON); err != nil {
+		t.Fatalf("UpdateTargets() error = %v", err)
+	}
+}
+
+func TestMetadataSessionVerifiesSignedArtifactDescriptor(t *testing.T) {
+	fixture := makeTUFRepositoryFixture(t, time.Now().UTC().AddDate(0, 0, 1))
+	session := newFixtureSession(t, fixture)
+	applyValidMetadataChain(t, session, fixture)
+
+	target, err := session.VerifyDescriptor(fixture.descriptor)
+	if err != nil {
+		t.Fatalf("VerifyDescriptor() error = %v", err)
+	}
+	if target.Path != fixture.targetPath || target.Length != int64(len(fixture.targetBytes)) || target.SHA256 != fixture.targetSHA256 {
+		t.Fatalf("unexpected verified target: %#v", target)
+	}
+}
+
+func TestMetadataSessionRejectsArtifactDescriptorFieldMismatches(t *testing.T) {
+	fixture := makeTUFRepositoryFixture(t, time.Now().UTC().AddDate(0, 0, 1))
+	tests := []struct {
+		name   string
+		mutate func(*artifact.Descriptor)
+	}{
+		{name: "artifact ID", mutate: func(d *artifact.Descriptor) { d.ID = "soptraz.other" }},
+		{name: "version", mutate: func(d *artifact.Descriptor) { d.Version = "5.24.2" }},
+		{name: "operating system", mutate: func(d *artifact.Descriptor) { d.OS = "windows" }},
+		{name: "architecture", mutate: func(d *artifact.Descriptor) { d.Architecture = "arm64" }},
+		{name: "license", mutate: func(d *artifact.Descriptor) { d.License = "MIT" }},
+		{name: "source URI", mutate: func(d *artifact.Descriptor) { d.SourceURI = "https://example.com/osquery" }},
+		{name: "size", mutate: func(d *artifact.Descriptor) { d.SizeBytes++ }},
+		{name: "SHA-256", mutate: func(d *artifact.Descriptor) {
+			digest := []byte(d.SHA256)
+			if digest[0] == '0' {
+				digest[0] = '1'
+			} else {
+				digest[0] = '0'
+			}
+			d.SHA256 = string(digest)
+		}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			session := newFixtureSession(t, fixture)
+			applyValidMetadataChain(t, session, fixture)
+			descriptor := fixture.descriptor
+			tc.mutate(&descriptor)
+			if _, err := session.VerifyDescriptor(descriptor); !errors.Is(err, ErrTargetDescriptorMismatch) {
+				t.Fatalf("VerifyDescriptor() error = %v, want ErrTargetDescriptorMismatch", err)
+			}
+		})
+	}
+}
+
+func TestMetadataSessionRejectsInvalidOrMissingSignedDescriptor(t *testing.T) {
+	fixture := makeTUFRepositoryFixture(t, time.Now().UTC().AddDate(0, 0, 1))
+	session := newFixtureSession(t, fixture)
+	applyValidMetadataChain(t, session, fixture)
+
+	// The TUF signature authenticates custom metadata too. These parser cases
+	// exercise the strict decoder independently of signature verification.
+	for _, tc := range []struct {
+		name string
+		raw  json.RawMessage
+	}{
+		{name: "missing", raw: nil},
+		{name: "duplicate key", raw: json.RawMessage(`{"artifactId":"one","artifactId":"two"}`)},
+		{name: "unknown field", raw: json.RawMessage(`{"unexpected":true}`)},
+		{name: "unpaired surrogate", raw: json.RawMessage(`{"artifactId":"\\ud800"}`)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := decodeArtifactDescriptor(tc.raw); !errors.Is(err, ErrInvalidTargetDescriptor) {
+				t.Fatalf("decodeArtifactDescriptor() error = %v, want ErrInvalidTargetDescriptor", err)
+			}
+		})
+	}
+
+	targets := session.trusted.Targets[metadata.TARGETS]
+	targets.Signed.Targets[fixture.targetPath].Custom = nil
+	if _, err := session.VerifyDescriptor(fixture.descriptor); !errors.Is(err, ErrInvalidTargetDescriptor) {
+		t.Fatalf("VerifyDescriptor() without custom descriptor error = %v, want ErrInvalidTargetDescriptor", err)
+	}
+}
+
+func TestMetadataSessionRejectsInvalidExternalArtifactDescriptor(t *testing.T) {
+	fixture := makeTUFRepositoryFixture(t, time.Now().UTC().AddDate(0, 0, 1))
+	session := newFixtureSession(t, fixture)
+	applyValidMetadataChain(t, session, fixture)
+
+	descriptor := fixture.descriptor
+	descriptor.Version = "not-semver"
+	if _, err := session.VerifyDescriptor(descriptor); !errors.Is(err, ErrInvalidTargetDescriptor) {
+		t.Fatalf("VerifyDescriptor() error = %v, want ErrInvalidTargetDescriptor", err)
+	}
+}
+
