@@ -274,6 +274,7 @@ func (resolver *Resolver) Resolve(descriptor Descriptor) (ResolvedArtifact, erro
 		Size:       bytesRead,
 	}, nil
 }
+
 // Root confines lookup and open operations beneath the held directory handle.
 // It rejects symlinks that escape the root and resolves Windows reparse points
 // within its platform implementation. The returned path is still a point-in-time

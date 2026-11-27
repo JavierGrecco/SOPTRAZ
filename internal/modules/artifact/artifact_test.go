@@ -88,7 +88,7 @@ func TestResolveRejectsUnsupportedPlatformWithoutFallback(t *testing.T) {
 	content := []byte("artifact")
 	writeArtifact(t, root, "osquery/5.24.1/linux-amd64/osqueryi", content)
 	resolver := newTestResolver(t, root, Platform{OS: "windows", Architecture: "amd64"})
-	_, err = resolver.Resolve(testDescriptor(content))
+	_, err := resolver.Resolve(testDescriptor(content))
 	if !errors.Is(err, ErrUnsupportedPlatform) {
 		t.Fatalf("Resolve() error = %v, want ErrUnsupportedPlatform", err)
 	}
@@ -98,7 +98,7 @@ func TestResolveRejectsChangedArtifactBytes(t *testing.T) {
 	root := t.TempDir()
 	writeArtifact(t, root, "osquery/5.24.1/linux-amd64/osqueryi", []byte("tampered bytes"))
 	resolver := newTestResolver(t, root, Platform{OS: "linux", Architecture: "amd64"})
-	_, err = resolver.Resolve(testDescriptor([]byte("original bytes")))
+	_, err := resolver.Resolve(testDescriptor([]byte("original bytes")))
 	if !errors.Is(err, ErrArtifactIntegrity) {
 		t.Fatalf("Resolve() error = %v, want ErrArtifactIntegrity", err)
 	}
@@ -172,7 +172,7 @@ func TestResolveRejectsDirectoryLinkEscapingManagedRoot(t *testing.T) {
 	value := testDescriptor(content)
 	value.RelativePath = "osquery/linux-amd64/osqueryi"
 	resolver := newTestResolver(t, root, Platform{OS: "linux", Architecture: "amd64"})
-	_, err = resolver.Resolve(value)
+	_, err := resolver.Resolve(value)
 	if !errors.Is(err, ErrArtifactPath) {
 		t.Fatalf("Resolve() path %q (target %q) error = %v, want ErrArtifactPath", value.RelativePath, target, err)
 	}
@@ -183,7 +183,7 @@ func TestResolveRejectsOversizedArtifact(t *testing.T) {
 	content := []byte("too large")
 	writeArtifact(t, root, "osquery/5.24.1/linux-amd64/osqueryi", content)
 	resolver := newTestResolverWithLimit(t, root, Platform{OS: "linux", Architecture: "amd64"}, 4)
-	_, err = resolver.Resolve(testDescriptor(content))
+	_, err := resolver.Resolve(testDescriptor(content))
 	if err == nil || !strings.Contains(err.Error(), "límite") {
 		t.Fatalf("Resolve() error = %v, want size limit error", err)
 	}
@@ -206,7 +206,7 @@ func TestResolveRejectsSymlinkedArtifactPath(t *testing.T) {
 	value := testDescriptor(content)
 	value.RelativePath = "osquery/osqueryi"
 	resolver := newTestResolver(t, root, Platform{OS: "linux", Architecture: "amd64"})
-	_, err = resolver.Resolve(value)
+	_, err := resolver.Resolve(value)
 	if !errors.Is(err, ErrArtifactPath) {
 		t.Fatalf("Resolve() error = %v, want ErrArtifactPath", err)
 	}
