@@ -349,7 +349,7 @@ func TestMetadataSessionRejectsInvalidOrMissingSignedDescriptor(t *testing.T) {
 		{name: "missing", raw: nil},
 		{name: "duplicate key", raw: json.RawMessage(`{"artifactId":"one","artifactId":"two"}`)},
 		{name: "unknown field", raw: json.RawMessage(`{"unexpected":true}`)},
-		{name: "unpaired surrogate", raw: json.RawMessage(`{"artifactId":"\\ud800"}`)},
+		{name: "unpaired surrogate", raw: json.RawMessage(`{"artifactId":"\ud800"}`)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if _, err := decodeArtifactDescriptor(tc.raw); !errors.Is(err, ErrInvalidTargetDescriptor) {
