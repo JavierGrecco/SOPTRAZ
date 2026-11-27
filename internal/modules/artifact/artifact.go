@@ -20,53 +20,21 @@ import (
 	"sync"
 )
 
-const DefaultMaxArtifactBytes int64 = 512 << 20
-
-var (
-	ErrInvalidDescriptor   = errors.New("descriptor de artefacto inválido")
-	ErrUnsupportedPlatform = errors.New("plataforma o arquitectura no compatible")
-	ErrArtifactPath        = errors.New("ruta de artefacto no permitida")
-	ErrArtifactIntegrity   = errors.New("integridad del artefacto no válida")
-	ErrResolverClosed      = errors.New("el resolver de artefactos está cerrado")
-)
-
-var artifactIDPattern = regexp.MustCompile(`^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*// Package artifact resolves and verifies already-installed third-party executables.
-// It never downloads, installs or launches an artifact. Descriptors must come from
-// a separately trusted registry: matching SHA-256 proves byte correspondence to
-// that descriptor, not publisher identity or release authenticity.
-package artifact
-
-import (
-	"crypto/sha256"
-	"encoding/hex"
-	"errors"
-	"fmt"
-	"io"
-	"net/url"
-	"os"
-	pathpkg "path"
-	"path/filepath"
-	"regexp"
-	"runtime"
-	"strings"
-	"sync"
-)
-
-const DefaultMaxArtifactBytes int64 = 512 << 20
-
-var (
-	ErrInvalidDescriptor   = errors.New("descriptor de artefacto inválido")
-	ErrUnsupportedPlatform = errors.New("plataforma o arquitectura no compatible")
-	ErrArtifactPath        = errors.New("ruta de artefacto no permitida")
-	ErrArtifactIntegrity   = errors.New("integridad del artefacto no válida")
-	ErrResolverClosed      = errors.New("el resolver de artefactos está cerrado")
-)
-
-)
-
-var artifactVersionPattern = regexp.MustCompile("^(0|[1-9][0-9]*)[.](0|[1-9][0-9]*)[.](0|[1-9]*)(-[0-9A-Za-z.-]+)?([+][0-9A-Za-z.-]+)?$")
+var artifactVersionPattern = regexp.MustCompile("^(0|[1-9][0-9]*)[.](0|[1-9][0-9]*)[.](0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?([+][0-9A-Za-z.-]+)?$")
 
 const ArtifactDescriptorSchemaVersion = "1.0.0"
+
+const DefaultMaxArtifactBytes int64 = 512 << 20
+
+var (
+	ErrInvalidDescriptor   = errors.New("descriptor de artefacto inválido")
+	ErrUnsupportedPlatform = errors.New("plataforma o arquitectura no compatible")
+	ErrArtifactPath        = errors.New("ruta de artefacto no permitida")
+	ErrArtifactIntegrity   = errors.New("integridad del artefacto no válida")
+	ErrResolverClosed      = errors.New("el resolver de artefactos está cerrado")
+)
+
+var artifactIDPattern = regexp.MustCompile(`^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$`)
 
 // Platform identifies a specific operating-system/architecture pair.
 type Platform struct {
