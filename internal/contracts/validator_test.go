@@ -109,7 +109,7 @@ func TestUnknownKindMalformedJSONTrailingJSONAndSizeLimitAreRejected(t *testing.
 }
 
 func TestValidateDocumentRejectsDuplicateKeysIncludingEscapedNames(t *testing.T) {
-	raw := []byte(`{"schemaVersion":"1.0.0","metadata":{"owner":"one","o\\u0077ner":"two"}}`)
+	raw := []byte(`{"schemaVersion":"1.0.0","metadata":{"owner":"one","o\u0077ner":"two"}}`)
 	err := ValidateDocument("manifest", raw)
 	if err == nil || !strings.Contains(err.Error(), "clave JSON duplicada") {
 		t.Fatalf("ValidateDocument() error = %v, want duplicate-key rejection", err)

@@ -11,7 +11,7 @@ func TestDecodeRejectsDuplicateNamesAtEveryDepth(t *testing.T) {
 		`{"key":"first","key":"second"}`,
 		`{"metadata":{"owner":"first","owner":"second"}}`,
 		`{"evidence":[{"path":"first","path":"second"}]}`,
-		`{"role":"user","\\u0072ole":"admin"}`,
+		`{"role":"user","\u0072ole":"admin"}`,
 	}
 	for _, raw := range cases {
 		t.Run(raw, func(t *testing.T) {
