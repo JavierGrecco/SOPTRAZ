@@ -19,5 +19,6 @@ Las decisiones aceptadas se mantienen aquí. Una ADR registra contexto, alternat
 | ADR-0013 | Checkpoints firmados y anclados fuera de Field | Aceptada; implementación parcial |
 | ADR-0014 | Agilidad de firma: Ed25519 y ECDSA P-256 | Aceptada para el contrato criptográfico; adaptadores protegidos pendientes |
 | ADR-0015 | Catálogo de artefactos TUF con go-tuf/v2 | Aceptada como arquitectura; cliente Field/offline pendiente |
+| ADR-0016 | Optimización y mantenimiento modular de Windows | Aceptada como dirección; implementación pendiente |
 
 Pendiente: licencia de distribución, cifrado local, firmas de releases, packaging Python, sincronización e identidad antes de implementar esas funciones.
