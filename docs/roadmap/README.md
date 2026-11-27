@@ -17,16 +17,19 @@ El roadmap prioriza una vertical funcional confiable antes de ampliar herramient
 - [x] Implementar hash chain por intervención, triggers append-only y verificación.
 - [x] Exponer una instantánea verificada de eventos y cabecera en una única transacción de lectura.
 - [x] Especificar el diseño de checkpoints firmados y anclaje independiente (ADR-0013).
-- [ ] Implementar checkpoints firmados fuera de la base.
+- [x] Implementar primitivas de checkpoint Ed25519 y ECDSA P-256 con firma verificada contra la clave pública declarada por el signer.
+- [ ] Implementar almacenes de claves protegidas y enrolamiento por sistema operativo.
 - [ ] Completar paquetes de intervención y sincronización Field → Hub.
 - [ ] Definir ADR de firma de releases y política de distribución.
 
 ## M2 — Checkpoints y paquetes de intervención
 
-- [x] Definir el modelo de checkpoint Ed25519 y sus límites de confianza.
+- [x] Definir el modelo de checkpoint con Ed25519 y ECDSA P-256 y sus límites de confianza.
 - [x] Definir trust anchor independiente y anti-rollback.
 - [x] Definir el formato lógico del paquete `.soptraz` y las reglas de importación atómica.
-- [x] Implementar contrato del checkpoint, preimagen binaria v1, firma y verificador Ed25519 con resolver de clave externo.
+- [x] Implementar contrato de checkpoint v1, preimagen binaria determinista, firma Ed25519/ECDSA P-256 P1363/low-S y resolver de clave externo.
+- [x] Crear checkpoints desde `VerifiedSnapshot` SQLite en una transacción de lectura consistente.
+- [x] Validar estructuralmente checkpoints desde la CLI y admitir ambas firmas en manifiestos `stable`.
 - [ ] Implementar almacenes de claves protegidas y enrolamiento por sistema operativo.
 - [ ] Implementar exportación/importación idempotente Field → Hub.
 - [ ] Incorporar proveedores de claves protegidas por sistema operativo.
@@ -37,6 +40,8 @@ El roadmap prioriza una vertical funcional confiable antes de ampliar herramient
 Runtime Go, registro local, IDs, acciones tipadas, permisos/riesgo, cancelación, timeout, SQLite y migraciones. La validación de contratos se utiliza como puerta de entrada. Completar checkpoints externos, recuperación ante corrupción, exportación verificable y retención.
 
 ## Fase 2 — Diagnóstico de solo lectura
+
+Primero implementar el supervisor de procesos restringido: ruta del ejecutable resuelta desde manifiesto verificado, hash/versión, allowlist de argumentos tipados sin shell, timeout, cancelación, límites de salida, códigos de salida estructurados y registro de auditoría. Una vez probado, integrar osquery como primera POC opcional con consultas predefinidas, extensiones deshabilitadas y artefactos oficiales fijados por SO/arquitectura/hash. No ejecutar SQL libre ni instalar un servicio residente en esta etapa.
 
 Plataforma, inventario, disco/SMART, CPU/RAM, espacio, red/DNS, eventos, impresoras y primer informe.
 

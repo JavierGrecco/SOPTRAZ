@@ -8,7 +8,7 @@
 |---|---|---|---|
 | GLPI | ITSM, tickets, activos y organizaciones | Conector Hub | No desarrollar otro Service Desk completo |
 | Fleet | Endpoint management | Conector Hub opcional | Aprovechar gestión existente |
-| osquery | Inventario y consultas | Adaptador diagnóstico | No repara por sí mismo |
+| osquery | Inventario y consultas | Primera POC read-only tras el supervisor de procesos | Consultas predefinidas; release y hashes fijados por plataforma; extensiones deshabilitadas; sin SQL libre ni servicio residente |
 | Sysinternals | Diagnóstico Windows | Herramientas opcionales | Respetar licencia y distribución |
 | smartmontools | Almacenamiento | Adaptador | SMART |
 | Ventoy | Arranque multiboot | Distribución rescate | No desarrollar boot manager |

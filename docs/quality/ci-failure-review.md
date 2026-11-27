@@ -3,11 +3,11 @@
 **Revisión:** 2026-11-27  
 **Repositorio:** `JavierGrecco/SOPTRAZ`  
 **Rama auditada:** `main`  
-**Alcance:** 32 ejecuciones de Actions disponibles al 27 de noviembre de 2026, hasta el commit `64205a3`.
+**Alcance:** 42 ejecuciones de Actions disponibles al 27 de noviembre de 2026, hasta el commit `02fdea0`.
 
 ## Resultado ejecutivo
 
-Se revisaron 32 ejecuciones: **27 pushes del CI principal en main (14 fallidos y 13 exitosos), 1 PR de Dependabot exitoso y 4 ejecuciones dinámicas de Dependabot exitosas; no hubo cancelaciones**. Las catorce fallidas se explican por cinco familias de causa raíz, algunas repetidas tras cada push. El run principal más reciente, [#28](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46067113155), sobre `64205a3`, falló únicamente en el control de formato de dos archivos Go; Race Detector y fuzzing pasaron.
+Se revisaron 42 ejecuciones: **37 pushes del CI principal en main (16 fallidos y 21 exitosos), 1 PR de Dependabot exitoso y 4 ejecuciones dinámicas de Dependabot exitosas; no hubo cancelaciones**. Las dieciséis fallidas se explican por seis familias de causa raíz. Los runs #35 a #38 terminaron verdes; el más reciente, [#38](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46070597217), sobre `02fdea0`, pasó Windows, macOS, Ubuntu, Race Detector y fuzzing.
 
 La revisión no atribuye cada job rojo a una causa distinta. Cuando tres runners fallan en el mismo paso con el mismo mensaje, se cuenta como una sola causa reproducida en tres plataformas.
 
@@ -32,6 +32,8 @@ La ejecución posterior al arreglo de imports es [#12](https://github.com/Javier
 | [#25](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46066212890) | `cea6909` | Tests en Windows, macOS, Ubuntu y Race Detector | Dos fixtures de regresión usaban `\\u0072ole` y `o\\u0077ner` (dos barras), que JSON interpreta como una barra literal seguida de texto, no como escapes Unicode equivalentes. | Error al generar los tests, no del decodificador: los nombres no eran duplicados después del parseo. Los logs muestran los mismos dos fallos en los cuatro jobs; fuzzing pasó. Se corrigieron los fixtures para usar un único escape JSON. |
 | [#27](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46066682481) | `4f9a282` | Formato en los tres sistemas y Race Detector | `internal/strictjson/decode_test.go` contenía secuencias `\\t` y delimitadores de raw string escapados literalmente en las pruebas Unicode; `gofmt` informó `illegal character U+005C`. | Error de generación del archivo de pruebas, no del parser de producción. Los mismos defectos impidieron compilar en Windows, macOS, Ubuntu y Race Detector; el fuzzing separado pasó. La corrección reconstruye el bloque de pruebas como código Go normal y conserva los escapes JSON dentro de raw strings. |
 | [#28](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46067113155) | `64205a3` | Control de formato en Windows, macOS y Ubuntu | `gofmt` encontró indentación de espacios en los nuevos tests de surrogate y una línea vacía redundante en `decode.go`. | La lógica ya compilaba: Race Detector y fuzzing pasaron. Se corrige únicamente formato, convirtiendo la indentación al estilo Go y eliminando la línea redundante. |
+| [#33](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46068964686) | `92667a5` | Formato en tres sistemas, Race Detector y fuzzing | La refactorización conservó una segunda declaración de `CheckpointKeyID` y una prueba del resolver mantuvo el tipo anterior `ed25519.PublicKey`; también había tres archivos sin `gofmt`. | Defecto de integración del refactor, no cinco causas independientes. Se eliminó la duplicación, se migró el resolver y se reparó formato; #34 dejó pendiente solo la normalización de formato. |
+| [#34](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46069340518) | `282adc0` | Formato en Windows, macOS y Ubuntu | `gofmt` detectó alineación de constantes, campos e imports de los tipos P-256. | El código compilaba: Race Detector y fuzzing pasaron. La corrección aislada llegó en `f55af4f` y fue aceptada en #35. |
 
 ## Ejecuciones exitosas de referencia
 
@@ -51,6 +53,14 @@ La ejecución posterior al arreglo de imports es [#12](https://github.com/Javier
 | [#22](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46065386846) | `cb3c381` | Los cinco jobs verdes tras actualizar la revisión de CI y el estado del endurecimiento de payloads. |
 | [#24](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46065887175) | `bfe7f7b` | Los cinco jobs verdes después de aplicar `gofmt` a las primitivas de checkpoint Ed25519. El run #23 anterior había fallado solo en formato; Race Detector y fuzzing ya estaban verdes. |
 | [#26](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46066404539) | `0596d38` | Los cinco jobs verdes después de corregir los dos fixtures de nombres Unicode escapados que habían fallado en #25. |
+| [#29](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46067291694) | `d4f5cd3` | Los cinco jobs verdes tras normalizar los tests de surrogate UTF-16. |
+| [#30](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46067561755) | `0ec0e0a` | Los cinco jobs verdes al rechazar claves JSON duplicadas en eventos SQLite persistidos. |
+| [#31](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46067979232) | `4043e4b` | Los cinco jobs verdes al verificar snapshots consistentes de SQLite durante Append concurrente. |
+| [#32](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46068406386) | `d0596e1` | Los cinco jobs verdes al construir checkpoints desde `VerifiedSnapshot`. |
+| [#35](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46069664170) | `f55af4f` | Los cinco jobs verdes; normalización de formato que cierra el run #34. |
+| [#36](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46069907829) | `9a6ed42` | Los cinco jobs verdes; la firma generada se verifica contra la clave pública devuelta por el signer. |
+| [#37](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46070417666) | `1179761` | Los cinco jobs verdes al exponer `validate checkpoint` y admitir ambas firmas en manifiestos estables. |
+| [#38](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46070597217) | `02fdea0` | Los cinco jobs verdes tras documentar ADR-0014 y sincronizar el modelo criptográfico. |
 
 ## Causas raíz y correcciones permanentes
 
@@ -113,5 +123,5 @@ El run #14 fue introducido por una corrección de integración nuestra: el blob 
 
 ## Límites de esta auditoría
 
-Las 32 ejecuciones examinadas corresponden al historial disponible del repositorio al 2026-11-27. El run #17 corresponde al PR de Dependabot; los cuatro runs dinámicos de Dependabot se identifican por separado y no se mezclan con los 27 pushes del CI principal. La revisión no afirma que se hayan ejecutado pruebas locales en el Mac del usuario. El run #23 se cuenta como una sola causa de formato reproducida en tres runners; #25 y #27 son defectos únicos de generación de tests repetidos por la matriz; #28 fue una normalización de formato pendiente, no un fallo funcional. La evidencia de compatibilidad descrita arriba proviene de los GitHub runners y de los logs asociados a los commits citados.
+Las 42 ejecuciones examinadas corresponden al historial disponible del repositorio al 2026-11-27: 37 pushes, un PR de Dependabot y cuatro ejecuciones dinámicas. El run #17 corresponde al PR; los cuatro runs dinámicos se identifican por separado y no se mezclan con los pushes. La revisión no afirma que se hayan ejecutado pruebas locales en el Mac del usuario. El run #23 se cuenta como una sola causa de formato reproducida en tres runners; #25 y #27 son defectos únicos de generación de tests; #28 y #34 fueron normalizaciones de formato; #33 fue un defecto de integración del refactor que afectó compilación y formato. La evidencia de compatibilidad descrita arriba proviene de los GitHub runners y de los logs asociados a los commits citados.
 

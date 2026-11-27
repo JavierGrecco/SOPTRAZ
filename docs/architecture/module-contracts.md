@@ -1,6 +1,6 @@
 # Contratos y límites de módulos
 
-**Estado:** contrato conceptual; el esquema ejecutable se fijará antes de incorporar módulos externos.
+**Estado:** contratos ejecutables implementados con JSON Schema 2020-12 y validador Go para manifiestos, acciones, intervenciones, eventos y checkpoints. Aún no existe registro/cargador de módulos ni supervisor para ejecutar herramientas externas.
 
 ## Estructura de un módulo
 
@@ -19,7 +19,7 @@ Un módulo no expone sus tablas ni tipos internos. Los consumidores usan DTO/con
 - permissions: privilegios solicitables.
 - risk_classes.
 - dependencies: herramientas y módulos requeridos.
-- integrity: hashes y firma.
+- integrity: SHA-256 y firma del artefacto con Ed25519 o ECDSA P-256; el `keyId` se deriva del material público canónico.
 - license.
 - support_status: experimental, preview, stable o deprecated.
 
@@ -51,7 +51,7 @@ Ejemplo ilustrativo, no ejecutable:
 
 ## Seguridad
 
-La UI y la IA solicitan IDs registrados y argumentos tipados, nunca comandos libres. El ejecutor valida esquema, activo, parámetros, privilegios y riesgo. Operaciones críticas identifican explícitamente el dispositivo/volumen y requieren aprobación.
+La UI y la IA deberán solicitar IDs registrados y argumentos tipados, nunca comandos libres. La ejecución de módulos externos queda bloqueada hasta implementar un supervisor con ejecutable resuelto desde el manifiesto, verificación de hash, allowlist de argumentos/capacidades, timeout, cancelación, límites de stdout/stderr y auditoría. La existencia del esquema no implica que el módulo ya pueda ejecutarse. Operaciones críticas identifican explícitamente el dispositivo/volumen y requieren aprobación.
 
 ## Versionado
 
@@ -59,4 +59,4 @@ Cambios compatibles incrementan minor; incompatibles incrementan major. Acciones
 
 ## Integraciones externas
 
-Se ejecutan mediante adaptadores aislados, con lista de comandos/capacidades permitidas y ciclo de actualización independiente.
+Se ejecutan mediante adaptadores aislados, con lista de comandos/capacidades permitidas y ciclo de actualización independiente. El supervisor aún es una dependencia pendiente; no se ejecuta código de terceros directamente desde la UI ni desde un manifiesto.
