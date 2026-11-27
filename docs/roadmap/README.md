@@ -18,6 +18,7 @@ El roadmap prioriza una vertical funcional confiable antes de ampliar herramient
 - [x] Exponer una instantánea verificada de eventos y cabecera en una única transacción de lectura.
 - [x] Especificar el diseño de checkpoints firmados y anclaje independiente (ADR-0013).
 - [x] Implementar primitivas de checkpoint Ed25519 y ECDSA P-256 con firma verificada contra la clave pública declarada por el signer.
+- [x] Implementar resolver de artefactos instalados con hash y plataforma exacta, sin descargas ni ejecución.
 - [ ] Implementar almacenes de claves protegidas y enrolamiento por sistema operativo.
 - [ ] Completar paquetes de intervención y sincronización Field → Hub.
 - [ ] Definir ADR de firma de releases y política de distribución.
@@ -38,6 +39,16 @@ El roadmap prioriza una vertical funcional confiable antes de ampliar herramient
 ## Fase 1 — Core y auditoría
 
 Runtime Go, registro local, IDs, acciones tipadas, permisos/riesgo, cancelación, timeout, SQLite y migraciones. La validación de contratos se utiliza como puerta de entrada. Completar checkpoints externos, recuperación ante corrupción, exportación verificable y retención.
+
+## M1.5 — Registro y ejecución segura de módulos
+
+- [x] Resolver artefactos instalados desde una raíz administrada con plataforma/arquitectura exactas, tamaño máximo y SHA-256.
+- [x] Rechazar traversal, symlinks y componentes no portables/reservados de Windows.
+- [ ] Implementar catálogo autenticado y ciclo de vida de artefactos (origen, licencia, versión, firma/procedencia, actualización y retirada).
+- [ ] Implementar supervisor de procesos sin shell, con acciones y argumentos registrados y entorno mínimo.
+- [ ] Implementar terminación del árbol de procesos y cancelación por sistema operativo.
+- [ ] Aplicar timeout, límites de stdout/stderr, validación de salida y auditoría de ejecución.
+- [ ] Probar timeout, cancelación, procesos hijos, salida excesiva y sustitución de binario en Windows, macOS y Linux.
 
 ## Fase 2 — Diagnóstico de solo lectura
 

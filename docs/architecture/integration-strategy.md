@@ -8,7 +8,7 @@
 |---|---|---|---|
 | GLPI | ITSM, tickets, activos y organizaciones | Conector Hub | No desarrollar otro Service Desk completo |
 | Fleet | Endpoint management | Conector Hub opcional | Aprovechar gestión existente |
-| osquery | Inventario y consultas | Primera POC read-only tras el supervisor de procesos | Consultas predefinidas; release y hashes fijados por plataforma; extensiones deshabilitadas; sin SQL libre ni servicio residente |
+| osquery | Inventario y consultas | Primera POC read-only tras el supervisor de procesos | El resolver local ya comprueba hash, plataforma y ruta; catálogo autenticado y supervisor pendientes. Consultas predefinidas; extensiones deshabilitadas; sin SQL libre ni servicio residente |
 | Sysinternals | Diagnóstico Windows | Herramientas opcionales | Respetar licencia y distribución |
 | smartmontools | Almacenamiento | Adaptador | SMART |
 | Ventoy | Arranque multiboot | Distribución rescate | No desarrollar boot manager |
@@ -33,6 +33,7 @@
 8. Riesgo de privilegios y efectos secundarios.
 9. Prueba en laboratorio.
 10. Actualización, rollback y retirada.
+11. Verificar la procedencia del descriptor, no solo la coincidencia SHA-256. El resolver comprueba los bytes frente al descriptor; la autenticidad del editor debe venir de una firma/catálogo o política independiente.
 
 ## Clasificación
 
