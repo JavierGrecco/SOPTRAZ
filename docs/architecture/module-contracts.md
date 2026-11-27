@@ -35,7 +35,7 @@ La resolución usa un handle `os.Root`, que confina operaciones relativas frente
 
 ## Catálogo autenticado y metadata TUF
 
-El catálogo no se autenticará con un SHA-256 aislado ni con una firma propietaria. ADR-0015 adopta go-tuf/v2: raíz fijada en la aplicación; roles root, timestamp, snapshot y targets; umbrales y delegaciones; expiración y versiones monotónicas; consistent snapshots. Cada target TUF vinculará su descriptor y binario mediante longitud y hashes.
+El catálogo no se autenticará con un SHA-256 aislado ni con una firma propietaria. ADR-0015 adopta go-tuf/v2: raíz fijada en la aplicación; roles root, timestamp, snapshot y targets; umbrales y delegaciones; expiración y versiones monotónicas; consistent snapshots. Cada target TUF vinculará su descriptor y binario mediante longitud y hashes. SOPTRAZ exige que `custom` contenga el descriptor artifact v1 completo: el decodificador rechaza claves duplicadas, UTF-8/surrogates inválidos, campos desconocidos y documentos adicionales. Antes de aceptar un artefacto, `MetadataSession.VerifyDescriptor` exige igualdad exacta del descriptor firmado y coincidencia entre la ruta, `sizeBytes`/`length` y SHA-256 del descriptor y del target TUF. La firma TUF cubre también el objeto `custom`; la resolución local vuelve a comprobar los bytes instalados.
 
 No confiar en una raíz descargada mediante Trust-On-First-Use. No usar UpdaterConfig.UnsafeLocalMode para convertir una cache incompleta o vencida en confianza: la librería documenta que se aparta del flujo TUF. Field offline solo aceptará metadata previamente autenticada, persistida atómicamente, no expirada y con estado anti-rollback comprobado. La restauración tras reinicio debe estar cubierta por pruebas.
 
