@@ -3,11 +3,11 @@
 **Revisión:** 2026-11-27  
 **Repositorio:** `JavierGrecco/SOPTRAZ`  
 **Rama auditada:** `main`  
-**Alcance:** 31 ejecuciones de Actions disponibles al 27 de noviembre de 2026, hasta el commit `4f9a282`.
+**Alcance:** 32 ejecuciones de Actions disponibles al 27 de noviembre de 2026, hasta el commit `64205a3`.
 
 ## Resultado ejecutivo
 
-Se revisaron 31 ejecuciones: **26 pushes del CI principal en main (13 fallidos y 13 exitosos), 1 PR de Dependabot exitoso y 4 ejecuciones dinámicas de Dependabot exitosas; no hubo cancelaciones**. Las trece fallidas se explican por cinco familias de causa raíz, algunas repetidas tras cada push. El run principal más reciente, [#27](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46066682481), sobre `4f9a282`, falló en la sintaxis de un archivo de pruebas generado; el fuzzing pasó.
+Se revisaron 32 ejecuciones: **27 pushes del CI principal en main (14 fallidos y 13 exitosos), 1 PR de Dependabot exitoso y 4 ejecuciones dinámicas de Dependabot exitosas; no hubo cancelaciones**. Las catorce fallidas se explican por cinco familias de causa raíz, algunas repetidas tras cada push. El run principal más reciente, [#28](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46067113155), sobre `64205a3`, falló únicamente en el control de formato de dos archivos Go; Race Detector y fuzzing pasaron.
 
 La revisión no atribuye cada job rojo a una causa distinta. Cuando tres runners fallan en el mismo paso con el mismo mensaje, se cuenta como una sola causa reproducida en tres plataformas.
 
@@ -31,6 +31,7 @@ La ejecución posterior al arreglo de imports es [#12](https://github.com/Javier
 | [#23](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46065694412) | `125cd12` | Formato en Windows, macOS y Ubuntu | `internal/audit/checkpoint.go` no estaba formateado | Defecto de formato introducido al añadir las primitivas Ed25519. Race Detector y fuzzing pasaron. Corregido con `gofmt` en `bfe7f7b`; el run #24 volvió a verificarlo en los tres sistemas. |
 | [#25](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46066212890) | `cea6909` | Tests en Windows, macOS, Ubuntu y Race Detector | Dos fixtures de regresión usaban `\\u0072ole` y `o\\u0077ner` (dos barras), que JSON interpreta como una barra literal seguida de texto, no como escapes Unicode equivalentes. | Error al generar los tests, no del decodificador: los nombres no eran duplicados después del parseo. Los logs muestran los mismos dos fallos en los cuatro jobs; fuzzing pasó. Se corrigieron los fixtures para usar un único escape JSON. |
 | [#27](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46066682481) | `4f9a282` | Formato en los tres sistemas y Race Detector | `internal/strictjson/decode_test.go` contenía secuencias `\\t` y delimitadores de raw string escapados literalmente en las pruebas Unicode; `gofmt` informó `illegal character U+005C`. | Error de generación del archivo de pruebas, no del parser de producción. Los mismos defectos impidieron compilar en Windows, macOS, Ubuntu y Race Detector; el fuzzing separado pasó. La corrección reconstruye el bloque de pruebas como código Go normal y conserva los escapes JSON dentro de raw strings. |
+| [#28](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46067113155) | `64205a3` | Control de formato en Windows, macOS y Ubuntu | `gofmt` encontró indentación de espacios en los nuevos tests de surrogate y una línea vacía redundante en `decode.go`. | La lógica ya compilaba: Race Detector y fuzzing pasaron. Se corrige únicamente formato, convirtiendo la indentación al estilo Go y eliminando la línea redundante. |
 
 ## Ejecuciones exitosas de referencia
 
@@ -55,7 +56,7 @@ La ejecución posterior al arreglo de imports es [#12](https://github.com/Javier
 
 ### 1. Formato Go
 
-`gofmt -l` encontró archivos no normalizados en la primera base, y luego en los tests nuevos. Los errores de parser causados por los escapes inválidos se presentaban dentro de la misma puerta de formato, pero no eran un simple cambio estilístico: el compilador no podía analizar el fuente.
+`gofmt -l` encontró archivos no normalizados en la primera base, y luego en los tests nuevos. Los errores de parser causados por los escapes inválidos se presentaban dentro de la misma puerta de formato, pero no eran un simple cambio estilístico: el compilador no podía analizar el fuente. El run #28 volvió a detectar exclusivamente formato en el bloque final de `decode_test.go` y una línea vacía extra en `decode.go`.
 
 **Corrección permanente:** CI conserva la comprobación y ahora imprime `gofmt -d .` para exponer el diff exacto. No se deshabilitó ni se relajó el paso.
 
@@ -112,5 +113,5 @@ El run #14 fue introducido por una corrección de integración nuestra: el blob 
 
 ## Límites de esta auditoría
 
-Las 31 ejecuciones examinadas corresponden al historial disponible del repositorio al 2026-11-27. El run #17 corresponde al PR de Dependabot; los cuatro runs dinámicos de Dependabot se identifican por separado y no se mezclan con los 26 pushes del CI principal. La revisión no afirma que se hayan ejecutado pruebas locales en el Mac del usuario. El run #23 se cuenta como una sola causa de formato reproducida en tres runners; #25 y #27 son defectos únicos de generación de tests repetidos por la matriz, no múltiples causas independientes. La evidencia de compatibilidad descrita arriba proviene de los GitHub runners y de los logs asociados a los commits citados.
+Las 32 ejecuciones examinadas corresponden al historial disponible del repositorio al 2026-11-27. El run #17 corresponde al PR de Dependabot; los cuatro runs dinámicos de Dependabot se identifican por separado y no se mezclan con los 27 pushes del CI principal. La revisión no afirma que se hayan ejecutado pruebas locales en el Mac del usuario. El run #23 se cuenta como una sola causa de formato reproducida en tres runners; #25 y #27 son defectos únicos de generación de tests repetidos por la matriz; #28 fue una normalización de formato pendiente, no un fallo funcional. La evidencia de compatibilidad descrita arriba proviene de los GitHub runners y de los logs asociados a los commits citados.
 

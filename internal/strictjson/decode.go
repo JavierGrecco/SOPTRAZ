@@ -39,7 +39,6 @@ func Decode(raw []byte) (any, error) {
 	return value, nil
 }
 
-
 // validateEscapedSurrogates rejects unpaired UTF-16 surrogate escapes before
 // encoding/json can replace them with U+FFFD. A valid high/low pair is kept.
 func validateEscapedSurrogates(raw []byte) error {

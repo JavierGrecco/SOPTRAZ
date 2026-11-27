@@ -68,37 +68,37 @@ func TestDecodeRejectsExcessiveNesting(t *testing.T) {
 }
 
 func TestDecodeRejectsUnpairedUTF16SurrogateEscapes(t *testing.T) {
-    cases := []string{
-        `{"value":"\uD800"}`,
-        `{"value":"\uDEAD"}`,
-        `{"\uDC00":"value"}`,
-        `{"value":"\uD800\u0041"}`,
-    }
-    for _, raw := range cases {
-        t.Run(raw, func(t *testing.T) {
-            if _, err := Decode([]byte(raw)); err == nil || !strings.Contains(strings.ToLower(err.Error()), "sustituto") {
-                t.Fatalf("Decode() error = %v, want unpaired-surrogate rejection", err)
-            }
-        })
-    }
+	cases := []string{
+		`{"value":"\uD800"}`,
+		`{"value":"\uDEAD"}`,
+		`{"\uDC00":"value"}`,
+		`{"value":"\uD800\u0041"}`,
+	}
+	for _, raw := range cases {
+		t.Run(raw, func(t *testing.T) {
+			if _, err := Decode([]byte(raw)); err == nil || !strings.Contains(strings.ToLower(err.Error()), "sustituto") {
+				t.Fatalf("Decode() error = %v, want unpaired-surrogate rejection", err)
+			}
+		})
+	}
 }
 
 func TestDecodeAcceptsValidUTF16PairAndEscapedBackslash(t *testing.T) {
-    validPair := []byte(`{"value":"\uD83D\uDE00"}`)
-    value, err := Decode(validPair)
-    if err != nil {
-        t.Fatalf("Decode() rejected valid surrogate pair: %v", err)
-    }
-    if got := value.(map[string]any)["value"]; got != "😀" {
-        t.Fatalf("decoded value = %#v, want emoji", got)
-    }
+	validPair := []byte(`{"value":"\uD83D\uDE00"}`)
+	value, err := Decode(validPair)
+	if err != nil {
+		t.Fatalf("Decode() rejected valid surrogate pair: %v", err)
+	}
+	if got := value.(map[string]any)["value"]; got != "😀" {
+		t.Fatalf("decoded value = %#v, want emoji", got)
+	}
 
-    literalEscape := []byte(`{"value":"\\uD800"}`)
-    value, err = Decode(literalEscape)
-    if err != nil {
-        t.Fatalf("Decode() rejected escaped backslash text: %v", err)
-    }
-    if got := value.(map[string]any)["value"]; got != `\uD800` {
-        t.Fatalf("decoded literal = %#v, want literal escape text", got)
-    }
+	literalEscape := []byte(`{"value":"\\uD800"}`)
+	value, err = Decode(literalEscape)
+	if err != nil {
+		t.Fatalf("Decode() rejected escaped backslash text: %v", err)
+	}
+	if got := value.(map[string]any)["value"]; got != `\uD800` {
+		t.Fatalf("decoded literal = %#v, want literal escape text", got)
+	}
 }
