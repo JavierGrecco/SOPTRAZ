@@ -3,11 +3,11 @@
 **Revisión:** 2026-11-27  
 **Repositorio:** `JavierGrecco/SOPTRAZ`  
 **Rama auditada:** `main`  
-**Alcance:** las 16 ejecuciones de CI creadas el 27 de noviembre de 2026 hasta el commit `e9ac1e6`.
+**Alcance:** 23 ejecuciones de Actions disponibles al 27 de noviembre de 2026, hasta el commit `b71fbe9`.
 
 ## Resultado ejecutivo
 
-Se revisaron las 16 ejecuciones registradas: **10 fallidas y 6 exitosas; no hubo ejecuciones canceladas**. Las fallidas se explican por cinco familias de causa raíz, algunas repetidas después de cada push. La ejecución #16, sobre el commit `e9ac1e69a6f10b0ce29ccb08e4602745c1dc9af8`, terminó con los cuatro jobs en verde: Windows, macOS, Ubuntu y Go Race Detector.
+Se revisaron 23 ejecuciones: **18 pushes del CI principal en main (10 fallidos, 8 exitosos), 1 PR de Dependabot exitoso y 4 ejecuciones dinámicas de Dependabot exitosas; no hubo cancelaciones**. Las diez fallidas se explican por cinco familias de causa raíz, algunas repetidas tras cada push. La última ejecución principal, [#19](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46063747648), sobre `b71fbe9`, terminó verde en Windows, macOS, Ubuntu y Race Detector.
 
 La revisión no atribuye cada job rojo a una causa distinta. Cuando tres runners fallan en el mismo paso con el mismo mensaje, se cuenta como una sola causa reproducida en tres plataformas.
 
@@ -39,6 +39,9 @@ La ejecución posterior al arreglo de imports es [#12](https://github.com/Javier
 | [#12](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46061389071) | `ccc07a7` | Los cuatro jobs verdes después de corregir la URI de archivos SQLite en Windows. |
 | [#15](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46062674995) | `8d677f5` | Los cuatro jobs verdes después de restaurar el archivo completo store.go; incluye módulo, formato, vet, pruebas multiplataforma y Race Detector. |
 | [#16](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46063268875) | `e9ac1e6` | Los cuatro jobs verdes tras fijar las acciones por SHA, ejecutar tests sin caché y ampliar los casos SQLite para UNC, caracteres reservados, REPLACE y cabecera manipulada. |
+| [#17](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46063349335) | PR Dependabot #2 | Los cuatro jobs verdes al probar setup-go v7.1.0 antes de integrarlo. |
+| [#18](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46063592417) | `0787433` | Los cuatro jobs verdes tras actualizar la documentación de la auditoría de CI. |
+| [#19](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46063747648) | `b71fbe9` | Los cuatro jobs verdes tras integrar setup-go v7.1.0 en main. |
 
 ## Causas raíz y correcciones permanentes
 
@@ -83,7 +86,7 @@ El run #14 fue introducido por una corrección de integración nuestra: el blob 
 ## Controles de CI reforzados tras la auditoría
 
 - `go mod tidy -diff` y `go mod verify` se ejecutan como puerta temprana en Ubuntu. `tidy -diff` carga también tests, tags y archivos específicos de plataforma según la semántica de Go Modules, por lo que no se necesita repetirlo en los tres SO.
-- Las acciones de CI pasan de referencias por tag a SHAs completos verificados: `actions/checkout` v7.0.1 y `actions/setup-go` v7.0.0. Checkout usa `persist-credentials: false` porque el workflow solo necesita leer el repo.
+- Las acciones de CI pasan de referencias por tag a SHAs completos verificados: `actions/checkout` v7.0.1 y `actions/setup-go` v7.1.0. Checkout usa `persist-credentials: false` porque el workflow solo necesita leer el repo.
 - `GOTOOLCHAIN=local` obliga a usar el toolchain instalado por `setup-go`; no permite que el proceso cambie silenciosamente de toolchain.
 - `go test -count=1` y `go test -race -count=1` fuerzan ejecución fresca en cada run.
 - `cancel-in-progress: false` impide que un push nuevo cancele un CI que ya está validando un commit.
@@ -100,4 +103,4 @@ El run #14 fue introducido por una corrección de integración nuestra: el blob 
 
 ## Límites de esta auditoría
 
-Las 16 ejecuciones examinadas corresponden al historial disponible del repositorio al 2026-11-27. La revisión no afirma que se hayan ejecutado pruebas locales en el Mac del usuario. La evidencia de compatibilidad descrita arriba proviene de los GitHub runners y de los logs asociados a los commits citados.
+Las 23 ejecuciones examinadas corresponden al historial disponible del repositorio al 2026-11-27. El run #17 corresponde al PR de Dependabot; los cuatro runs dinámicos de Dependabot se identifican por separado y no se mezclan con los 18 pushes del CI principal. La revisión no afirma que se hayan ejecutado pruebas locales en el Mac del usuario. La evidencia de compatibilidad descrita arriba proviene de los GitHub runners y de los logs asociados a los commits citados.

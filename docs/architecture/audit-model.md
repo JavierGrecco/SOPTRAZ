@@ -73,7 +73,7 @@ Los triggers previenen modificaciones accidentales mediante las operaciones norm
 
 **Esto no convierte SQLite en almacenamiento WORM ni hace imposible una manipulación por un administrador con acceso al archivo.** Un atacante que pueda editar todas las tablas, quitar triggers y recalcular toda la cadena puede reescribir el historial completo.
 
-Para elevar la garantía, se requiere exportar checkpoints del último hash a un destino separado y firmarlos con una clave protegida fuera de la base local. La firma de checkpoints y su verificación forman una fase posterior; no se presentan como implementadas.
+Para elevar la garantía, se requiere exportar checkpoints del último hash a un destino separado y firmarlos con una clave protegida fuera de la base local. El [diseño M2 de checkpoints y paquetes](audit-checkpoint-design.md) especifica el modelo de confianza, firma, ancla independiente, anti-rollback y exportación/importación. La implementación permanece pendiente; no se presenta como disponible.
 
 ## 6. Field y Hub
 

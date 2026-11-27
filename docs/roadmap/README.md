@@ -15,9 +15,20 @@ El roadmap prioriza una vertical funcional confiable antes de ampliar herramient
 - [x] Implementar y probar transiciones del ciclo de intervención.
 - [x] Definir interfaz de auditoría y adaptador SQLite Field.
 - [x] Implementar hash chain por intervención, triggers append-only y verificación.
+- [x] Especificar el diseño de checkpoints firmados y anclaje independiente (ADR-0013).
 - [ ] Implementar checkpoints firmados fuera de la base.
 - [ ] Completar paquetes de intervención y sincronización Field → Hub.
 - [ ] Definir ADR de firma de releases y política de distribución.
+
+## M2 — Checkpoints y paquetes de intervención
+
+- [x] Definir el modelo de checkpoint Ed25519 y sus límites de confianza.
+- [x] Definir trust anchor independiente y anti-rollback.
+- [x] Definir el formato lógico del paquete `.soptraz` y las reglas de importación atómica.
+- [ ] Implementar contratos, signer, trust store y verificador.
+- [ ] Implementar exportación/importación idempotente Field → Hub.
+- [ ] Incorporar proveedores de claves protegidas por sistema operativo.
+- [ ] Validar restauración, rotación/revocación y conflictos en los tres sistemas.
 
 ## Fase 1 — Core y auditoría
 

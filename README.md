@@ -47,6 +47,7 @@ Ambas ediciones compartirán contratos, procedimientos, motor de ejecución, dia
 - [Selección tecnológica](docs/architecture/technology-strategy.md)
 - [Límites y contratos de módulos](docs/architecture/module-contracts.md)
 - [Modelo de auditoría](docs/architecture/audit-model.md)
+- [Diseño de checkpoints firmados y exportación Field → Hub](docs/architecture/audit-checkpoint-design.md)
 - [Field y Hub](docs/architecture/editions.md)
 - [Política de IA](docs/architecture/ai-policy.md)
 - [Estrategia de integración](docs/architecture/integration-strategy.md)

@@ -16,5 +16,6 @@ Las decisiones aceptadas se mantienen aquí. Una ADR registra contexto, alternat
 | ADR-0010 | Ciclo de vida explícito de intervenciones | Aceptada |
 | ADR-0011 | Driver SQLite sin CGO para Field | Aceptada para primera implementación |
 | ADR-0012 | Registro append-only con hash chain por intervención | Aceptada |
+| ADR-0013 | Checkpoints firmados y anclados fuera de Field | Aceptada como dirección de diseño; implementación pendiente |
 
 Pendiente: licencia de distribución, cifrado local, firmas de releases, packaging Python, sincronización e identidad antes de implementar esas funciones.
