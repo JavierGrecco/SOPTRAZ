@@ -44,7 +44,7 @@ func TestAppendBuildsAndVerifiesHashChain(t *testing.T) {
 	store := openTestStore(t)
 	ctx := context.Background()
 
-	first, err := store.Append(ctx, sampleDraft("intervention.created", \`{"source":"field","category":"network"}\`))
+	first, err := store.Append(ctx, sampleDraft("intervention.created", `{"source":"field","category":"network"}`))
 	if err != nil {
 		t.Fatalf("append first event: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestAppendBuildsAndVerifiesHashChain(t *testing.T) {
 		t.Fatalf("unexpected first event chain metadata: %#v", first)
 	}
 
-	second, err := store.Append(ctx, sampleDraft("diagnostic.completed", \`{"findings":2}\`))
+	second, err := store.Append(ctx, sampleDraft("diagnostic.completed", `{"findings":2}`))
 	if err != nil {
 		t.Fatalf("append second event: %v", err)
 	}
@@ -115,7 +115,7 @@ func TestAppendIsSerializedForConcurrentWriters(t *testing.T) {
 func TestDatabaseBlocksEventMutationAndDeletion(t *testing.T) {
 	store := openTestStore(t)
 	ctx := context.Background()
-	event, err := store.Append(ctx, sampleDraft("intervention.created", \`{"source":"field"}\`))
+	event, err := store.Append(ctx, sampleDraft("intervention.created", `{"source":"field"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ func TestDatabaseBlocksEventMutationAndDeletion(t *testing.T) {
 func TestVerifyDetectsAlteredEventWhenTriggerIsBypassed(t *testing.T) {
 	store := openTestStore(t)
 	ctx := context.Background()
-	event, err := store.Append(ctx, sampleDraft("intervention.created", \`{"category":"network"}\`))
+	event, err := store.Append(ctx, sampleDraft("intervention.created", `{"category":"network"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,12 +165,12 @@ func TestAppendRejectsInvalidEventAndPayload(t *testing.T) {
 	store := openTestStore(t)
 	ctx := context.Background()
 
-	invalidType := sampleDraft("arbitrary.command", \`{"ok":true}\`)
+	invalidType := sampleDraft("arbitrary.command", `{"ok":true}`)
 	if _, err := store.Append(ctx, invalidType); err == nil {
 		t.Fatal("unknown event type must be rejected by the event contract")
 	}
 
-	invalidPayload := sampleDraft("intervention.created", \`["not","an","object"]\`)
+	invalidPayload := sampleDraft("intervention.created", `["not","an","object"]`)
 	if _, err := store.Append(ctx, invalidPayload); err == nil {
 		t.Fatal("non-object event payload must be rejected")
 	}
@@ -179,11 +179,11 @@ func TestAppendRejectsInvalidEventAndPayload(t *testing.T) {
 func TestVerifyDetectsHeadMismatchAfterTailDeletion(t *testing.T) {
 	store := openTestStore(t)
 	ctx := context.Background()
-	_, err := store.Append(ctx, sampleDraft("intervention.created", \`{"step":1}\`))
+	_, err := store.Append(ctx, sampleDraft("intervention.created", `{"step":1}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = store.Append(ctx, sampleDraft("diagnostic.completed", \`{"step":2}\`))
+	_, err = store.Append(ctx, sampleDraft("diagnostic.completed", `{"step":2}`))
 	if err != nil {
 		t.Fatal(err)
 	}
