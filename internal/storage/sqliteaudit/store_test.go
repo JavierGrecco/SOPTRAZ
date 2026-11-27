@@ -2,6 +2,8 @@ package sqliteaudit
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -70,6 +72,66 @@ func TestAppendBuildsAndVerifiesHashChain(t *testing.T) {
 	}
 	if len(events) != 2 || events[0].Hash != first.Hash || events[1].Hash != second.Hash {
 		t.Fatalf("unexpected ordered events: %#v", events)
+	}
+}
+
+func TestCreateCheckpointUsesVerifiedSnapshotAndExternalSignature(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	first, err := store.Append(ctx, sampleDraft("intervention.created", `{"step":1}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := store.Append(ctx, sampleDraft("diagnostic.completed", `{"step":2}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	seed := sha256.Sum256([]byte("SOPTRAZ sqlite checkpoint adapter test key"))
+	privateKey := ed25519.NewKeyFromSeed(seed[:])
+	publicKey := privateKey.Public().(ed25519.PublicKey)
+	createdAt := time.Date(2026, 11, 27, 21, 30, 0, 0, time.UTC)
+	previousDigest := strings.Repeat("b", 64)
+	checkpoint, err := store.CreateCheckpoint(ctx, testInterventionID, previousDigest, publicKey, createdAt)
+	if err != nil {
+		t.Fatalf("CreateCheckpoint() error = %v", err)
+	}
+	if checkpoint.InterventionID != testInterventionID || checkpoint.Sequence != 2 || checkpoint.HeadHash != second.Hash {
+		t.Fatalf("checkpoint does not match the verified ledger head: %#v", checkpoint)
+	}
+	if checkpoint.PreviousCheckpointHash != previousDigest || checkpoint.KeyID == "" {
+		t.Fatalf("checkpoint is missing its chain/key metadata: %#v", checkpoint)
+	}
+	if first.Sequence != 1 {
+		t.Fatalf("first event sequence = %d, want 1", first.Sequence)
+	}
+
+	// Signing stays outside the SQLite adapter so the private key can remain
+	// in an OS-protected or remote key provider.
+	signed, err := audit.SignCheckpoint(checkpoint, privateKey)
+	if err != nil {
+		t.Fatalf("SignCheckpoint() error = %v", err)
+	}
+	if err := audit.VerifySignedCheckpoint(signed, publicKey); err != nil {
+		t.Fatalf("VerifySignedCheckpoint() error = %v", err)
+	}
+}
+
+func TestCreateCheckpointRejectsEmptyLedger(t *testing.T) {
+	store := openTestStore(t)
+	seed := sha256.Sum256([]byte("SOPTRAZ empty checkpoint adapter test key"))
+	privateKey := ed25519.NewKeyFromSeed(seed[:])
+	publicKey := privateKey.Public().(ed25519.PublicKey)
+
+	_, err := store.CreateCheckpoint(
+		context.Background(),
+		testInterventionID,
+		"",
+		publicKey,
+		time.Date(2026, 11, 27, 21, 30, 0, 0, time.UTC),
+	)
+	if err == nil || !strings.Contains(err.Error(), "sin eventos") {
+		t.Fatalf("CreateCheckpoint() error = %v, want empty-ledger rejection", err)
 	}
 }
 
