@@ -95,7 +95,7 @@ func TestCreateCheckpointUsesVerifiedSnapshotAndExternalSignature(t *testing.T) 
 	publicKey := privateKey.Public().(ed25519.PublicKey)
 	identity, err := audit.CheckpointKeyIdentityFromPublicKey(audit.CheckpointPublicKey{
 		SignatureAlgorithm: audit.CheckpointSignatureAlgorithm,
-		Ed25519:             publicKey,
+		Ed25519:            publicKey,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -139,7 +139,7 @@ func TestCreateCheckpointSupportsECDSAP256Identity(t *testing.T) {
 	}
 	identity, err := audit.CheckpointKeyIdentityFromPublicKey(audit.CheckpointPublicKey{
 		SignatureAlgorithm: audit.CheckpointSignatureAlgorithmECDSAP256SHA256,
-		ECDSAP256:           &privateKey.PublicKey,
+		ECDSAP256:          &privateKey.PublicKey,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -166,7 +166,7 @@ func TestCreateCheckpointRejectsEmptyLedger(t *testing.T) {
 	publicKey := privateKey.Public().(ed25519.PublicKey)
 	identity, err := audit.CheckpointKeyIdentityFromPublicKey(audit.CheckpointPublicKey{
 		SignatureAlgorithm: audit.CheckpointSignatureAlgorithm,
-		Ed25519:             publicKey,
+		Ed25519:            publicKey,
 	})
 	if err != nil {
 		t.Fatal(err)

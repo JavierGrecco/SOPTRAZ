@@ -3,15 +3,15 @@ package audit
 import (
 	"bytes"
 	"context"
-	"crypto/ed25519"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"math/big"
 	"encoding/hex"
 	"errors"
+	"math/big"
 	"strings"
 	"testing"
 	"time"
@@ -144,7 +144,7 @@ func TestCheckpointDigestIsVerifiedStatementDigestAndChainSensitive(t *testing.T
 	publicKey := privateKey.Public().(ed25519.PublicKey)
 	resolver := checkpointTestResolver{
 		keyID: signed.Checkpoint.KeyID,
-		key: CheckpointPublicKey{SignatureAlgorithm: CheckpointSignatureAlgorithm, Ed25519: publicKey},
+		key:   CheckpointPublicKey{SignatureAlgorithm: CheckpointSignatureAlgorithm, Ed25519: publicKey},
 	}
 	digest1, err := CheckpointDigest(context.Background(), signed, resolver)
 	if err != nil {
@@ -181,7 +181,7 @@ func TestECDSAP256CheckpointSignVerifyAndCanonicalDigest(t *testing.T) {
 	}
 	publicKey := CheckpointPublicKey{
 		SignatureAlgorithm: CheckpointSignatureAlgorithmECDSAP256SHA256,
-		ECDSAP256:           &privateKey.PublicKey,
+		ECDSAP256:          &privateKey.PublicKey,
 	}
 	identity, err := CheckpointKeyIdentityFromPublicKey(publicKey)
 	if err != nil {
@@ -234,7 +234,7 @@ func TestECDSAP256RejectsHighSSignature(t *testing.T) {
 	}
 	publicKey := CheckpointPublicKey{
 		SignatureAlgorithm: CheckpointSignatureAlgorithmECDSAP256SHA256,
-		ECDSAP256:           &privateKey.PublicKey,
+		ECDSAP256:          &privateKey.PublicKey,
 	}
 	identity, err := CheckpointKeyIdentityFromPublicKey(publicKey)
 	if err != nil {
@@ -288,7 +288,7 @@ type checkpointTestECDSASigner struct {
 func (signer checkpointTestECDSASigner) Identity(_ context.Context) (CheckpointKeyIdentity, error) {
 	return CheckpointKeyIdentityFromPublicKey(CheckpointPublicKey{
 		SignatureAlgorithm: CheckpointSignatureAlgorithmECDSAP256SHA256,
-		ECDSAP256:           &signer.privateKey.PublicKey,
+		ECDSAP256:          &signer.privateKey.PublicKey,
 	})
 }
 
@@ -385,7 +385,7 @@ func TestVerifyCheckpointWithTrustStore(t *testing.T) {
 		keyID: signed.Checkpoint.KeyID,
 		key: CheckpointPublicKey{
 			SignatureAlgorithm: CheckpointSignatureAlgorithm,
-			Ed25519:             publicKey,
+			Ed25519:            publicKey,
 		},
 	}
 

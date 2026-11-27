@@ -17,12 +17,12 @@ import (
 )
 
 const (
-	CheckpointSchemaVersion      = "1.0.0"
-	CheckpointSignatureAlgorithm            = "ed25519"
+	CheckpointSchemaVersion                     = "1.0.0"
+	CheckpointSignatureAlgorithm                = "ed25519"
 	CheckpointSignatureAlgorithmECDSAP256SHA256 = "ecdsa-p256-sha256"
-	checkpointDomainSeparator    = "SOPTRAZ-AUDIT-CHECKPOINT-V1\x00"
-	checkpointDigestDomain       = "SOPTRAZ-AUDIT-CHECKPOINT-DIGEST-V1\x00"
-	maxCheckpointFieldBytes      = 4096
+	checkpointDomainSeparator                   = "SOPTRAZ-AUDIT-CHECKPOINT-V1\x00"
+	checkpointDigestDomain                      = "SOPTRAZ-AUDIT-CHECKPOINT-DIGEST-V1\x00"
+	maxCheckpointFieldBytes                     = 4096
 )
 
 // Checkpoint commits to one immutable head of an intervention audit chain.
@@ -52,13 +52,13 @@ type SignedCheckpoint struct {
 // Exactly one key field must be populated and match SignatureAlgorithm.
 type CheckpointPublicKey struct {
 	SignatureAlgorithm string
-	Ed25519             ed25519.PublicKey
-	ECDSAP256           *ecdsa.PublicKey
+	Ed25519            ed25519.PublicKey
+	ECDSAP256          *ecdsa.PublicKey
 }
 
 // CheckpointKeyIdentity is the public identity selected by a signer.
 type CheckpointKeyIdentity struct {
-	KeyID               string
+	KeyID              string
 	SignatureAlgorithm string
 }
 
@@ -169,7 +169,7 @@ func NewCheckpointWithIdentity(interventionID string, sequence uint64, headHash,
 func NewCheckpoint(interventionID string, sequence uint64, headHash, previousCheckpointHash string, publicKey ed25519.PublicKey, createdAt time.Time) (Checkpoint, error) {
 	identity, err := CheckpointKeyIdentityFromPublicKey(CheckpointPublicKey{
 		SignatureAlgorithm: CheckpointSignatureAlgorithm,
-		Ed25519:             publicKey,
+		Ed25519:            publicKey,
 	})
 	if err != nil {
 		return Checkpoint{}, err
@@ -181,9 +181,10 @@ func NewCheckpoint(interventionID string, sequence uint64, headHash, previousChe
 func CheckpointKeyID(publicKey ed25519.PublicKey) (string, error) {
 	return CheckpointKeyIDFromPublicKey(CheckpointPublicKey{
 		SignatureAlgorithm: CheckpointSignatureAlgorithm,
-		Ed25519:             publicKey,
+		Ed25519:            publicKey,
 	})
 }
+
 // Validate checks all fields that participate in checkpoint signing.
 func (checkpoint Checkpoint) Validate() error {
 	if checkpoint.SchemaVersion != CheckpointSchemaVersion {
@@ -285,7 +286,7 @@ func (signer ed25519CheckpointSigner) Identity(ctx context.Context) (CheckpointK
 	publicKey := signer.privateKey.Public().(ed25519.PublicKey)
 	return CheckpointKeyIdentityFromPublicKey(CheckpointPublicKey{
 		SignatureAlgorithm: CheckpointSignatureAlgorithm,
-		Ed25519:             publicKey,
+		Ed25519:            publicKey,
 	})
 }
 
@@ -352,7 +353,7 @@ func SignCheckpointWithSigner(ctx context.Context, checkpoint Checkpoint, signer
 func VerifySignedCheckpoint(signed SignedCheckpoint, publicKey ed25519.PublicKey) error {
 	return VerifySignedCheckpointWithPublicKey(signed, CheckpointPublicKey{
 		SignatureAlgorithm: CheckpointSignatureAlgorithm,
-		Ed25519:             publicKey,
+		Ed25519:            publicKey,
 	})
 }
 
