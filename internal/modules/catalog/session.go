@@ -4,11 +4,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
-	"path"
-	"strings"
+	"fmt""
 	"sync"
 
+	"github.com/JavierGrecco/SOPTRAZ/internal/modules/artifact"
 	"github.com/theupdateframework/go-tuf/v2/metadata"
 	"github.com/theupdateframework/go-tuf/v2/metadata/trustedmetadata"
 )
@@ -125,13 +124,8 @@ func (session *MetadataSession) Target(targetPath string) (VerifiedTarget, error
 	if session.trusted == nil || session.phase != phaseTargets {
 		return VerifiedTarget{}, fmt.Errorf("%w: targets no fue autenticado", ErrMetadataSequence)
 	}
-	if targetPath == "" || strings.Contains(targetPath, `\\`) || path.IsAbs(targetPath) || path.Clean(targetPath) != targetPath {
-		return VerifiedTarget{}, fmt.Errorf("%w: ruta relativa no canónica", ErrInvalidTarget)
-	}
-	for _, part := range strings.Split(targetPath, "/") {
-		if part == "" || part == "." || part == ".." {
-			return VerifiedTarget{}, fmt.Errorf("%w: componente de ruta no permitido", ErrInvalidTarget)
-		}
+	if err := artifact.ValidateRelativePath(targetPath); err != nil {
+		return VerifiedTarget{}, fmt.Errorf("%w: %v", ErrInvalidTarget, err)
 	}
 
 	topTargets := session.trusted.Targets[metadata.TARGETS]
