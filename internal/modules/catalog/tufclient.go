@@ -45,12 +45,13 @@ type TUFClientConfig struct {
 // concurrent use, so all refresh/lookup operations are serialized here.
 type TUFClient struct {
 	mu      sync.Mutex
+	config  *tufconfig.UpdaterConfig
 	updater *tufupdater.Updater
 }
 
 // NewTUFClient builds a bounded production-mode TUF client from a previously
-// pinned TrustAnchor. It enables the official online updater and its verified
-// metadata cache; it never enables UnsafeLocalMode.
+// pinned TrustAnchor and completes one online TUF refresh before returning. The
+// verified metadata cache is enabled; UnsafeLocalMode is never enabled.
 func NewTUFClient(anchor *TrustAnchor, clientConfig TUFClientConfig) (*TUFClient, error) {
 	if anchor == nil {
 		return nil, fmt.Errorf("%w: ancla ausente", ErrInvalidTUFClientConfig)
@@ -146,11 +147,11 @@ func NewTUFClient(anchor *TrustAnchor, clientConfig TUFClientConfig) (*TUFClient
 		return nil, fmt.Errorf("%w: configurar reintentos TUF: %v", ErrInvalidTUFClientConfig, err)
 	}
 
-	officialUpdater, err := tufupdater.New(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("inicializar updater TUF oficial: %w", err)
+	client := &TUFClient{config: cfg}
+	if err := client.refreshLocked(); err != nil {
+		return nil, err
 	}
-	return &TUFClient{updater: officialUpdater}, nil
+	return client, nil
 }
 
 // ResolveDescriptor asks the official go-tuf Updater to locate and authenticate
@@ -175,18 +176,37 @@ func (client *TUFClient) ResolveDescriptor(descriptor artifact.Descriptor) (Veri
 	return verifySignedArtifactTarget(descriptor.RelativePath, target, descriptor)
 }
 
-// Refresh explicitly updates root/timestamp/snapshot/top-level targets through
-// the official TUF client. Delegated roles continue to be resolved on demand
-// by ResolveDescriptor. This call is serialized with all target lookups.
+// Refresh creates a new official Updater from the same pinned root and
+// performs its single allowed refresh. A failed refresh invalidates the old
+// in-memory updater so ResolveDescriptor cannot silently use stale metadata.
+// Delegated roles are resolved on demand from the refreshed snapshot.
 func (client *TUFClient) Refresh() error {
-	if client == nil || client.updater == nil {
+	if client == nil {
 		return ErrTUFClientUnavailable
 	}
 	client.mu.Lock()
 	defer client.mu.Unlock()
-	if err := client.updater.Refresh(); err != nil {
+	return client.refreshLocked()
+}
+
+// refreshLocked must be called with client.mu held. go-tuf's Updater permits
+// Refresh only once per instance, so each refresh creates a new instance and
+// lets go-tuf revalidate the persisted metadata cache against the pinned root.
+func (client *TUFClient) refreshLocked() error {
+	if client.config == nil {
+		client.updater = nil
+		return ErrTUFClientUnavailable
+	}
+	officialUpdater, err := tufupdater.New(client.config)
+	if err != nil {
+		client.updater = nil
+		return fmt.Errorf("inicializar updater TUF oficial: %w", err)
+	}
+	if err := officialUpdater.Refresh(); err != nil {
+		client.updater = nil
 		return fmt.Errorf("actualizar metadata TUF: %w", err)
 	}
+	client.updater = officialUpdater
 	return nil
 }
 
