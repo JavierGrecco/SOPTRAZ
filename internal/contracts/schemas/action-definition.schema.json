@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://soptraz.dev/schemas/action-definition.schema.json",
+  "title": "SOPTRAZ Action Definition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "actionId", "actionVersion", "displayName", "description", "executionAdapter", "platforms", "risk", "requiresAdmin", "requiresApproval", "idempotent", "timeoutSeconds", "effects", "rebootBehavior", "inputSchema", "outputSchema", "verification", "rollback"],
+  "properties": {
+    "schemaVersion": {"const": "1.0.0"},
+    "actionId": {"type": "string", "pattern": "^soptraz\\.[a-z0-9]+([.-][a-z0-9]+)*$", "maxLength": 160},
+    "actionVersion": {"type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$"},
+    "displayName": {"type": "string", "minLength": 2, "maxLength": 120},
+    "description": {"type": "string", "minLength": 10, "maxLength": 2000},
+    "executionAdapter": {"type": "string", "pattern": "^[a-z][a-z0-9.-]+$", "maxLength": 120},
+    "platforms": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["windows", "darwin", "linux"]}},
+    "risk": {"enum": ["read_only", "low", "medium", "high", "critical"]},
+    "requiresAdmin": {"type": "boolean"},
+    "requiresApproval": {"type": "boolean"},
+    "idempotent": {"type": "boolean"},
+    "timeoutSeconds": {"type": "integer", "minimum": 1, "maximum": 3600},
+    "effects": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["host.read", "host.write", "network.read", "network.write", "storage.read", "storage.write", "data.delete", "process.execute", "driver.install", "firmware.write", "boot.write", "service.interrupt"]}},
+    "rebootBehavior": {"enum": ["never", "possible", "required"]},
+    "inputSchema": {"type": "object", "required": ["type"], "properties": {"type": {"const": "object"}, "properties": {"type": "object"}, "required": {"type": "array", "items": {"type": "string"}}, "additionalProperties": {"type": "boolean"}}},
+    "outputSchema": {"type": "object", "required": ["type"], "properties": {"type": {"const": "object"}, "properties": {"type": "object"}, "required": {"type": "array", "items": {"type": "string"}}, "additionalProperties": {"type": "boolean"}}},
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "description", "successCriteria"],
+      "properties": {
+        "method": {"enum": ["command_result", "health_check", "state_check", "file_check", "manual"]},
+        "description": {"type": "string", "minLength": 5, "maxLength": 1000},
+        "successCriteria": {"type": "string", "minLength": 5, "maxLength": 1000}
+      }
+    },
+    "rollback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["available", "notes"],
+      "properties": {
+        "available": {"type": "boolean"},
+        "procedureId": {"type": "string", "pattern": "^soptraz\\.[a-z0-9]+([.-][a-z0-9]+)*$"},
+        "notes": {"type": "string", "minLength": 5, "maxLength": 1000}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"risk": {"enum": ["high", "critical"]}}, "required": ["risk"]},
+      "then": {"properties": {"requiresApproval": {"const": true}}, "required": ["requiresApproval"]}
+    },
+    {
+      "if": {"properties": {"risk": {"const": "critical"}}, "required": ["risk"]},
+      "then": {"properties": {"requiresAdmin": {"const": true}, "requiresApproval": {"const": true}}, "required": ["requiresAdmin", "requiresApproval"]}
+    },
+    {
+      "if": {"properties": {"risk": {"const": "read_only"}}, "required": ["risk"]},
+      "then": {
+        "properties": {
+          "requiresAdmin": {"const": false},
+          "effects": {"items": {"enum": ["host.read", "network.read", "storage.read"]}}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"effects": {"contains": {"enum": ["data.delete", "firmware.write", "boot.write"]}}},
+        "required": ["effects"]
+      },
+      "then": {
+        "properties": {
+          "risk": {"const": "critical"},
+          "requiresAdmin": {"const": true},
+          "requiresApproval": {"const": true}
+        },
+        "required": ["risk", "requiresAdmin", "requiresApproval"]
+      }
+    },
+    {
+      "if": {
+        "properties": {"effects": {"contains": {"const": "driver.install"}}},
+        "required": ["effects"]
+      },
+      "then": {
+        "properties": {
+          "risk": {"enum": ["high", "critical"]},
+          "requiresAdmin": {"const": true},
+          "requiresApproval": {"const": true}
+        },
+        "required": ["risk", "requiresAdmin", "requiresApproval"]
+      }
+    },
+    {
+      "if": {
+        "properties": {"effects": {"contains": {"enum": ["host.write", "network.write", "storage.write", "service.interrupt"]}}},
+        "required": ["effects"]
+      },
+      "then": {"properties": {"requiresApproval": {"const": true}}, "required": ["requiresApproval"]}
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "1.0.0",
+  "moduleId": "soptraz.diagnostics.host",
+  "moduleVersion": "0.1.0",
+  "displayName": "Host Diagnostics",
+  "description": "Read-only host and runtime identification.",
+  "supportStatus": "experimental",
+  "platforms": [
+    {"os": "windows", "architectures": ["amd64", "arm64"]},
+    {"os": "darwin", "architectures": ["amd64", "arm64"]},
+    {"os": "linux", "architectures": ["amd64", "arm64"]}
+  ],
+  "capabilities": ["host.inventory.read", "host.runtime.read"],
+  "permissions": ["host.read"],
+  "dependencies": [],
+  "license": "Apache-2.0",
+  "integrity": {
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "createdAt": "2026-11-27T19:00:00Z"
+}

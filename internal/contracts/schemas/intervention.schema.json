@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://soptraz.dev/schemas/intervention.schema.json",
+  "title": "SOPTRAZ Intervention",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "interventionId", "createdAt", "updatedAt", "status", "title", "summary", "category", "asset", "findings", "tags"],
+  "properties": {
+    "schemaVersion": {"const": "1.0.0"},
+    "interventionId": {"type": "string", "format": "uuid"},
+    "createdAt": {"type": "string", "format": "date-time"},
+    "updatedAt": {"type": "string", "format": "date-time"},
+    "status": {"enum": ["created", "triaged", "diagnosed", "awaiting_approval", "approved", "executing", "verifying", "resolved", "failed", "cancelled", "closed"]},
+    "title": {"type": "string", "minLength": 3, "maxLength": 200},
+    "summary": {"type": "string", "minLength": 5, "maxLength": 4000},
+    "category": {"type": "string", "pattern": "^[a-z][a-z0-9.-]+$", "maxLength": 80},
+    "organizationId": {"type": "string", "maxLength": 120},
+    "assignedTeamId": {"type": "string", "maxLength": 120},
+    "assignedTechnicianId": {"type": "string", "maxLength": 120},
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assetId", "platform", "architecture"],
+      "properties": {
+        "assetId": {"type": "string", "minLength": 3, "maxLength": 160},
+        "platform": {"enum": ["windows", "darwin", "linux", "unknown"]},
+        "architecture": {"enum": ["386", "amd64", "arm", "arm64", "unknown"]}
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["findingId", "classification", "code", "message", "evidenceIds"],
+        "properties": {
+          "findingId": {"type": "string", "minLength": 3, "maxLength": 120},
+          "classification": {"enum": ["observed", "hypothesis", "confirmed", "recommendation"]},
+          "code": {"type": "string", "pattern": "^[a-z][a-z0-9._-]+$", "maxLength": 160},
+          "message": {"type": "string", "minLength": 3, "maxLength": 2000},
+          "evidenceIds": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 3, "maxLength": 160}}
+        }
+      }
+    },
+    "tags": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 80}}
+  }
+}

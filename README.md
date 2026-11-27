@@ -36,11 +36,9 @@ Ambas ediciones compartirán contratos, procedimientos, motor de ejecución, dia
 - **JSON Schema / OpenAPI**: contratos versionados entre componentes y lenguajes.
 - **Ollama**: adaptador opcional para modelos locales.
 
-Las decisiones completas, límites y condiciones están en `docs/architecture/` y `docs/decisions/`.
-
 ## Estado del proyecto
 
-**Etapa: fundación arquitectónica.** Las ediciones y los módulos están definidos a nivel de diseño; todavía no deben presentarse como funcionalidades implementadas. El trabajo inicial prioriza contratos, CI, seguridad, trazabilidad y una primera vertical funcional de diagnóstico de solo lectura.
+**Etapa: fundación arquitectónica y contratos iniciales.** La CLI Go permite consultar versión, información no identificable del host y validar manifiestos, acciones, intervenciones y eventos JSON. Estas capacidades no ejecutan reparaciones ni modifican el equipo.
 
 ## Documentación
 
@@ -51,6 +49,7 @@ Las decisiones completas, límites y condiciones están en `docs/architecture/` 
 - [Field y Hub](docs/architecture/editions.md)
 - [Política de IA](docs/architecture/ai-policy.md)
 - [Estrategia de integración](docs/architecture/integration-strategy.md)
+- [Contratos ejecutables](docs/contracts/README.md)
 - [Calidad y pruebas](docs/quality/testing-strategy.md)
 - [Roadmap](docs/roadmap/README.md)
 - [Registro de decisiones](docs/decisions/README.md)

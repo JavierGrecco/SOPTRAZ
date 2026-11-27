@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "1.0.0",
+  "eventId": "71d8e54a-1504-4eeb-8c13-84cc5083e541",
+  "interventionId": "2aef4e6d-9d50-4cb6-9c96-22a26abf1587",
+  "sequence": 1,
+  "eventType": "intervention.created",
+  "occurredAt": "2026-11-27T19:00:00Z",
+  "actor": {"type": "user", "actorId": "technician-demo-001"},
+  "payload": {"source": "soptraz-field", "category": "network"},
+  "hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+}

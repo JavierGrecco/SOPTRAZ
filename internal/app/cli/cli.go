@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/JavierGrecco/SOPTRAZ/internal/buildinfo"
+	"github.com/JavierGrecco/SOPTRAZ/internal/contracts"
 	"github.com/JavierGrecco/SOPTRAZ/internal/platform/host"
 )
 
@@ -43,11 +45,44 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintf(stdout, "Sistema: %s\nArquitectura: %s\nRuntime: %s\n", info.OS, info.Architecture, info.GoVersion)
 		return 0
+	case "validate":
+		if len(args) != 3 {
+			fmt.Fprintln(stderr, "uso: soptraz validate <manifest|action|intervention|event> <archivo.json>")
+			return 2
+		}
+		raw, err := readContractFile(args[2])
+		if err != nil {
+			fmt.Fprintf(stderr, "no se pudo leer el contrato: %v\n", err)
+			return 1
+		}
+		if err := contracts.ValidateDocument(args[1], raw); err != nil {
+			fmt.Fprintf(stderr, "contrato inválido: %v\n", err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "Contrato %s válido: %s\n", args[1], args[2])
+		return 0
 	default:
 		fmt.Fprintf(stderr, "comando desconocido: %s\n\n", args[0])
 		writeUsage(stderr)
 		return 2
 	}
+}
+
+func readContractFile(path string) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	raw, err := io.ReadAll(io.LimitReader(file, contracts.MaxDocumentBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) > contracts.MaxDocumentBytes {
+		return nil, fmt.Errorf("el archivo supera el límite de %d bytes", contracts.MaxDocumentBytes)
+	}
+	return raw, nil
 }
 
 func writeJSON(w io.Writer, value any) int {
@@ -67,6 +102,7 @@ func writeUsage(w io.Writer) {
 	fmt.Fprintln(w, "  soptraz help")
 	fmt.Fprintln(w, "  soptraz version [--json]")
 	fmt.Fprintln(w, "  soptraz host-info [--json]")
+	fmt.Fprintln(w, "  soptraz validate <manifest|action|intervention|event> <archivo.json>")
 	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "La CLI inicial solo expone información de lectura. No modifica el equipo.")
+	fmt.Fprintln(w, "La CLI inicial solo expone información de lectura y validación. No modifica el equipo.")
 }

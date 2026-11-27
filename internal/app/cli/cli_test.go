@@ -3,9 +3,36 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+const validManifest = `{
+  "schemaVersion":"1.0.0",
+  "moduleId":"soptraz.example.readonly",
+  "moduleVersion":"0.1.0",
+  "displayName":"Example Reader",
+  "description":"A sample module used by CLI contract tests.",
+  "supportStatus":"experimental",
+  "platforms":[{"os":"linux","architectures":["amd64"]}],
+  "capabilities":["host.inventory.read"],
+  "permissions":["host.read"],
+  "dependencies":[],
+  "license":"Apache-2.0",
+  "integrity":{"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+  "createdAt":"2026-11-27T19:00:00Z"
+}`
+
+func writeTempJSON(t *testing.T, content string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "contract.json")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	return path
+}
 
 func TestHelpIsReadOnlyAndSuccessful(t *testing.T) {
 	var stdout, stderr bytes.Buffer
@@ -47,6 +74,43 @@ func TestHostInfoJSON(t *testing.T) {
 		if got[key] == "" {
 			t.Errorf("field %q is empty", key)
 		}
+	}
+}
+
+func TestValidateAcceptsValidManifest(t *testing.T) {
+	path := writeTempJSON(t, validManifest)
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"validate", "manifest", path}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run() code = %d; stderr=%q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Contrato manifest válido") {
+		t.Fatalf("unexpected output: %q", stdout.String())
+	}
+}
+
+func TestValidateRejectsUnknownKindAndInvalidDocument(t *testing.T) {
+	path := writeTempJSON(t, validManifest)
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"validate", "shell", path}, &stdout, &stderr); code != 1 {
+		t.Fatalf("unknown kind code = %d, want 1", code)
+	}
+
+	stderr.Reset()
+	invalid := writeTempJSON(t, `{"schemaVersion":"1.0.0","unexpected":true}`)
+	if code := Run([]string{"validate", "manifest", invalid}, &stdout, &stderr); code != 1 {
+		t.Fatalf("invalid document code = %d, want 1", code)
+	}
+}
+
+func TestValidateRejectsMissingFileAndBadArguments(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"validate", "manifest"}, &stdout, &stderr); code != 2 {
+		t.Fatalf("bad arguments code = %d, want 2", code)
+	}
+	stderr.Reset()
+	if code := Run([]string{"validate", "manifest", filepath.Join(t.TempDir(), "missing.json")}, &stdout, &stderr); code != 1 {
+		t.Fatalf("missing file code = %d, want 1", code)
 	}
 }
 

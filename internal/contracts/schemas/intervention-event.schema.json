@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://soptraz.dev/schemas/intervention-event.schema.json",
+  "title": "SOPTRAZ Intervention Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "eventId", "interventionId", "sequence", "eventType", "occurredAt", "actor", "payload", "hash"],
+  "properties": {
+    "schemaVersion": {"const": "1.0.0"},
+    "eventId": {"type": "string", "format": "uuid"},
+    "interventionId": {"type": "string", "format": "uuid"},
+    "sequence": {"type": "integer", "minimum": 1},
+    "eventType": {"enum": ["intervention.created", "intervention.triaged", "diagnostic.completed", "approval.requested", "approval.granted", "operation.started", "operation.completed", "verification.completed", "verification.failed", "intervention.resolved", "intervention.failed", "intervention.cancelled", "intervention.closed"]},
+    "occurredAt": {"type": "string", "format": "date-time"},
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "actorId"],
+      "properties": {
+        "type": {"enum": ["user", "system", "agent", "ai"]},
+        "actorId": {"type": "string", "minLength": 3, "maxLength": 160}
+      }
+    },
+    "payload": {"type": "object"},
+    "previousHash": {"type": "string", "pattern": "^[a-fA-F0-9]{64}$"},
+    "hash": {"type": "string", "pattern": "^[a-fA-F0-9]{64}$"}
+  }
+}

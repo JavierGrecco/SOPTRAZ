@@ -10,13 +10,15 @@ El roadmap prioriza una vertical funcional confiable antes de ampliar herramient
 - [x] Definir política Free-first de IA.
 - [x] Crear CLI Go de solo lectura.
 - [x] Agregar pruebas iniciales y CI multiplataforma.
-- [ ] Contratos ejecutables y manifiestos.
-- [ ] Modelo de intervención y auditoría.
-- [ ] ADR de firma, licencia y sincronización.
+- [x] Definir esquemas JSON para módulos, acciones, intervenciones y eventos.
+- [x] Añadir validador Go de contratos.
+- [x] Implementar y probar transiciones del ciclo de intervención.
+- [ ] Completar el modelo de auditoría append-only y los paquetes Field → Hub.
+- [ ] Definir ADR de firma de releases y política de distribución.
 
 ## Fase 1 — Core y auditoría
 
-Runtime Go, registro local, IDs, acciones tipadas, permisos/riesgo, cancelación, timeout, SQLite y migraciones.
+Runtime Go, registro local, IDs, acciones tipadas, permisos/riesgo, cancelación, timeout, SQLite y migraciones. La validación de contratos se utiliza como puerta de entrada.
 
 ## Fase 2 — Diagnóstico de solo lectura
 

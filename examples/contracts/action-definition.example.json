@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "1.0.0",
+  "actionId": "soptraz.host.runtime-info",
+  "actionVersion": "1.0.0",
+  "displayName": "Consultar plataforma del host",
+  "description": "Lee sistema operativo, arquitectura y versión del runtime.",
+  "executionAdapter": "native.host-info",
+  "platforms": ["windows", "darwin", "linux"],
+  "risk": "read_only",
+  "requiresAdmin": false,
+  "requiresApproval": false,
+  "idempotent": true,
+  "timeoutSeconds": 5,
+  "effects": ["host.read"],
+  "rebootBehavior": "never",
+  "inputSchema": {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "type": "object",
+    "required": ["os", "architecture", "runtime"],
+    "properties": {
+      "os": {"type": "string"},
+      "architecture": {"type": "string"},
+      "runtime": {"type": "string"}
+    },
+    "additionalProperties": false
+  },
+  "verification": {
+    "method": "command_result",
+    "description": "La respuesta contiene los tres campos de identificación del runtime.",
+    "successCriteria": "os, architecture y runtime son cadenas no vacías."
+  },
+  "rollback": {
+    "available": true,
+    "notes": "La acción es de solo lectura; no requiere rollback."
+  }
+}
