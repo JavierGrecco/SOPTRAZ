@@ -210,15 +210,22 @@ func (resolver *Resolver) Resolve(descriptor Descriptor) (ResolvedArtifact, erro
 		}
 	}
 
-	relative, err := filepath.Rel(resolver.root, current)
-	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return ResolvedArtifact{}, fmt.Errorf("%w: el archivo escapa de la raíz administrada", ErrArtifactPath)
+	resolvedPath, err := filepath.EvalSymlinks(current)
+	if err != nil {
+		return ResolvedArtifact{}, fmt.Errorf("%w: no se pudo canonicalizar el destino del artefacto: %v", ErrArtifactPath, err)
 	}
-	if finalInfo.Size() > resolver.maxBytes {
+	if !pathWithinRoot(resolver.root, resolvedPath) {
+		return ResolvedArtifact{}, fmt.Errorf("%w: el destino real escapa de la raíz administrada", ErrArtifactPath)
+	}
+	resolvedInfo, err := os.Stat(resolvedPath)
+	if err != nil || !resolvedInfo.Mode().IsRegular() || !os.SameFile(finalInfo, resolvedInfo) {
+		return ResolvedArtifact{}, fmt.Errorf("%w: el destino real no coincide con el archivo inspeccionado", ErrArtifactPath)
+	}
+	if resolvedInfo.Size() > resolver.maxBytes {
 		return ResolvedArtifact{}, fmt.Errorf("%w: el tamaño del artefacto supera el límite de %d bytes", ErrInvalidDescriptor, resolver.maxBytes)
 	}
 
-	file, err := os.Open(current)
+	file, err := os.Open(resolvedPath)
 	if err != nil {
 		return ResolvedArtifact{}, fmt.Errorf("abrir artefacto verificado: %w", err)
 	}
@@ -247,12 +254,30 @@ func (resolver *Resolver) Resolve(descriptor Descriptor) (ResolvedArtifact, erro
 	if err != nil || !os.SameFile(openedInfo, finalOpenedInfo) || openedInfo.Size() != finalOpenedInfo.Size() || !openedInfo.ModTime().Equal(finalOpenedInfo.ModTime()) {
 		return ResolvedArtifact{}, fmt.Errorf("%w: el archivo cambió durante la verificación", ErrArtifactPath)
 	}
-	finalPathInfo, err := os.Lstat(current)
-	if err != nil || finalPathInfo.Mode()&os.ModeSymlink != 0 || !os.SameFile(finalOpenedInfo, finalPathInfo) {
+	finalResolvedPath, err := filepath.EvalSymlinks(current)
+	if err != nil || !pathWithinRoot(resolver.root, finalResolvedPath) {
+		return ResolvedArtifact{}, fmt.Errorf("%w: la ruta fue sustituida o redirigida fuera de la raíz durante la verificación", ErrArtifactPath)
+	}
+	finalPathInfo, err := os.Stat(finalResolvedPath)
+	if err != nil || !os.SameFile(finalOpenedInfo, finalPathInfo) {
 		return ResolvedArtifact{}, fmt.Errorf("%w: la ruta fue sustituida durante la verificación", ErrArtifactPath)
 	}
+	if filepath.Clean(finalResolvedPath) != filepath.Clean(resolvedPath) {
+		return ResolvedArtifact{}, fmt.Errorf("%w: el destino del artefacto cambió durante la verificación", ErrArtifactPath)
+	}
 
-	return ResolvedArtifact{Descriptor: descriptor, Path: current, Size: bytesRead}, nil
+	return ResolvedArtifact{Descriptor: descriptor, Path: resolvedPath, Size: bytesRead}, nil
+}
+
+// pathWithinRoot checks containment using canonical filesystem paths, not only
+// the lexical path supplied by the module descriptor. EvalSymlinks is called
+// before this helper so links and reparse-point aliases are resolved first.
+func pathWithinRoot(root, candidate string) bool {
+	relative, err := filepath.Rel(root, candidate)
+	if err != nil || filepath.IsAbs(relative) {
+		return false
+	}
+	return relative != ".." && relative != "." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
 // The resolved path is a point-in-time verification result. The future process

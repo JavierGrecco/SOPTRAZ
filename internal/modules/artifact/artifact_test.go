@@ -138,6 +138,30 @@ func TestDescriptorRejectsInvalidDigestAndSourceURI(t *testing.T) {
 	}
 }
 
+func TestResolveRejectsDirectoryLinkEscapingManagedRoot(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("la creación de enlaces de directorio puede requerir privilegios en Windows")
+	}
+	root := t.TempDir()
+	outside := t.TempDir()
+	content := []byte("outside trusted root")
+	target := writeArtifact(t, outside, "linux-amd64/osqueryi", content)
+	link := filepath.Join(root, "osquery")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatalf("create directory symlink fixture: %v", err)
+	}
+	value := testDescriptor(content)
+	value.RelativePath = "osquery/linux-amd64/osqueryi"
+	resolver, err := NewResolver(root, Platform{OS: "linux", Architecture: "amd64"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = resolver.Resolve(value)
+	if !errors.Is(err, ErrArtifactPath) {
+		t.Fatalf("Resolve() path %q (target %q) error = %v, want ErrArtifactPath", value.RelativePath, target, err)
+	}
+}
+
 func TestResolveRejectsOversizedArtifact(t *testing.T) {
 	root := t.TempDir()
 	content := []byte("too large")
