@@ -33,6 +33,7 @@ Cada paso produce eventos correlacionables mediante un ID de intervención. Los 
 - Diagnostics: recopilación de evidencia y hallazgos.
 - Inventory: activos, hardware y software detectado.
 - Driver Intelligence: diagnóstico y paquetes OEM en Windows.
+- Windows Optimization: baseline, mantenimiento y perfiles de ajustes declarativos con verificación/rollback; la ejecución depende del catálogo TUF y del supervisor seguro.
 - Network: conectividad, DNS y adaptadores.
 - Storage: salud, sistemas de archivos, espacio y rescate.
 - Repair: procedimientos de reparación del sistema.

@@ -61,6 +61,40 @@ Ejemplo ilustrativo, no ejecutable:
 }
 ~~~
 
+## Contrato de acciones de optimización Windows (M1.6)
+
+**Estado:** especificación arquitectónica; todavía no hay acciones mutantes habilitadas.
+
+Además del contrato general de acción, cada tweak Windows declarará:
+
+- `action_id`, versión, categoría, descripción y fuente/version/licencia del código o herramienta.
+- Sistemas admitidos: Windows build mínimo/máximo, edición, arquitectura, requisitos de hardware y dependencias.
+- Precondiciones detectables, capacidades solicitadas, elevación, riesgo, duración máxima, idempotencia y necesidad de reinicio.
+- Estado deseado expresado como DTO tipado; nunca un fragmento de PowerShell, CMD o shell recibido desde la UI.
+- Efecto esperado, side effects conocidos y postcondiciones comprobables mediante un lector independiente.
+- Política de estado previo y restauración, con alcance por usuario/equipo y clasificación `exact`, `partial` o `unavailable`.
+- Requisitos de aprobación y referencia a los eventos/evidencias de auditoría.
+
+### Captura y restauración
+
+La captura se realiza inmediatamente antes del cambio y registra solo los campos necesarios para restaurar esa acción (por ejemplo: existencia de una clave, tipo y valor de registro; tipo de inicio/estado de servicio; estado de tarea; paquete y usuario afectado). El snapshot no se reemplaza por un valor por defecto que provenga de la documentación del tweak.
+
+Cada aplicación registra un identificador de operación y el estado objetivo escrito. Al restaurar:
+
+1. comprobar que el snapshot pertenece a la misma acción, equipo, ámbito y versión compatible;
+2. volver a leer el estado actual;
+3. restaurar solo si el estado actual coincide con el que dejó aquella operación;
+4. ante diferencias atribuibles al usuario, Windows Update, políticas MDM o software externo, detenerse y presentar el conflicto;
+5. verificar el resultado de la restauración y guardar el evento.
+
+Esto evita que un botón Undo restaure un valor antiguo sobre una decisión más reciente del usuario. Si no puede detectarse el estado previo con fidelidad, la acción no se etiqueta como reversible exacta. Los cambios de paquetes, componentes, drivers o archivos del sistema requieren mecanismos específicos y no se deben simular con un simple valor de registro.
+
+### Perfiles y ejecución
+
+Un perfil es una lista versionada de `action_id` y parámetros tipados, no un script ni un conjunto de comandos. Antes de aplicarlo, SOPTRAZ genera un plan que muestra acciones elegibles, excluidas, privilegios, reinicios, impactos y restauración disponible. La selección no modifica la configuración hasta recibir aprobación conforme al riesgo.
+
+Las acciones mutantes se bloquean hasta que M1.4 autentique sus artefactos y M1.5 supervise la ejecución sin shell libre, con argumentos allowlisted, entorno mínimo, timeout, cancelación, cuotas de salida y auditoría. Los perfiles recomendados solo contendrán acciones que superaron pruebas de compatibilidad y recuperación.
+
 ## Comunicación
 
 - Interfaces Go para módulos en el mismo proceso.
