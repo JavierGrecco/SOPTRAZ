@@ -44,6 +44,7 @@ Cada procedimiento mutante requiere detección de objetivo, confirmación de dis
 - Verificar secuencia, actor, previousHash, hash y cabecera final.
 - Rechazar cambios y borrados SQL ordinarios de eventos.
 - Probar detección de alteración del JSON, del hash indexado y de truncamiento.
+- Rechazar claves JSON duplicadas en todos los niveles y bytes UTF-8 inválidos antes de canonicalizar; probar idempotencia del normalizador con fuzz seeds.
 - Probar concurrencia de escritores y persistencia tras cerrar/reabrir la base.
 - No confundir hash chain local con almacenamiento WORM; checkpoints externos firmados se probarán por separado.
 
@@ -56,9 +57,9 @@ Cada procedimiento mutante requiere detección de objetivo, confirmación de dis
 - Una sola implementación por modelo.
 - Comparación con baselines.
 
-## CI inicial
+## CI
 
-Compilar/probar CLI Go en runners Windows, macOS y Linux; ejecutar go vet y race detector en Linux. Ampliar al incorporar UI, Python y empaquetado.
+Compilar/probar Go en runners Windows, macOS y Linux; ejecutar go vet, Race Detector y fuzzing acotado del normalizador JSON en Linux. La suite ordinaria ejecuta siempre los seeds de fuzz; el job dedicado agrega una corrida de 10 segundos sin caché. Ampliar los jobs al incorporar UI, Python y empaquetado.
 
 ## Auditoría de CI
 

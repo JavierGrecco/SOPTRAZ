@@ -36,6 +36,27 @@ func TestNormalizePayloadRejectsInvalidOrNonObjectJSON(t *testing.T) {
 	}
 }
 
+func TestNormalizePayloadRejectsDuplicateKeysAtAnyDepth(t *testing.T) {
+	cases := [][]byte{
+		[]byte(`{"status":"valid","status":"tampered"}`),
+		[]byte(`{"metadata":{"owner":"first","owner":"second"}}`),
+		[]byte(`{"evidence":[{"path":"first","path":"second"}]}`),
+		[]byte(`{"role":"user","\u0072ole":"admin"}`),
+	}
+	for _, raw := range cases {
+		if _, err := NormalizePayload(raw); err == nil {
+			t.Errorf("NormalizePayload(%q) should reject duplicate keys", raw)
+		}
+	}
+}
+
+func TestNormalizePayloadAllowsSameKeyInDifferentObjects(t *testing.T) {
+	raw := []byte(`{"left":{"id":1},"right":{"id":2}}`)
+	if _, err := NormalizePayload(raw); err != nil {
+		t.Fatalf("NormalizePayload() rejected distinct object scopes: %v", err)
+	}
+}
+
 func TestComputeHashIsDeterministicAndChainSensitive(t *testing.T) {
 	event := Event{
 		SchemaVersion:  SchemaVersion,
@@ -68,6 +89,44 @@ func TestComputeHashIsDeterministicAndChainSensitive(t *testing.T) {
 	if chained == first {
 		t.Fatal("previous hash must be part of the hash preimage")
 	}
+}
+
+func TestNormalizePayloadRejectsInvalidUTF8(t *testing.T) {
+	raw := []byte{'{', '"', 'v', 'a', 'l', 'u', 'e', '"', ':', '"', 0xff, '"', '}'}
+	if _, err := NormalizePayload(raw); err == nil {
+		t.Fatal("NormalizePayload() should reject invalid UTF-8")
+	}
+}
+
+func TestNormalizePayloadPreservesLargeIntegerPrecision(t *testing.T) {
+	raw := []byte(`{"sequence":9007199254740993}`)
+	got, err := NormalizePayload(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"sequence":9007199254740993}`; string(got) != want {
+		t.Fatalf("NormalizePayload() = %s, want %s", got, want)
+	}
+}
+
+func FuzzNormalizePayloadIsIdempotent(f *testing.F) {
+	f.Add([]byte(`{"actor":"technician","sequence":1}`))
+	f.Add([]byte(`{"actor":"first","actor":"second"}`))
+	f.Add([]byte(`{"nested":[{"key":true}]}`))
+
+	f.Fuzz(func(t *testing.T, raw []byte) {
+		canonical, err := NormalizePayload(raw)
+		if err != nil {
+			return
+		}
+		again, err := NormalizePayload(canonical)
+		if err != nil {
+			t.Fatalf("canonical payload was rejected on second pass: %v", err)
+		}
+		if !bytes.Equal(canonical, again) {
+			t.Fatalf("normalization is not idempotent: %s != %s", canonical, again)
+		}
+	})
 }
 
 func TestNewEventIDReturnsUUIDShape(t *testing.T) {

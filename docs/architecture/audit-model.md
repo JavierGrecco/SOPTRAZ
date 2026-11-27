@@ -21,7 +21,7 @@ Cada evento registra:
 - Hash del evento anterior.
 - Hash SHA-256 propio.
 
-Los payloads deben ser objetos JSON. No deben incluir contraseñas, tokens, claves de cifrado ni otros secretos.
+Los payloads deben ser UTF-8 válido y objetos JSON sin claves duplicadas, incluso si los nombres se repiten mediante escapes Unicode equivalentes. No deben incluir contraseñas, tokens, claves de cifrado ni otros secretos.
 
 ## 2. Encadenamiento de hashes
 
@@ -31,7 +31,7 @@ El cálculo utiliza SHA-256 y el separador de dominio:
 
 El preimage contiene, en orden estable, schemaVersion, eventId, interventionId, sequence, eventType, occurredAt, actor, payload canonicalizado y previousHash. El campo hash no se incluye en su propio preimage.
 
-El payload se analiza con UseNumber y se vuelve a serializar con las claves de los objetos ordenadas por encoding/json. El hash se expresa en hexadecimal minúsculo.
+El payload se analiza recursivamente con UseNumber; la canonicalización rechaza claves duplicadas en todos los niveles y se vuelve a serializar con las claves de los objetos ordenadas por encoding/json. El hash se expresa en hexadecimal minúsculo.
 
 El evento 1 no tiene previousHash. Cada evento posterior incorpora el hash del inmediatamente anterior de esa misma intervención.
 

@@ -72,3 +72,20 @@ jobs:
           cache: true
       - name: Race tests
         run: go test -race -count=1 ./...
+
+  fuzz:
+    name: Audit payload fuzzing
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Fuzz audit payload normalization
+        run: go test -run='^$' -fuzz=FuzzNormalizePayloadIsIdempotent -fuzztime=10s -parallel=2 ./internal/audit
