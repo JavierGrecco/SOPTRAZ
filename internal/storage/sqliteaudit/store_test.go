@@ -204,7 +204,6 @@ func TestVerifyDetectsHeadMismatchAfterTailDeletion(t *testing.T) {
 	}
 }
 
-
 func TestEventsPersistAcrossDatabaseReopen(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "audit.sqlite")

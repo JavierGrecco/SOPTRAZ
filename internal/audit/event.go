@@ -13,9 +13,9 @@ import (
 )
 
 const (
-	SchemaVersion      = "1.0.0"
-	HashAlgorithm      = "sha256"
-	MaxPayloadBytes    = 256 << 10
+	SchemaVersion       = "1.0.0"
+	HashAlgorithm       = "sha256"
+	MaxPayloadBytes     = 256 << 10
 	hashDomainSeparator = "SOPTRAZ-AUDIT-EVENT-V1\x00"
 )
 

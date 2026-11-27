@@ -181,7 +181,7 @@ func (s *Store) Append(ctx context.Context, draft audit.Draft) (audit.Event, err
 	defer tx.Rollback()
 
 	_, err = tx.ExecContext(ctx,
-		"INSERT INTO audit_heads(intervention_id, sequence, head_hash) " +
+		"INSERT INTO audit_heads(intervention_id, sequence, head_hash) "+
 			"VALUES(?, 0, '') ON CONFLICT(intervention_id) DO NOTHING",
 		draft.InterventionID,
 	)
@@ -237,7 +237,7 @@ func (s *Store) Append(ctx context.Context, draft audit.Draft) (audit.Event, err
 	}
 
 	_, err = tx.ExecContext(ctx,
-		"INSERT INTO audit_events(event_id, intervention_id, sequence, event_json, hash) " +
+		"INSERT INTO audit_events(event_id, intervention_id, sequence, event_json, hash) "+
 			"VALUES(?, ?, ?, ?, ?)",
 		event.EventID,
 		event.InterventionID,
@@ -250,7 +250,7 @@ func (s *Store) Append(ctx context.Context, draft audit.Draft) (audit.Event, err
 	}
 
 	result, err := tx.ExecContext(ctx,
-		"UPDATE audit_heads SET sequence = ?, head_hash = ? " +
+		"UPDATE audit_heads SET sequence = ?, head_hash = ? "+
 			"WHERE intervention_id = ? AND sequence = ? AND head_hash = ?",
 		event.Sequence,
 		event.Hash,
@@ -279,7 +279,7 @@ func (s *Store) Append(ctx context.Context, draft audit.Draft) (audit.Event, err
 // on them as a trusted chain.
 func (s *Store) List(ctx context.Context, interventionID string) ([]audit.Event, error) {
 	rows, err := s.db.QueryContext(ctx,
-		"SELECT event_json, hash FROM audit_events " +
+		"SELECT event_json, hash FROM audit_events "+
 			"WHERE intervention_id = ? ORDER BY sequence ASC",
 		interventionID,
 	)
