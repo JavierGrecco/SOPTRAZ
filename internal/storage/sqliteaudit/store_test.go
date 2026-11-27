@@ -133,6 +133,16 @@ func TestDatabaseBlocksEventMutationAndDeletion(t *testing.T) {
 	); err == nil {
 		t.Fatal("DELETE should be blocked by append-only trigger")
 	}
+	if _, err := store.db.ExecContext(ctx,
+		"INSERT OR REPLACE INTO audit_events(event_id, intervention_id, sequence, event_json, hash) VALUES (?, ?, ?, ?, ?)",
+		event.EventID,
+		event.InterventionID,
+		event.Sequence,
+		"{}",
+		event.Hash,
+	); err == nil {
+		t.Fatal("INSERT OR REPLACE should be blocked by the recursive append-only delete trigger")
+	}
 	if err := store.Verify(ctx, testInterventionID); err != nil {
 		t.Fatalf("immutable event changed unexpectedly: %v", err)
 	}
@@ -337,6 +347,63 @@ func TestSQLiteFileDSNWindowsDrivePathHasEmptyAuthority(t *testing.T) {
 	}
 	if strings.Contains(dsn, "%5C") {
 		t.Fatalf("DSN contains escaped Windows separators: %q", dsn)
+	}
+}
+
+func TestSQLiteFileDSNWindowsUNCPathHasEmptyAuthority(t *testing.T) {
+	dsn := sqliteFileDSN("\\\\server\\share\\repo\\audit.sqlite", true)
+	want := "file:////server/share/repo/audit.sqlite?_txlock=immediate"
+	if dsn != want {
+		t.Fatalf("UNC DSN = %q, want %q", dsn, want)
+	}
+
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatalf("url.Parse() error = %v", err)
+	}
+	if parsed.Host != "" || parsed.Path != "//server/share/repo/audit.sqlite" {
+		t.Fatalf("UNC URI must have empty authority and rooted path: host=%q path=%q", parsed.Host, parsed.Path)
+	}
+}
+
+func TestSQLiteFileDSNEncodesReservedPathCharacters(t *testing.T) {
+	path := "/tmp/SOPTRAZ/odd ?dir#fragment/audit.sqlite"
+	dsn := sqliteFileDSN(path, false)
+	for _, escaped := range []string{"%20", "%3F", "%23"} {
+		if !strings.Contains(dsn, escaped) {
+			t.Fatalf("DSN %q does not escape %q", dsn, escaped)
+		}
+	}
+
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatalf("url.Parse() error = %v", err)
+	}
+	if parsed.Host != "" || parsed.Path != path || parsed.Fragment != "" {
+		t.Fatalf("reserved path characters were not preserved: host=%q path=%q fragment=%q", parsed.Host, parsed.Path, parsed.Fragment)
+	}
+	if parsed.Query().Get("_txlock") != "immediate" {
+		t.Fatalf("txlock = %q, want immediate", parsed.Query().Get("_txlock"))
+	}
+}
+
+func TestAppendRejectsTamperedHeadBeforeWriting(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	if _, err := store.Append(ctx, sampleDraft("intervention.created", "{\"step\":1}")); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := store.db.ExecContext(ctx,
+		"UPDATE audit_heads SET head_hash = ? WHERE intervention_id = ?",
+		strings.Repeat("0", 64),
+		testInterventionID,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := store.Append(ctx, sampleDraft("diagnostic.completed", "{\"step\":2}")); !errors.Is(err, ErrHeadMismatch) {
+		t.Fatalf("Append() error = %v, want ErrHeadMismatch", err)
 	}
 }
 

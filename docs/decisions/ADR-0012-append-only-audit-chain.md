@@ -15,6 +15,7 @@ Las operaciones de soporte deben tener secuencia, actor, hora, resultado y evide
 - Field persiste los eventos en SQLite; el adaptador bloquea UPDATE y DELETE con triggers.
 - La transacción de anexado actualiza el evento y la cabecera de secuencia/hash de forma atómica.
 - Verify recalcula toda la cadena y compara con la cabecera.
+- Antes de anexar, el store compara la cabecera persistida con el hash de la última fila; no continúa una cadena cuya cabecera ya fue manipulada.
 - Los módulos de producto dependen de la interfaz audit.Store, no de SQLite.
 
 ## Alternativas descartadas
@@ -27,7 +28,7 @@ Las operaciones de soporte deben tener secuencia, actor, hora, resultado y evide
 ## Consecuencias
 
 - Cambios parciales, secuencias con huecos, hashes no coincidentes y truncamientos con cabecera intacta son detectables.
-- Los triggers evitan cambios accidentales por SQL convencional.
+- Los triggers evitan cambios accidentales por SQL convencional. `recursive_triggers=ON` asegura que `INSERT OR REPLACE` dispare el trigger de borrado y no reemplace una fila auditada silenciosamente.
 - No es un registro WORM ni resiste a un administrador capaz de reescribir íntegramente el archivo SQLite.
 - Un checkpoint firmado y almacenado fuera de la base es necesario para detectar una reescritura total; queda fuera de este hito.
 - La exportación Field → Hub debe conservar evento, secuencia, hash y versión de esquema originales.

@@ -3,11 +3,11 @@
 **Revisión:** 2026-11-27  
 **Repositorio:** `JavierGrecco/SOPTRAZ`  
 **Rama auditada:** `main`  
-**Alcance:** las 12 ejecuciones de CI creadas el 27 de noviembre de 2026 hasta el commit `ccc07a7`.
+**Alcance:** las 15 ejecuciones de CI creadas el 27 de noviembre de 2026 hasta el commit `8d677f5`.
 
 ## Resultado ejecutivo
 
-Se revisaron las 12 ejecuciones registradas: **8 fallidas y 4 exitosas; no hubo ejecuciones canceladas**. Las ocho fallidas se explican por cinco causas raíz, con varias repeticiones después de cada push. La última ejecución examinada, sobre el commit `ccc07a7f424089ffe4f78caa92b04424c8ea9636`, terminó con los cuatro jobs en verde: Windows, macOS, Ubuntu y Go Race Detector.
+Se revisaron las 15 ejecuciones registradas: **10 fallidas y 5 exitosas; no hubo ejecuciones canceladas**. Las fallidas se explican por seis causas raíz, algunas repetidas después de cada push. La última ejecución examinada, sobre el commit `8d677f5807ce07e993fe81ff59be51830b910c16` (run #15), terminó con los cuatro jobs en verde: Windows, macOS, Ubuntu y Go Race Detector.
 
 La revisión no atribuye cada job rojo a una causa distinta. Cuando tres runners fallan en el mismo paso con el mismo mensaje, se cuenta como una sola causa reproducida en tres plataformas.
 
@@ -25,6 +25,10 @@ La revisión no atribuye cada job rojo a una causa distinta. Cuando tres runners
 | [#11](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46061291236) | `1d33234` | Formato en los tres sistemas | El nuevo test tenía imports fuera del orden de `gofmt` | Defecto de formato posterior al arreglo de URI. Race Detector pasó. Se ordenaron imports en `ccc07a7`. |
 
 La ejecución posterior al arreglo de imports es [#12](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46061389071), commit `ccc07a7`: los cuatro jobs terminaron correctamente.
+
+| [#13](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46062376162) | \`9cc3976\` | Módulos en Ubuntu; \`go vet\` Windows/macOS; Race Detector | \`go mod tidy -diff\` quitó \`github.com/google/pprof\` y \`modernc.org/fileutil\` del \`go.mod\`; el código nuevo llamaba a \`strings\` sin importarlo | El manifiesto incluía dos requisitos indirectos redundantes que pertenecen al grafo transitivo de SQLite y el helper de rutas no tenía el import de \`strings\`. Se quitaron los requisitos redundantes y se incorporó el import. |
+| [#14](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46062502065) | \`eda9fc3\` | \`go vet\` Windows, macOS y Ubuntu; Race Detector | \`store.go\` contenía solo el bloque de imports (286 bytes): faltaban \`Store\`, \`Open\`, migraciones y funciones DSN | Error de integración introducido al reconstruir el blob: se creó una sustitución completa con solo imports en vez de modificar el bloque de imports. Restaurado el archivo completo desde el commit anterior y aplicado el import correcto en \`8d677f5\`. |
+| [#15](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46062674995) | \`8d677f5\` | Ninguno | Todos los pasos pasaron en los cuatro jobs | Restauración validada. Race Detector, módulo, formato, vet y tests terminaron en verde. |
 
 ## Causas raíz y correcciones permanentes
 
@@ -70,6 +74,15 @@ El código original usaba `url.URL{Scheme: "file", Path: "C:/..."}`. `net/url` s
 4. El propio [modernc.org/sqlite v1.63.0](https://github.com/modernc-org/sqlite/tree/v1.63.0) documenta que el driver es pure Go/no-CGO, pero distribuye un grafo transitivo y componentes SQLite generados. Por eso se deben mantener checksums, SBOM y avisos de terceros antes de empaquetar Field.
 5. La [guía de Go Modules](https://go.dev/wiki/Modules) recomienda `go mod tidy` para poner el manifiesto en un estado coherente y recuerda que tidy considera tests, combinaciones de plataforma y build tags, no solo el build que está corriendo en el SO actual.
 
+## Controles de CI reforzados tras la auditoría
+
+- `go mod tidy -diff` y `go mod verify` se ejecutan como puerta temprana en Ubuntu. `tidy -diff` carga también tests, tags y archivos específicos de plataforma según la semántica de Go Modules, por lo que no se necesita repetirlo en los tres SO.
+- Las acciones de CI pasan de referencias por tag a SHAs completos verificados: `actions/checkout` v7.0.1 y `actions/setup-go` v7.0.0. Checkout usa `persist-credentials: false` porque el workflow solo necesita leer el repo.
+- `GOTOOLCHAIN=local` obliga a usar el toolchain instalado por `setup-go`; no permite que el proceso cambie silenciosamente de toolchain.
+- `go test -count=1` y `go test -race -count=1` fuerzan ejecución fresca en cada run.
+- `cancel-in-progress: false` impide que un push nuevo cancele un CI que ya está validando un commit.
+- Se mantienen límites de tiempo explícitos para jobs y actualización automática de dependencias vía Dependabot.
+
 ## Puertas de calidad que quedan activas
 
 - Formato obligatorio; si falla, se muestra el diff.
@@ -81,4 +94,4 @@ El código original usaba `url.URL{Scheme: "file", Path: "C:/..."}`. `net/url` s
 
 ## Límites de esta auditoría
 
-Las 12 ejecuciones examinadas corresponden al historial disponible del repositorio al 2026-11-27. La revisión no afirma que se hayan ejecutado pruebas locales en el Mac del usuario. La evidencia de compatibilidad descrita arriba proviene de los GitHub runners y de los logs asociados a los commits citados.
+Las 15 ejecuciones examinadas corresponden al historial disponible del repositorio al 2026-11-27. La revisión no afirma que se hayan ejecutado pruebas locales en el Mac del usuario. La evidencia de compatibilidad descrita arriba proviene de los GitHub runners y de los logs asociados a los commits citados.

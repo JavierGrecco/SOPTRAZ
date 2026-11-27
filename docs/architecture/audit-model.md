@@ -43,7 +43,7 @@ El adaptador inicial es `internal/storage/sqliteaudit`, basado en SQLite con mod
 
 - tabla `audit_events`: filas de eventos y secuencia única por intervención;
 - tabla `audit_heads`: última secuencia y hash de cada intervención;
-- triggers que rechazan UPDATE y DELETE sobre las filas de eventos;
+- triggers que rechazan UPDATE y DELETE sobre las filas de eventos, con `recursive_triggers=ON` para que `INSERT OR REPLACE` no pueda evitar el trigger de borrado;
 - transacciones inmediatas para serializar escritores;
 - pool de una conexión en Field;
 - busy timeout de 5 segundos;
@@ -69,7 +69,7 @@ No se habilita WAL en esta primera edición. Se prioriza el modo de journaling p
 
 ## 5. Límites de seguridad
 
-Los triggers previenen modificaciones accidentales mediante las operaciones normales de base de datos y el hash chain permite detectar alteraciones parciales, cambios, huecos y truncamientos cuando la cabecera permanece intacta.
+Los triggers previenen modificaciones accidentales mediante las operaciones normales de base de datos; `recursive_triggers=ON` también permite bloquear `INSERT OR REPLACE` cuando su resolución de conflicto intenta borrar una fila existente. El hash chain permite detectar alteraciones parciales, cambios, huecos y truncamientos cuando la cabecera permanece intacta.
 
 **Esto no convierte SQLite en almacenamiento WORM ni hace imposible una manipulación por un administrador con acceso al archivo.** Un atacante que pueda editar todas las tablas, quitar triggers y recalcular toda la cadena puede reescribir el historial completo.
 
