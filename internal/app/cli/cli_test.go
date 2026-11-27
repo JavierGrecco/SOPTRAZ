@@ -129,7 +129,7 @@ func TestValidateArtifactRejectsUnsafePathAndCredentials(t *testing.T) {
 		t.Fatalf("read artifact descriptor example: %v", err)
 	}
 	cases := []struct {
-		name string
+		name    string
 		invalid string
 	}{
 		{name: "path traversal", invalid: strings.Replace(string(raw), `"relativePath": "osquery/5.24.1/linux-amd64/osqueryi"`, `"relativePath": "../escape.exe"`, 1)},
