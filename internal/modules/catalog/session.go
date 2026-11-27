@@ -24,13 +24,13 @@ const (
 )
 
 var (
-	ErrMetadataSequence        = errors.New("secuencia de metadata TUF inválida")
-	ErrInvalidTimestamp        = errors.New("metadata timestamp TUF inválida")
-	ErrInvalidSnapshot         = errors.New("metadata snapshot TUF inválida")
-	ErrInvalidTargets          = errors.New("metadata targets TUF inválida")
-	ErrInvalidTarget           = errors.New("target TUF inválido")
-	ErrTargetNotFound          = errors.New("target TUF no encontrado")
-	ErrInvalidTargetDescriptor = errors.New("descriptor artifact v1 inválido en metadata TUF")
+	ErrMetadataSequence         = errors.New("secuencia de metadata TUF inválida")
+	ErrInvalidTimestamp         = errors.New("metadata timestamp TUF inválida")
+	ErrInvalidSnapshot          = errors.New("metadata snapshot TUF inválida")
+	ErrInvalidTargets           = errors.New("metadata targets TUF inválida")
+	ErrInvalidTarget            = errors.New("target TUF inválido")
+	ErrTargetNotFound           = errors.New("target TUF no encontrado")
+	ErrInvalidTargetDescriptor  = errors.New("descriptor artifact v1 inválido en metadata TUF")
 	ErrTargetDescriptorMismatch = errors.New("descriptor artifact v1 no coincide con el target TUF")
 )
 
