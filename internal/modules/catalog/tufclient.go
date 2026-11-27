@@ -15,7 +15,6 @@ import (
 
 	"github.com/JavierGrecco/SOPTRAZ/internal/modules/artifact"
 	tufconfig "github.com/theupdateframework/go-tuf/v2/metadata/config"
-	"github.com/theupdateframework/go-tuf/v2/metadata"
 	tufupdater "github.com/theupdateframework/go-tuf/v2/metadata/updater"
 )
 
