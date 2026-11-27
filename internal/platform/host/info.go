@@ -11,8 +11,8 @@ type Info struct {
 
 func Current() Info {
 	return Info{
-		OS: runtime.GOOS,
+		OS:           runtime.GOOS,
 		Architecture: runtime.GOARCH,
-		GoVersion: runtime.Version(),
+		GoVersion:    runtime.Version(),
 	}
 }

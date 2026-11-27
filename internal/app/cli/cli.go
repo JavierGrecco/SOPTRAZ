@@ -36,9 +36,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		info := host.Current()
 		if len(args) == 2 {
 			return writeJSON(stdout, map[string]string{
-				"os": info.OS,
+				"os":           info.OS,
 				"architecture": info.Architecture,
-				"go_version": info.GoVersion,
+				"go_version":   info.GoVersion,
 			})
 		}
 		fmt.Fprintf(stdout, "Sistema: %s\nArquitectura: %s\nRuntime: %s\n", info.OS, info.Architecture, info.GoVersion)
