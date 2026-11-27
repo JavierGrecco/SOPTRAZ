@@ -322,3 +322,12 @@ La página de descargas también recomienda a sus usuarios crear una excepción 
 
 El catálogo indica que el menú y las aplicaciones de DProjects son compatibles con Windows 10 21H2 o posterior y Windows 11. SOPTRAZ mantendrá su propia matriz de soporte basada en pruebas, y solo dará soporte a instalaciones de Windows con licencia válida y procedencia conocida; no tomará como objetivo la compatibilidad con imágenes no oficiales.
 
+
+
+### Reversibilidad: no generalizar entre productos
+
+La FAQ oficial responde que en **Asere** cada ajuste puede activarse/desactivarse y que, si el usuario lo marca, la aplicación crea un punto de restauración de Windows antes de cambiarlo. Esa afirmación se refiere a Asere. La documentación pública revisada no formula una garantía equivalente de reversión exacta por tweak para cada operación de MiniOS Toolkit o DELTA.
+
+Además, la página de DELTA describe sus modos progresivos como acumulativos: cada nivel añade ajustes sin revertir los anteriores. Esto no demuestra que DELTA carezca de mecanismos de restauración individuales; sí significa que SOPTRAZ no debe inferir un rollback completo a partir de esa descripción comercial.
+
+Para comparar correctamente cualquier optimizador, SOPTRAZ exigirá que cada cambio muestre el valor real capturado antes de aplicarlo, el resultado verificado y un rollback definido para ese equipo. Un punto de restauración es una protección complementaria, no prueba de reversibilidad exacta de cada tweak.
