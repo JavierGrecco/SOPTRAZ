@@ -48,11 +48,14 @@ Runtime Go, registro local, IDs, acciones tipadas, permisos/riesgo, cancelación
 - [ ] Fijar root.json inicial en SOPTRAZ y definir threshold, rotación y revocación de claves.
 - [x] Validar la cadena root fijada → timestamp → snapshot → targets y rechazar metadata fuera de orden, vencida, alterada o excesiva (sesión determinista de pruebas; aún no es cliente de producción).
 - [x] Vincular descriptor artifact v1 completo en `targets.custom` con igualdad exacta de ID, versión, SO/arquitectura, licencia, procedencia, ruta, tamaño y SHA-256 frente al target firmado.
-- [ ] Implementar cliente de producción con `updater.Updater` oficial para root, timestamp, snapshot, targets y delegaciones; mantener límites y sincronización.
+- [x] Incorporar primera capa online `TUFClient` sobre el `updater.Updater` oficial: resuelve roles delegados, valida descriptor firmado y serializa accesos; límites HTTP/metadata, redirects desactivados y pruebas de integración con repo TUF delegado. No descarga ni ejecuta binarios.
+- [ ] Completar bootstrap/enrolamiento de root de producción y política de threshold/rotación/revocación; el cliente actual recibe un `TrustAnchor` ya fijado.
+- [ ] Completar ciclo de producción y resiliencia del updater: persistencia durable del estado anti-rollback, recuperación tras reinicio y política de actualización de root cacheado.
 - [ ] Persistir metadata y estado anti-rollback atómicamente; probar recuperación tras reinicio.
 - [ ] Definir modo offline que revalide metadata cacheada, vigente y anti-rollback; no usar TOFU ni UnsafeLocalMode como bypass.
 - [ ] Probar rotación root, thresholds, firma inválida, expiración, rollback/freeze, consistent snapshots, delegaciones y cache corrupta.
-- [ ] Configurar fetcher con timeout, límites de bytes y reintentos acotados; serializar el Updater no concurrente.
+- [x] Configurar el fetcher inicial con timeout HTTP, límites de metadata, redirects desactivados, reintentos acotados y sincronización del Updater.
+- [ ] Probar expiración/rollback/rotación y persistencia cacheada en escenarios de reinicio, caída de red y recuperación.
 - [ ] Revisar SBOM, licencia Apache-2.0 y dependencias transitivas de go-tuf v2.5.0.
 
 ## M1.5 — Supervisor seguro de procesos y registro de módulos
