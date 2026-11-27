@@ -38,7 +38,7 @@ Ambas ediciones compartirán contratos, procedimientos, motor de ejecución, dia
 
 ## Estado del proyecto
 
-**Etapa: fundación arquitectónica y núcleo inicial.** La CLI Go permite consultar versión, información no identificable del host y validar manifiestos, acciones, intervenciones y eventos JSON. El dominio de auditoría y su adaptador SQLite permiten anexar y verificar eventos encadenados por intervención; el normalizador rechaza claves JSON duplicadas y UTF-8 inválido, y el fuzzing comprueba su idempotencia. Todavía no hay reparaciones de sistemas ni UI de Field/Hub.
+**Etapa: fundación arquitectónica y núcleo inicial.** La CLI Go permite consultar versión, información no identificable del host y validar manifiestos, acciones, intervenciones y eventos JSON. El dominio de auditoría y su adaptador SQLite permiten anexar y verificar eventos encadenados por intervención; el normalizador rechaza claves JSON duplicadas y UTF-8 inválido, y el fuzzing comprueba su idempotencia. El primer bloque de checkpoint Ed25519 está implementado con resolución de claves mediante interfaz externa; la custodia real de claves y el anclaje remoto siguen pendientes. Todavía no hay reparaciones de sistemas ni UI de Field/Hub.
 
 ## Documentación
 

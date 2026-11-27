@@ -26,6 +26,7 @@ func TestExampleContractsValidate(t *testing.T) {
 		{"action", "action-definition.example.json"},
 		{"intervention", "intervention.example.json"},
 		{"event", "intervention-event.example.json"},
+		{"checkpoint", "audit-checkpoint.example.json"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.kind, func(t *testing.T) {

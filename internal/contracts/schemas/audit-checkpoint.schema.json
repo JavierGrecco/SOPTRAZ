@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://soptraz.dev/schemas/audit-checkpoint.schema.json",
+  "title": "SOPTRAZ Signed Audit Checkpoint",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["checkpoint", "signature"],
+  "properties": {
+    "checkpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "checkpointId",
+        "interventionId",
+        "eventSchemaVersion",
+        "hashAlgorithm",
+        "signatureAlgorithm",
+        "sequence",
+        "headHash",
+        "createdAt",
+        "keyId"
+      ],
+      "properties": {
+        "schemaVersion": {"const": "1.0.0"},
+        "checkpointId": {"type": "string", "format": "uuid"},
+        "interventionId": {"type": "string", "format": "uuid"},
+        "eventSchemaVersion": {"const": "1.0.0"},
+        "hashAlgorithm": {"const": "sha256"},
+        "signatureAlgorithm": {"const": "ed25519"},
+        "sequence": {"type": "integer", "minimum": 1},
+        "headHash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "previousCheckpointHash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "createdAt": {"type": "string", "format": "date-time"},
+        "keyId": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "signature": {"type": "string", "pattern": "^[A-Za-z0-9+/]{86}==$"}
+  }
+}

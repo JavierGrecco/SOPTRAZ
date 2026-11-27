@@ -1,6 +1,6 @@
 # Diseño de checkpoints firmados y exportación Field → Hub
 
-**Estado:** especificación M2; firma y exportación/importación aún no implementadas.
+**Estado:** especificación M2. El primer bloque de firma/verificación Ed25519 y esquema de checkpoint está implementado en `internal/audit/checkpoint.go`; el almacén de claves protegido, ancla monotónica remota y exportación/importación aún no están implementados.
 
 ## Objetivo y límite del ledger actual
 
@@ -87,6 +87,17 @@ Un paquete incompleto, modificado, firmado por clave no confiable o que retroced
 ## Atomicidad y recuperación
 
 La exportación se escribe a un archivo temporal en el mismo filesystem, se valida desde disco, se hace flush/fsync y se renombra atómicamente. No se borra el checkpoint anterior hasta confirmar el nuevo. La importación prepara y valida sin mutar el ledger; el commit final es atómico. Interrupción, disco lleno, permisos o cancelación deben dejar el estado previo utilizable.
+
+## Implementación inicial disponible
+
+- `Checkpoint.Validate` exige UUIDs canónicos, hash SHA-256 hexadecimal en minúsculas, algoritmo exacto, secuencia positiva y timestamp UTC canónico.
+- `CheckpointSigningBytes` serializa con codificación binaria determinista y separador de dominio.
+- `SignCheckpoint` y `VerifySignedCheckpoint` firman y validan Ed25519 y rechazan firma/clave incorrectas.
+- `VerifyCheckpointWithTrustStore` resuelve `keyId` mediante una interfaz externa y falla cerrado si el resolver devuelve error.
+- `CheckpointDigest` calcula el digest firmado que se utilizará como `previousCheckpointHash`.
+- JSON Schema de `SignedCheckpoint` está embebido y el fixture de ejemplo valida estructuralmente. La validez criptográfica se prueba con claves deterministas solo de test.
+
+No hay todavía un `TrustStore` de producción ni se guarda ninguna clave privada. La interfaz es el límite para integrar el almacén protegido de Windows/macOS/Linux en una fase posterior.
 
 ## Pruebas de aceptación M2
 

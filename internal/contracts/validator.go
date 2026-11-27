@@ -21,6 +21,7 @@ var schemaFiles = map[string]string{
 	"action":       "schemas/action-definition.schema.json",
 	"intervention": "schemas/intervention.schema.json",
 	"event":        "schemas/intervention-event.schema.json",
+	"checkpoint":   "schemas/audit-checkpoint.schema.json",
 }
 
 var (
@@ -86,7 +87,7 @@ func ValidateDocument(kind string, raw []byte) error {
 	}
 	schema, ok := compiledSchemas[kind]
 	if !ok {
-		return fmt.Errorf("tipo de contrato desconocido %q (válidos: manifest, action, intervention, event)", kind)
+		return fmt.Errorf("tipo de contrato desconocido %q (válidos: manifest, action, intervention, event, checkpoint)", kind)
 	}
 
 	decoder := json.NewDecoder(bytes.NewReader(raw))

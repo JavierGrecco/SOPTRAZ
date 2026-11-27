@@ -1,0 +1,15 @@
+{
+  "checkpoint": {
+    "schemaVersion": "1.0.0",
+    "checkpointId": "71d8e54a-1504-4eeb-8c13-84cc5083e541",
+    "interventionId": "2aef4e6d-9d50-4cb6-9c96-22a26abf1587",
+    "eventSchemaVersion": "1.0.0",
+    "hashAlgorithm": "sha256",
+    "signatureAlgorithm": "ed25519",
+    "sequence": 12,
+    "headHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "createdAt": "2026-11-27T20:45:00Z",
+    "keyId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+}
