@@ -125,6 +125,7 @@ func TestDescriptorRejectsMalformedSemanticVersion(t *testing.T) {
 		})
 	}
 }
+
 func TestDescriptorRejectsInvalidExpectedSize(t *testing.T) {
 	base := testDescriptor([]byte("bytes"))
 	for _, size := range []int64{0, -1, DefaultMaxArtifactBytes + 1} {
