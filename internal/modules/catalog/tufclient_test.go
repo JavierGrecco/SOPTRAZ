@@ -233,7 +233,6 @@ func TestTUFClientResolvesAndVerifiesDelegatedArtifactTarget(t *testing.T) {
 	}
 
 	requestsMu.Lock()
-	defer requestsMu.Unlock()
 	foundDelegatedMetadata := false
 	downloadedTarget := false
 	for _, requestPath := range *requests {
@@ -250,6 +249,7 @@ func TestTUFClientResolvesAndVerifiesDelegatedArtifactTarget(t *testing.T) {
 	if downloadedTarget {
 		t.Fatalf("metadata lookup unexpectedly downloaded an artifact target: %v", *requests)
 	}
+	requestsMu.Unlock()
 
 	// go-tuf permits one Refresh per Updater instance. TUFClient must create
 	// a fresh updater and revalidate cached metadata before refreshing again.
