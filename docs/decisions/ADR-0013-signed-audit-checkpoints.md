@@ -1,6 +1,6 @@
 # ADR-0013: Checkpoints de auditoría firmados y anclados fuera de Field
 
-- Estado: Aceptada como dirección de diseño; implementación pendiente.
+- Estado: Aceptada; principios de confianza y anclaje parcialmente implementados. La selección de algoritmos queda refinada por ADR-0014.
 - Fecha: 2026-11-27
 
 ## Contexto
@@ -10,7 +10,7 @@ El ledger actual encadena eventos mediante SHA-256 y protege filas contra operac
 ## Decisión
 
 1. Introducir checkpoint firmado por intervención que comprometa sequence, headHash, versión de esquema, algoritmo, ID y relación con checkpoint anterior.
-2. Usar Ed25519 de la biblioteca estándar Go, con codificación determinista y separador de dominio versionado.
+2. Separar el modelo de checkpoint y trust anchor del algoritmo de firma. La elección concreta de algoritmos y su representación canónica se define en ADR-0014.
 3. Mantener Signer y TrustStore como interfaces; DPAPI/CNG/TPM, Keychain y Linux key store serán adaptadores.
 4. No almacenar la clave privada en SQLite ni incluirla en bundles.
 5. Confiar solo en claves públicas enroladas por un canal independiente del paquete.

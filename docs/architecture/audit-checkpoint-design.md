@@ -1,6 +1,6 @@
 # Diseño de checkpoints firmados y exportación Field → Hub
 
-**Estado:** especificación M2. El primer bloque de firma/verificación Ed25519 y esquema de checkpoint está implementado en `internal/audit/checkpoint.go`; el almacén de claves protegido, ancla monotónica remota y exportación/importación aún no están implementados.
+**Estado:** implementación parcial M2. El runtime admite Ed25519 y ECDSA P-256, verifica la firma recién generada contra la clave pública declarada por el proveedor y resuelve claves de verificación mediante un trust resolver externo. Siguen pendientes almacenes protegidos, enrolamiento, ancla monotónica remota y exportación/importación .soptraz.
 
 ## Objetivo y límite del ledger actual
 
@@ -27,22 +27,22 @@ Sin ancla anterior o destino independiente, el resultado solo puede declarar int
 Estructura cerrada y versionada, sin mapas JSON en el material firmado:
 
 - checkpointSchemaVersion, checkpointId (UUID), interventionId (UUID)
-- eventSchemaVersion, hashAlgorithm (sha256), signatureAlgorithm (ed25519)
+- eventSchemaVersion, hashAlgorithm (sha256), signatureAlgorithm (ed25519 o ecdsa-p256-sha256)
 - sequence, headHash, previousCheckpointHash
 - createdAt (UTC, informativo; no es un timestamp confiable)
 - keyId derivado de la clave pública confiable
 
 La firma cubre una codificación binaria determinista del checkpoint sin el campo signature, precedida por un separador de dominio como `SOPTRAZ-AUDIT-CHECKPOINT-V1\0`. Orden y codificación no cambian dentro de v1. Un cambio incompatible crea una versión nueva y fixtures de compatibilidad.
 
-Se propone Ed25519 de la biblioteca estándar Go `crypto/ed25519`; no se agrega una dependencia criptográfica externa. La capa de transporte valida longitud y algoritmo antes de verificar. keyId deriva de la clave pública mediante SHA-256 y se resuelve contra el trust store externo.
+Ed25519 utiliza la firma raw de 64 bytes. ECDSA P-256 utiliza SHA-256 y una firma P1363 de 64 bytes `r||s`, con low-S obligatorio; el adaptador convierte salidas nativas DER antes de entregar la firma al núcleo. No se agrega una dependencia criptográfica externa. `keyId` es SHA-256 del material público canónico (Ed25519 raw o SEC1 uncompressed P-256) y se resuelve contra el trust store externo. El mismo checkpoint canónico produce el mismo digest de enunciado aunque ECDSA genere firmas distintas.
 
 ## Custodia y rotación
 
 Interfaces de dominio previstas:
 
-- `Signer.Sign(ctx, keyID, message) -> signature`
-- `TrustStore.Resolve(keyID) -> publicKey + policy`
-- `Verifier.Verify(checkpoint, signature, trustedPublicKey)`
+- `CheckpointSigner.Identity(ctx) -> CheckpointPublicKey` y `CheckpointSigner.Sign(ctx, message) -> signature`; el núcleo verifica la firma generada contra la clave pública devuelta.
+- `CheckpointKeyResolver.ResolvePublicKey(ctx, keyID) -> CheckpointPublicKey`, desde una política/registro independiente.
+- `VerifySignedCheckpointWithPublicKey` verifica algoritmo, fingerprint y firma; `VerifyCheckpointWithTrustStore` resuelve primero la clave confiable.
 
 El dominio no conoce DPAPI/CNG/TPM, Keychain ni libsecret; son futuros adaptadores. Nunca se guarda la clave privada en SQLite, logs o bundles. No se acepta una clave incluida en el bundle como raíz de confianza ni se enrola automáticamente al importarla. Alta, revocación y rotación pertenecen a un registro externo. Una rotación exige transición firmada por la clave anterior o autorización administrativa fuera de banda.
 
@@ -90,11 +90,12 @@ La exportación se escribe a un archivo temporal en el mismo filesystem, se vali
 
 ## Implementación inicial disponible
 
-- `Checkpoint.Validate` exige UUIDs canónicos, hash SHA-256 hexadecimal en minúsculas, algoritmo exacto, secuencia positiva y timestamp UTC canónico.
+- `Checkpoint.Validate` exige UUIDs canónicos, SHA-256 en minúsculas, algoritmo admitido, secuencia positiva y timestamp UTC canónico.
 - `CheckpointSigningBytes` serializa con codificación binaria determinista y separador de dominio.
-- `SignCheckpoint` y `VerifySignedCheckpoint` firman y validan Ed25519 y rechazan firma/clave incorrectas.
-- `VerifyCheckpointWithTrustStore` resuelve `keyId` mediante una interfaz externa y falla cerrado si el resolver devuelve error.
-- `CheckpointDigest` calcula el digest firmado que se utilizará como `previousCheckpointHash`.
+- `SignCheckpointWithSigner` acepta Ed25519 o ECDSA P-256 mediante proveedor externo y verifica el resultado contra la clave pública anunciada.
+- `VerifySignedCheckpointWithPublicKey` comprueba algoritmo, `keyId`, representación de firma y firma criptográfica; `VerifyCheckpointWithTrustStore` resuelve la clave desde el trust store externo.
+- ECDSA P-256 se valida como P1363 de 64 bytes `r||s` y low-S. El adaptador es responsable de convertir DER nativo.
+- `CheckpointDigest` verifica la firma primero y calcula el digest del enunciado canónico, no de los bytes de firma.
 - SQLite expone `VerifiedSnapshot`: eventos, secuencia y headHash verificados dentro de una única transacción de lectura; el generador de checkpoint y el exportador deberán consumir esta instantánea.
 - JSON Schema de `SignedCheckpoint` está embebido y el fixture de ejemplo valida estructuralmente. La validez criptográfica se prueba con claves deterministas solo de test.
 
@@ -102,8 +103,9 @@ No hay todavía un `TrustStore` de producción ni se guarda ninguna clave privad
 
 ## Pruebas de aceptación M2
 
-- Ed25519 válida, inválida, bit cambiado, truncada y clave incorrecta.
-- Trust anchor ausente y key ID desconocido.
+- Ed25519 y ECDSA P-256 válidas, inválidas, bit cambiado, truncadas, high-S y clave incorrecta.
+- Clave privada distinta de la clave pública declarada por el signer.
+- Trust anchor ausente y key ID desconocido; digest solo después de verificar la firma.
 - Alteración de evento, manifest, hash, secuencia, head y previous checkpoint.
 - Reescritura total SQLite frente a checkpoint externo anterior.
 - Rollback, fork, rotación/revocación.
