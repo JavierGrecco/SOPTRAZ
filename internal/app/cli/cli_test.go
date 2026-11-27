@@ -40,7 +40,7 @@ func TestHelpIsReadOnlyAndSuccessful(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("Run() code = %d, want 0; stderr=%q", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "No modifica el equipo") || !strings.Contains(stdout.String(), "checkpoint") {
+	if !strings.Contains(stdout.String(), "No modifica el equipo") || !strings.Contains(stdout.String(), "checkpoint") || !strings.Contains(stdout.String(), "artifact") {
 		t.Fatalf("unexpected help output: %q", stdout.String())
 	}
 }
@@ -106,6 +106,22 @@ func TestValidateAcceptsCheckpointExample(t *testing.T) {
 	}
 }
 
+func TestValidateAcceptsArtifactDescriptorExample(t *testing.T) {
+	examplePath := filepath.Join("..", "..", "..", "examples", "contracts", "artifact-descriptor.example.json")
+	raw, err := os.ReadFile(examplePath)
+	if err != nil {
+		t.Fatalf("read artifact descriptor example: %v", err)
+	}
+	path := writeTempJSON(t, string(raw))
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"validate", "artifact", path}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run() code = %d; stderr=%q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Contrato artifact válido") {
+		t.Fatalf("unexpected output: %q", stdout.String())
+	}
+}
 func TestValidateRejectsUnknownKindAndInvalidDocument(t *testing.T) {
 	path := writeTempJSON(t, validManifest)
 	var stdout, stderr bytes.Buffer

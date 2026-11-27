@@ -27,6 +27,7 @@ func TestExampleContractsValidate(t *testing.T) {
 		{"intervention", "intervention.example.json"},
 		{"event", "intervention-event.example.json"},
 		{"checkpoint", "audit-checkpoint.example.json"},
+		{"artifact", "artifact-descriptor.example.json"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.kind, func(t *testing.T) {
@@ -37,6 +38,18 @@ func TestExampleContractsValidate(t *testing.T) {
 	}
 }
 
+func TestArtifactDescriptorRejectsInvalidSizeAndPlatform(t *testing.T) {
+	raw := string(readExample(t, "artifact-descriptor.example.json"))
+	invalid := strings.Replace(raw, `"sizeBytes": 1048576`, `"sizeBytes": 0`, 1)
+	if err := ValidateDocument("artifact", []byte(invalid)); err == nil {
+		t.Fatal("artifact descriptor must reject sizeBytes = 0")
+	}
+	invalid = strings.Replace(raw, `"os": "linux"`, `"os": "darwin"`, 1)
+	invalid = strings.Replace(invalid, `"architecture": "amd64"`, `"architecture": "386"`, 1)
+	if err := ValidateDocument("artifact", []byte(invalid)); err == nil {
+		t.Fatal("artifact descriptor must reject unsupported OS/architecture combinations")
+	}
+}
 func TestCheckpointSchemaAcceptsEd25519AndECDSAP256(t *testing.T) {
 	raw := string(readExample(t, "audit-checkpoint.example.json"))
 	for _, algorithm := range []string{"ed25519", "ecdsa-p256-sha256"} {

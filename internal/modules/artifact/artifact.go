@@ -30,7 +30,76 @@ var (
 	ErrResolverClosed      = errors.New("el resolver de artefactos está cerrado")
 )
 
-var artifactIDPattern = regexp.MustCompile(`^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$`)
+var (
+	artifactIDPattern      = regexp.MustCompile(`^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*// Package artifact resolves and verifies already-installed third-party executables.
+// It never downloads, installs or launches an artifact. Descriptors must come from
+// a separately trusted registry: matching SHA-256 proves byte correspondence to
+// that descriptor, not publisher identity or release authenticity.
+package artifact
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"io"
+	"net/url"
+	"os"
+	pathpkg "path"
+	"path/filepath"
+	"regexp"
+	"runtime"
+	"strings"
+	"sync"
+)
+
+const DefaultMaxArtifactBytes int64 = 512 << 20
+
+var (
+	ErrInvalidDescriptor   = errors.New("descriptor de artefacto inválido")
+	ErrUnsupportedPlatform = errors.New("plataforma o arquitectura no compatible")
+	ErrArtifactPath        = errors.New("ruta de artefacto no permitida")
+	ErrArtifactIntegrity   = errors.New("integridad del artefacto no válida")
+	ErrResolverClosed      = errors.New("el resolver de artefactos está cerrado")
+)
+
+)
+	artifactVersionPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)[.](0|[1-9][0-9]*)[.](0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?([+][0-9A-Za-z.-]+)?// Package artifact resolves and verifies already-installed third-party executables.
+// It never downloads, installs or launches an artifact. Descriptors must come from
+// a separately trusted registry: matching SHA-256 proves byte correspondence to
+// that descriptor, not publisher identity or release authenticity.
+package artifact
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"io"
+	"net/url"
+	"os"
+	pathpkg "path"
+	"path/filepath"
+	"regexp"
+	"runtime"
+	"strings"
+	"sync"
+)
+
+const DefaultMaxArtifactBytes int64 = 512 << 20
+
+var (
+	ErrInvalidDescriptor   = errors.New("descriptor de artefacto inválido")
+	ErrUnsupportedPlatform = errors.New("plataforma o arquitectura no compatible")
+	ErrArtifactPath        = errors.New("ruta de artefacto no permitida")
+	ErrArtifactIntegrity   = errors.New("integridad del artefacto no válida")
+	ErrResolverClosed      = errors.New("el resolver de artefactos está cerrado")
+)
+
+)
+)
+
+const ArtifactDescriptorSchemaVersion = "1.0.0"
 
 // Platform identifies a specific operating-system/architecture pair.
 type Platform struct {
@@ -64,14 +133,16 @@ func (platform Platform) Validate() error {
 // Descriptor is trusted registry metadata, never data supplied by a caller/UI.
 // RelativePath is slash-separated and rooted in the application-managed store.
 type Descriptor struct {
-	ID           string
-	Version      string
-	OS           string
-	Architecture string
-	RelativePath string
-	SHA256       string
-	License      string
-	SourceURI    string
+	SchemaVersion string `json:"schemaVersion"`
+	ID            string `json:"artifactId"`
+	Version       string `json:"version"`
+	OS            string `json:"os"`
+	Architecture  string `json:"architecture"`
+	RelativePath  string `json:"relativePath"`
+	SHA256        string `json:"sha256"`
+	SizeBytes     int64  `json:"sizeBytes"`
+	License       string `json:"license"`
+	SourceURI     string `json:"sourceUri"`
 }
 
 // portablePathComponent rejects names that can be interpreted specially by
@@ -97,14 +168,20 @@ func portablePathComponent(part string) bool {
 	return true
 }
 func (descriptor Descriptor) Validate() error {
+	if descriptor.SchemaVersion != ArtifactDescriptorSchemaVersion {
+		return fmt.Errorf("%w: schemaVersion debe ser %s", ErrInvalidDescriptor, ArtifactDescriptorSchemaVersion)
+	}
 	if !artifactIDPattern.MatchString(descriptor.ID) || len(descriptor.ID) > 128 {
 		return fmt.Errorf("%w: module/artefacto ID inválido", ErrInvalidDescriptor)
 	}
-	if strings.TrimSpace(descriptor.Version) == "" || len(descriptor.Version) > 80 {
-		return fmt.Errorf("%w: versión ausente o demasiado larga", ErrInvalidDescriptor)
+	if !artifactVersionPattern.MatchString(descriptor.Version) || len(descriptor.Version) > 80 {
+		return fmt.Errorf("%w: versión debe usar SemVer", ErrInvalidDescriptor)
 	}
 	if strings.TrimSpace(descriptor.License) == "" || len(descriptor.License) > 120 {
 		return fmt.Errorf("%w: licencia ausente o demasiado larga", ErrInvalidDescriptor)
+	}
+	if descriptor.SizeBytes <= 0 || descriptor.SizeBytes > DefaultMaxArtifactBytes {
+		return fmt.Errorf("%w: sizeBytes debe estar entre 1 y %d", ErrInvalidDescriptor, DefaultMaxArtifactBytes)
 	}
 	if err := (Platform{OS: descriptor.OS, Architecture: descriptor.Architecture}).Validate(); err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidDescriptor, err)
@@ -262,6 +339,9 @@ func (resolver *Resolver) Resolve(descriptor Descriptor) (ResolvedArtifact, erro
 	if openedInfo.Size() > resolver.maxBytes {
 		return ResolvedArtifact{}, fmt.Errorf("%w: el tamaño del artefacto supera el límite", ErrInvalidDescriptor)
 	}
+	if openedInfo.Size() != descriptor.SizeBytes {
+		return ResolvedArtifact{}, ErrArtifactIntegrity
+	}
 
 	hasher := sha256.New()
 	bytesRead, err := io.Copy(hasher, io.LimitReader(file, resolver.maxBytes+1))
@@ -270,6 +350,9 @@ func (resolver *Resolver) Resolve(descriptor Descriptor) (ResolvedArtifact, erro
 	}
 	if bytesRead > resolver.maxBytes {
 		return ResolvedArtifact{}, fmt.Errorf("%w: el archivo excede el límite de lectura", ErrInvalidDescriptor)
+	}
+	if bytesRead != descriptor.SizeBytes {
+		return ResolvedArtifact{}, ErrArtifactIntegrity
 	}
 	if hex.EncodeToString(hasher.Sum(nil)) != descriptor.SHA256 {
 		return ResolvedArtifact{}, ErrArtifactIntegrity

@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -27,12 +28,14 @@ func writeArtifact(t *testing.T, root, relative string, content []byte) string {
 func testDescriptor(content []byte) Descriptor {
 	digest := sha256.Sum256(content)
 	return Descriptor{
-		ID:           "soptraz.osquery",
+		SchemaVersion: ArtifactDescriptorSchemaVersion,
+		ID:            "soptraz.osquery",
 		Version:      "5.24.1",
 		OS:           "linux",
 		Architecture: "amd64",
 		RelativePath: "osquery/5.24.1/linux-amd64/osqueryi",
 		SHA256:       hex.EncodeToString(digest[:]),
+		SizeBytes:    int64(len(content)),
 		License:      "Apache-2.0 OR GPL-2.0-only",
 		SourceURI:    "https://github.com/osquery/osquery/releases/tag/5.24.1",
 	}
@@ -108,6 +111,30 @@ func TestCurrentPlatformMatchesGoRuntime(t *testing.T) {
 	platform := CurrentPlatform()
 	if platform.OS != runtime.GOOS || platform.Architecture != runtime.GOARCH {
 		t.Fatalf("CurrentPlatform() = %#v, runtime = %s/%s", platform, runtime.GOOS, runtime.GOARCH)
+	}
+}
+func TestDescriptorRejectsInvalidExpectedSize(t *testing.T) {
+	base := testDescriptor([]byte("bytes"))
+	for _, size := range []int64{0, -1, DefaultMaxArtifactBytes + 1} {
+		t.Run(fmt.Sprint(size), func(t *testing.T) {
+			value := base
+			value.SizeBytes = size
+			if err := value.Validate(); err == nil {
+				t.Fatalf("sizeBytes %d must be rejected", size)
+			}
+		})
+	}
+}
+
+func TestResolveRejectsDeclaredSizeMismatch(t *testing.T) {
+	root := t.TempDir()
+	content := []byte("artifact bytes")
+	writeArtifact(t, root, "osquery/5.24.1/linux-amd64/osqueryi", content)
+	resolver := newTestResolver(t, root, Platform{OS: "linux", Architecture: "amd64"})
+	value := testDescriptor(content)
+	value.SizeBytes++
+	if _, err := resolver.Resolve(value); !errors.Is(err, ErrArtifactIntegrity) {
+		t.Fatalf("Resolve() error = %v, want ErrArtifactIntegrity", err)
 	}
 }
 func TestResolverCloseIsIdempotentAndRejectsFurtherResolutions(t *testing.T) {
