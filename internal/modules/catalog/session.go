@@ -16,18 +16,18 @@ import (
 )
 
 const (
-	MaxTimestampMetadataBytes int64 = 16_384
-	MaxSnapshotMetadataBytes  int64 = 2_000_000
-	MaxTargetsMetadataBytes   int64 = 5_000_000
-	MaxTargetBytes            int64 = 512 << 20
+	MaxTimestampMetadataBytes  int64 = 16_384
+	MaxSnapshotMetadataBytes   int64 = 2_000_000
+	MaxTargetsMetadataBytes    int64 = 5_000_000
+	MaxTargetBytes             int64 = 512 << 20
 	MaxArtifactDescriptorBytes int64 = 1 << 20
 )
 
 var (
-	ErrMetadataSequence = errors.New("secuencia de metadata TUF inválida")
-	ErrInvalidTimestamp = errors.New("metadata timestamp TUF inválida")
-	ErrInvalidSnapshot  = errors.New("metadata snapshot TUF inválida")
-	ErrInvalidTargets   = errors.New("metadata targets TUF inválida")
+	ErrMetadataSequence        = errors.New("secuencia de metadata TUF inválida")
+	ErrInvalidTimestamp        = errors.New("metadata timestamp TUF inválida")
+	ErrInvalidSnapshot         = errors.New("metadata snapshot TUF inválida")
+	ErrInvalidTargets          = errors.New("metadata targets TUF inválida")
 	ErrInvalidTarget           = errors.New("target TUF inválido")
 	ErrTargetNotFound          = errors.New("target TUF no encontrado")
 	ErrInvalidTargetDescriptor = errors.New("descriptor artifact v1 inválido en metadata TUF")
