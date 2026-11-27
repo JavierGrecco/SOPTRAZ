@@ -159,7 +159,7 @@ func NewTUFClient(anchor *TrustAnchor, clientConfig TUFClientConfig) (*TUFClient
 // descriptor with the target's signed custom metadata. It does not download the
 // binary, install it, or execute it.
 func (client *TUFClient) ResolveDescriptor(descriptor artifact.Descriptor) (VerifiedTarget, error) {
-	if client == nil || client.updater == nil {
+	if client == nil {
 		return VerifiedTarget{}, ErrTUFClientUnavailable
 	}
 	if err := descriptor.Validate(); err != nil {
@@ -168,6 +168,9 @@ func (client *TUFClient) ResolveDescriptor(descriptor artifact.Descriptor) (Veri
 
 	client.mu.Lock()
 	defer client.mu.Unlock()
+	if client.updater == nil {
+		return VerifiedTarget{}, ErrTUFClientUnavailable
+	}
 
 	target, err := client.updater.GetTargetInfo(descriptor.RelativePath)
 	if err != nil {
