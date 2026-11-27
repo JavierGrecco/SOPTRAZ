@@ -40,7 +40,7 @@ func testDescriptor(content []byte) Descriptor {
 
 func newTestResolver(t *testing.T, root string, platform Platform) *Resolver {
 	t.Helper()
-	resolver, err := NewResolver(root, platform)
+	resolver, err := newResolver(root, platform, DefaultMaxArtifactBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,6 +66,50 @@ func newTestResolverWithLimit(t *testing.T, root string, platform Platform, maxB
 	return resolver
 }
 
+func TestPlatformValidateSupportedOperatingSystemArchitectures(t *testing.T) {
+	supported := []Platform{
+		{OS: "windows", Architecture: "amd64"},
+		{OS: "windows", Architecture: "arm64"},
+		{OS: "darwin", Architecture: "amd64"},
+		{OS: "darwin", Architecture: "arm64"},
+		{OS: "linux", Architecture: "amd64"},
+		{OS: "linux", Architecture: "arm64"},
+		{OS: "linux", Architecture: "386"},
+		{OS: "linux", Architecture: "arm"},
+	}
+	for _, platform := range supported {
+		t.Run(platform.OS+"/"+platform.Architecture, func(t *testing.T) {
+			if err := platform.Validate(); err != nil {
+				t.Fatalf("Validate() error = %v", err)
+			}
+		})
+	}
+}
+
+func TestPlatformValidateRejectsUnsupportedOperatingSystemArchitectures(t *testing.T) {
+	unsupported := []Platform{
+		{OS: "windows", Architecture: "386"},
+		{OS: "windows", Architecture: "arm"},
+		{OS: "darwin", Architecture: "386"},
+		{OS: "darwin", Architecture: "arm"},
+		{OS: "linux", Architecture: "loong64"},
+		{OS: "plan9", Architecture: "amd64"},
+	}
+	for _, platform := range unsupported {
+		t.Run(platform.OS+"/"+platform.Architecture, func(t *testing.T) {
+			if err := platform.Validate(); !errors.Is(err, ErrUnsupportedPlatform) {
+				t.Fatalf("Validate() error = %v, want ErrUnsupportedPlatform", err)
+			}
+		})
+	}
+}
+
+func TestCurrentPlatformMatchesGoRuntime(t *testing.T) {
+	platform := CurrentPlatform()
+	if platform.OS != runtime.GOOS || platform.Architecture != runtime.GOARCH {
+		t.Fatalf("CurrentPlatform() = %#v, runtime = %s/%s", platform, runtime.GOOS, runtime.GOARCH)
+	}
+}
 func TestResolverCloseIsIdempotentAndRejectsFurtherResolutions(t *testing.T) {
 	root := t.TempDir()
 	content := []byte("trusted artifact")

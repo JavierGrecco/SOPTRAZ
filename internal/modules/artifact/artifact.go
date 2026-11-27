@@ -39,23 +39,24 @@ type Platform struct {
 }
 
 func CurrentPlatform() Platform {
-	osName := runtime.GOOS
-	if osName == "darwin" {
-		osName = "darwin"
-	}
-	return Platform{OS: osName, Architecture: runtime.GOARCH}
+	return Platform{OS: runtime.GOOS, Architecture: runtime.GOARCH}
 }
 
 func (platform Platform) Validate() error {
+	var supported bool
 	switch platform.OS {
-	case "windows", "darwin", "linux":
+	case "windows":
+		supported = platform.Architecture == "amd64" || platform.Architecture == "arm64"
+	case "darwin":
+		supported = platform.Architecture == "amd64" || platform.Architecture == "arm64"
+	case "linux":
+		supported = platform.Architecture == "amd64" || platform.Architecture == "arm64" ||
+			platform.Architecture == "386" || platform.Architecture == "arm"
 	default:
 		return fmt.Errorf("%w: sistema operativo %q", ErrUnsupportedPlatform, platform.OS)
 	}
-	switch platform.Architecture {
-	case "amd64", "arm64", "386", "arm":
-	default:
-		return fmt.Errorf("%w: arquitectura %q", ErrUnsupportedPlatform, platform.Architecture)
+	if !supported {
+		return fmt.Errorf("%w: combinación %s/%s", ErrUnsupportedPlatform, platform.OS, platform.Architecture)
 	}
 	return nil
 }
@@ -152,8 +153,10 @@ type Resolver struct {
 	closeErr error
 }
 
-func NewResolver(root string, platform Platform) (*Resolver, error) {
-	return newResolver(root, platform, DefaultMaxArtifactBytes)
+// NewResolver binds artifact lookup to the platform on which SOPTRAZ is running.
+// Callers cannot spoof a target platform to resolve a different OS binary.
+func NewResolver(root string) (*Resolver, error) {
+	return newResolver(root, CurrentPlatform(), DefaultMaxArtifactBytes)
 }
 
 func newResolver(root string, platform Platform, maxBytes int64) (*Resolver, error) {
