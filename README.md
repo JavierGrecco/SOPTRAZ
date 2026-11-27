@@ -38,13 +38,14 @@ Ambas ediciones compartirán contratos, procedimientos, motor de ejecución, dia
 
 ## Estado del proyecto
 
-**Etapa: fundación arquitectónica y núcleo inicial.** La CLI Go permite consultar versión, información no identificable del host y validar manifiestos, acciones, intervenciones y eventos JSON. El dominio de auditoría y su adaptador SQLite permiten anexar y verificar eventos encadenados por intervención; el decodificador JSON compartido rechaza claves duplicadas, UTF-8 inválido, escapes UTF-16 aislados, documentos concatenados y anidamiento excesivo, y el fuzzing comprueba la idempotencia del payload de auditoría. El primer bloque de checkpoint Ed25519 está implementado con resolución de claves mediante interfaz externa; la custodia real de claves y el anclaje remoto siguen pendientes. Todavía no hay reparaciones de sistemas ni UI de Field/Hub.
+**Etapa: fundación arquitectónica y núcleo inicial.** La CLI Go permite consultar versión, información no identificable del host y validar manifiestos, acciones, intervenciones, eventos, checkpoints y descriptores de artefactos. El resolver local verifica archivos ya instalados bajo una raíz confinada; todavía no descarga ni ejecuta herramientas externas. El dominio de auditoría y su adaptador SQLite permiten anexar y verificar eventos encadenados por intervención; el decodificador JSON compartido rechaza claves duplicadas, UTF-8 inválido, escapes UTF-16 aislados, documentos concatenados y anidamiento excesivo, y el fuzzing comprueba la idempotencia del payload de auditoría. El primer bloque de checkpoint Ed25519 está implementado con resolución de claves mediante interfaz externa; la custodia real de claves y el anclaje remoto siguen pendientes. Todavía no hay reparaciones de sistemas ni UI de Field/Hub.
 
 ## Documentación
 
 - [Visión y alcance](docs/product/vision.md)
 - [Arquitectura general](docs/architecture/overview.md)
 - [Selección tecnológica](docs/architecture/technology-strategy.md)
+- [Catálogo autenticado TUF (ADR-0015)](docs/decisions/ADR-0015-tuf-artifact-catalog.md)
 - [Límites y contratos de módulos](docs/architecture/module-contracts.md)
 - [Modelo de auditoría](docs/architecture/audit-model.md)
 - [Diseño de checkpoints firmados y exportación Field → Hub](docs/architecture/audit-checkpoint-design.md)

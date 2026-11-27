@@ -20,6 +20,7 @@ El roadmap prioriza una vertical funcional confiable antes de ampliar herramient
 - [x] Implementar primitivas de checkpoint Ed25519 y ECDSA P-256 con firma verificada contra la clave pública declarada por el signer.
 - [x] Implementar descriptor de artefacto v1 con JSON Schema, fixture y validación CLI; exigir SemVer, SHA-256 y tamaño exacto.
 - [x] Implementar resolver de artefactos instalados con `os.Root`, plataforma real exacta, ruta portable, tamaño y hash, sin descargas ni ejecución.
+- [x] Fijar Go `1.27.4` y probar rechazo de rutas de artefacto terminadas en `/`.
 - [ ] Implementar almacenes de claves protegidas y enrolamiento por sistema operativo.
 - [ ] Completar paquetes de intervención y sincronización Field → Hub.
 - [ ] Definir ADR de firma de releases y política de distribución.
@@ -41,11 +42,22 @@ El roadmap prioriza una vertical funcional confiable antes de ampliar herramient
 
 Runtime Go, registro local, IDs, acciones tipadas, permisos/riesgo, cancelación, timeout, SQLite y migraciones. La validación de contratos se utiliza como puerta de entrada. Completar checkpoints externos, recuperación ante corrupción, exportación verificable y retención.
 
-## M1.5 — Registro y ejecución segura de módulos
+## M1.4 — Catálogo autenticado de artefactos
+
+- [x] Seleccionar TUF/go-tuf v2 por ADR-0015; descartar el módulo legacy v0.x.
+- [ ] Fijar root.json inicial en SOPTRAZ y definir threshold, rotación y revocación de claves.
+- [ ] Implementar cliente TUF: root, timestamp, snapshot, targets y delegaciones; autenticar descriptor artifact v1 como target.
+- [ ] Persistir metadata y estado anti-rollback atómicamente; probar recuperación tras reinicio.
+- [ ] Definir modo offline que revalide metadata cacheada, vigente y anti-rollback; no usar TOFU ni UnsafeLocalMode como bypass.
+- [ ] Probar rotación root, thresholds, firma inválida, expiración, rollback/freeze, consistent snapshots, tamaño/hash y cache corrupta.
+- [ ] Configurar fetcher con timeout, límites de bytes y reintentos acotados; serializar el Updater no concurrente.
+- [ ] Revisar SBOM, licencia Apache-2.0 y dependencias transitivas de go-tuf v2.5.0.
+
+## M1.5 — Supervisor seguro de procesos y registro de módulos
 
 - [x] Resolver artefactos instalados desde una raíz administrada con plataforma/arquitectura reales exactas, tamaño declarado exacto y SHA-256.
 - [x] Rechazar traversal, symlinks y componentes no portables/reservados de Windows.
-- [ ] Implementar catálogo autenticado y ciclo de vida de artefactos (firma del catálogo/editor, origen, licencia, versión, actualización, revocación y retirada).
+- [ ] Consumir únicamente targets autenticados del catálogo TUF (Issue #5).
 - [ ] Implementar supervisor de procesos sin shell, con acciones y argumentos registrados y entorno mínimo.
 - [ ] Implementar terminación del árbol de procesos y cancelación por sistema operativo.
 - [ ] Aplicar timeout, límites de stdout/stderr, validación de salida y auditoría de ejecución.
@@ -53,7 +65,7 @@ Runtime Go, registro local, IDs, acciones tipadas, permisos/riesgo, cancelación
 
 ## Fase 2 — Diagnóstico de solo lectura
 
-Primero implementar el supervisor de procesos restringido: ruta del ejecutable resuelta desde manifiesto verificado, hash/versión, allowlist de argumentos tipados sin shell, timeout, cancelación, límites de salida, códigos de salida estructurados y registro de auditoría. Una vez probado, integrar osquery como primera POC opcional con consultas predefinidas, extensiones deshabilitadas y artefactos oficiales fijados por SO/arquitectura/hash. No ejecutar SQL libre ni instalar un servicio residente en esta etapa.
+Completar primero M1.4 (catálogo TUF autenticado) y M1.5 (supervisor de procesos restringido): ruta del ejecutable resuelta desde manifiesto verificado, hash/versión, allowlist de argumentos tipados sin shell, timeout, cancelación, límites de salida, códigos de salida estructurados y registro de auditoría. Una vez probado, integrar osquery como primera POC opcional con consultas predefinidas, extensiones deshabilitadas y artefactos oficiales fijados por SO/arquitectura/hash. No ejecutar SQL libre ni instalar un servicio residente en esta etapa.
 
 Plataforma, inventario, disco/SMART, CPU/RAM, espacio, red/DNS, eventos, impresoras y primer informe.
 
