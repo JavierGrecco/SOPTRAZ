@@ -102,6 +102,23 @@ func portablePathComponent(part string) bool {
 	}
 	return true
 }
+// ValidateRelativePath applies the same cross-platform path policy to catalog targets
+// and artifact descriptors. TUF target paths must not acquire different filesystem
+// semantics when they are later resolved on Windows, macOS or Linux.
+func ValidateRelativePath(relativePath string) error {
+	if relativePath == "" || strings.Contains(relativePath, `\`) || strings.HasPrefix(relativePath, "/") || pathpkg.IsAbs(relativePath) {
+		return fmt.Errorf("%w: se requiere una ruta relativa canónica con separadores '/'", ErrArtifactPath)
+	}
+	if pathpkg.Clean(relativePath) != relativePath {
+		return fmt.Errorf("%w: la ruta contiene segmentos ambiguos", ErrArtifactPath)
+	}
+	for _, part := range strings.Split(relativePath, "/") {
+		if part == "" || part == "." || part == ".." || !portablePathComponent(part) {
+			return fmt.Errorf("%w: la ruta contiene un segmento no permitido o no portable", ErrArtifactPath)
+		}
+	}
+	return nil
+}
 func (descriptor Descriptor) Validate() error {
 	if descriptor.SchemaVersion != ArtifactDescriptorSchemaVersion {
 		return fmt.Errorf("%w: schemaVersion debe ser %s", ErrInvalidDescriptor, ArtifactDescriptorSchemaVersion)
@@ -127,16 +144,8 @@ func (descriptor Descriptor) Validate() error {
 	if _, err := hex.DecodeString(descriptor.SHA256); err != nil {
 		return fmt.Errorf("%w: SHA-256 inválido: %v", ErrInvalidDescriptor, err)
 	}
-	if descriptor.RelativePath == "" || strings.Contains(descriptor.RelativePath, `\`) || strings.HasPrefix(descriptor.RelativePath, "/") || pathpkg.IsAbs(descriptor.RelativePath) {
-		return fmt.Errorf("%w: se requiere una ruta relativa canónica con separadores '/'", ErrInvalidDescriptor)
-	}
-	if pathpkg.Clean(descriptor.RelativePath) != descriptor.RelativePath {
-		return fmt.Errorf("%w: la ruta contiene segmentos ambiguos", ErrInvalidDescriptor)
-	}
-	for _, part := range strings.Split(descriptor.RelativePath, "/") {
-		if part == "" || part == "." || part == ".." || !portablePathComponent(part) {
-			return fmt.Errorf("%w: la ruta contiene un segmento no permitido o no portable", ErrInvalidDescriptor)
-		}
+	if err := ValidateRelativePath(descriptor.RelativePath); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidDescriptor, err)
 	}
 	u, err := url.Parse(descriptor.SourceURI)
 	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil {
