@@ -359,6 +359,9 @@ func (s *Store) List(ctx context.Context, interventionID string) ([]audit.Event,
 		if err := rows.Scan(&raw, &storedHash); err != nil {
 			return nil, fmt.Errorf("leer evento de auditoría: %w", err)
 		}
+		if err := contracts.ValidateDocument("event", []byte(raw)); err != nil {
+			return nil, fmt.Errorf("%w: JSON de evento no cumple el contrato estricto: %v", ErrCorruptChain, err)
+		}
 		var event audit.Event
 		if err := json.Unmarshal([]byte(raw), &event); err != nil {
 			return nil, fmt.Errorf("%w: JSON de evento no legible: %v", ErrCorruptChain, err)

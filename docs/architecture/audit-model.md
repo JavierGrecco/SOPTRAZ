@@ -65,7 +65,7 @@ No se habilita WAL en esta primera edición. Se prioriza el modo de journaling p
 5. que el SHA-256 calculado coincida con el guardado;
 6. que secuencia/hash finales coincidan con audit_heads.
 
-`List` devuelve los eventos en orden, y también comprueba que la columna hash indexada coincida con el JSON almacenado. Quien consuma datos como evidencia confiable debe ejecutar Verify.
+`List` devuelve los eventos en orden y valida el JSON original con el contrato estricto antes de decodificarlo; rechaza claves duplicadas, UTF-8 inválido y escapes UTF-16 aislados incluso si el decodificador estándar podría normalizarlos. También comprueba que la columna hash indexada coincida con el JSON almacenado. Quien consuma datos como evidencia confiable debe ejecutar Verify.
 
 ## 5. Límites de seguridad
 

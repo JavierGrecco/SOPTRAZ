@@ -172,6 +172,45 @@ func TestVerifyDetectsAlteredEventWhenTriggerIsBypassed(t *testing.T) {
 	}
 }
 
+func TestListAndVerifyRejectDuplicateKeysInStoredEventJSON(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	event, err := store.Append(ctx, sampleDraft("intervention.created", `{"source":"field"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	serialized, err := json.Marshal(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalField := `"eventType":"intervention.created"`
+	duplicateField := `"eventType":"tampered","eventType":"intervention.created"`
+	tampered := strings.Replace(string(serialized), originalField, duplicateField, 1)
+	if tampered == string(serialized) {
+		t.Fatal("test fixture did not locate eventType field in serialized event")
+	}
+
+	// Simulate an external modification that bypasses SQLite's append-only trigger.
+	if _, err := store.db.ExecContext(ctx, "DROP TRIGGER audit_events_no_update"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.ExecContext(ctx,
+		"UPDATE audit_events SET event_json = ? WHERE event_id = ?",
+		tampered,
+		event.EventID,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := store.List(ctx, testInterventionID); !errors.Is(err, ErrCorruptChain) {
+		t.Fatalf("List() error = %v, want ErrCorruptChain for duplicate JSON member", err)
+	}
+	if err := store.Verify(ctx, testInterventionID); !errors.Is(err, ErrCorruptChain) {
+		t.Fatalf("Verify() error = %v, want ErrCorruptChain for duplicate JSON member", err)
+	}
+}
+
 func TestAppendRejectsInvalidEventAndPayload(t *testing.T) {
 	store := openTestStore(t)
 	ctx := context.Background()
