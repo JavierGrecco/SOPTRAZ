@@ -115,6 +115,16 @@ func sameCurve(left, right elliptic.Curve) bool {
 	if leftParams == nil || rightParams == nil {
 		return false
 	}
+	// Curve implementations supplied by external hardware providers are not
+	// trusted to return complete parameters. Reject incomplete values instead
+	// of dereferencing nil big.Int fields during key validation.
+	if leftParams.P == nil || rightParams.P == nil ||
+		leftParams.N == nil || rightParams.N == nil ||
+		leftParams.B == nil || rightParams.B == nil ||
+		leftParams.Gx == nil || rightParams.Gx == nil ||
+		leftParams.Gy == nil || rightParams.Gy == nil {
+		return false
+	}
 	return leftParams.Name == rightParams.Name &&
 		leftParams.BitSize == rightParams.BitSize &&
 		leftParams.P.Cmp(rightParams.P) == 0 &&

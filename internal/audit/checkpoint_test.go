@@ -174,6 +174,24 @@ func TestCheckpointDigestIsVerifiedStatementDigestAndChainSensitive(t *testing.T
 	}
 }
 
+func TestCheckpointRejectsIncompleteECDSACurveParametersWithoutPanic(t *testing.T) {
+	malformedCurve := &elliptic.CurveParams{
+		Name:    "P-256",
+		BitSize: 256,
+	}
+	publicKey := CheckpointPublicKey{
+		SignatureAlgorithm: CheckpointSignatureAlgorithmECDSAP256SHA256,
+		ECDSAP256: &ecdsa.PublicKey{
+			Curve: malformedCurve,
+			X:     big.NewInt(1),
+			Y:     big.NewInt(1),
+		},
+	}
+	if _, err := publicKey.CanonicalBytes(); err == nil {
+		t.Fatal("public key with incomplete curve parameters must be rejected")
+	}
+}
+
 func TestECDSAP256CheckpointSignVerifyAndCanonicalDigest(t *testing.T) {
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
