@@ -1,6 +1,6 @@
 # Contratos y límites de módulos
 
-**Estado:** contratos ejecutables implementados con JSON Schema 2020-12 y validador Go para manifiestos, acciones, intervenciones, eventos, checkpoints y descriptores de artefactos. El descriptor artifact v1 se valida desde CLI; el resolver comprueba plataforma real, ruta portable, archivo regular, tamaño exacto y SHA-256. ADR-0015 selecciona TUF/go-tuf v2 para autenticar el catálogo; el cliente y la cache offline aún deben implementarse y probarse. Siguen pendientes cargador de módulos y supervisor.
+**Estado:** contratos ejecutables implementados con JSON Schema 2020-12 y validador Go para manifiestos, acciones, intervenciones, eventos, checkpoints y descriptores de artefactos. El descriptor artifact v1 se valida desde CLI; el resolver comprueba plataforma real, ruta portable, archivo regular, tamaño exacto y SHA-256. ADR-0015 selecciona TUF/go-tuf v2 para autenticar el catálogo. La primera capa online `TUFClient` usa el updater oficial para resolver targets delegados y validar su descriptor firmado; el bootstrap del root productivo, la persistencia anti-rollback y la política offline aún deben implementarse y probarse. Siguen pendientes el cargador de módulos y el supervisor.
 
 ## Estructura de un módulo
 
