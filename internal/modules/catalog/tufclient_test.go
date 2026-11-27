@@ -358,3 +358,35 @@ func TestTUFClientDoesNotFollowMetadataRedirects(t *testing.T) {
 		t.Fatalf("TUF client followed a metadata redirect %d time(s)", redirectedRequests)
 	}
 }
+func TestTUFClientSerializesRefreshAgainstLookups(t *testing.T) {
+	fixture := makeDelegatedRepositoryFixture(t)
+	server, _, _ := startDelegatedMetadataServer(t, fixture)
+	client := newFixtureTUFClient(t, fixture, server.URL+"/metadata", 4)
+
+	const workers = 8
+	var wait sync.WaitGroup
+	errorsFound := make(chan error, workers)
+	for worker := 0; worker < workers; worker++ {
+		wait.Add(1)
+		go func(worker int) {
+			defer wait.Done()
+			if worker%2 == 0 {
+				if err := client.Refresh(); err != nil {
+					errorsFound <- fmt.Errorf("Refresh(): %w", err)
+				}
+				return
+			}
+			if _, err := client.ResolveDescriptor(fixture.descriptor); err != nil {
+				errorsFound <- fmt.Errorf("ResolveDescriptor(): %w", err)
+			}
+		}(worker)
+	}
+	wait.Wait()
+	close(errorsFound)
+	for err := range errorsFound {
+		t.Errorf("concurrent TUF operation failed: %v", err)
+	}
+	if _, err := client.ResolveDescriptor(fixture.descriptor); err != nil {
+		t.Fatalf("ResolveDescriptor() after concurrent refreshes error = %v", err)
+	}
+}
