@@ -211,3 +211,41 @@ func TestMetadataSessionRequiresOrderedStagesAndEnforcesMetadataLimits(t *testin
 		t.Fatalf("UpdateTimestamp() oversized = %v, want ErrInvalidTimestamp", err)
 	}
 }
+
+func TestMetadataSessionRejectsNonPortableTargetPaths(t *testing.T) {
+	fixture := makeTUFRepositoryFixture(t, time.Now().UTC().AddDate(0, 0, 1))
+	session := newFixtureSession(t, fixture)
+	if err := session.UpdateTimestamp(fixture.timestampJSON); err != nil {
+		t.Fatalf("UpdateTimestamp() error = %v", err)
+	}
+	if err := session.UpdateSnapshot(fixture.snapshotJSON); err != nil {
+		t.Fatalf("UpdateSnapshot() error = %v", err)
+	}
+	if err := session.UpdateTargets(fixture.targetsJSON); err != nil {
+		t.Fatalf("UpdateTargets() error = %v", err)
+	}
+
+	invalidPaths := []string{
+		`osquery\binary`,
+		`osquery\\binary`,
+		`C:\Windows\osquery.exe`,
+		`C:/Windows/osquery.exe`,
+		"../escape",
+		"/absolute/path",
+		"osquery//binary",
+		"osquery/./binary",
+		"osquery/",
+		"NUL.exe",
+		"COM1",
+		"folder.",
+		"folder ",
+		"bad|name",
+	}
+	for _, candidate := range invalidPaths {
+		t.Run(candidate, func(t *testing.T) {
+			if _, err := session.Target(candidate); !errors.Is(err, ErrInvalidTarget) {
+				t.Fatalf("Target(%q) error = %v, want ErrInvalidTarget", candidate, err)
+			}
+		})
+	}
+}
