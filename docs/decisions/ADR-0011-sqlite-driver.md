@@ -15,7 +15,7 @@ Field debe crear y consultar una base local desde Windows, macOS y Linux, sin re
 
 ## Decisión
 
-Adoptar `modernc.org/sqlite v1.63.0` para Field, con `modernc.org/libc v1.80.1` fijado explícitamente tal como exige la documentación del proyecto. Limitar el pool de base de datos a una conexión en Field y utilizar transacciones inmediatas para el registro secuencial de auditoría.
+Adoptar `modernc.org/sqlite v1.63.0` para Field, con `modernc.org/libc v1.80.1` fijado explícitamente tal como exige la documentación del proyecto. Las rutas se convierten a URI SQLite con autoridad vacía: `file:///C:/...` para Windows, rutas UNC normalizadas y paths relativos convertidos a absolutos antes de serializar. Limitar el pool de base de datos a una conexión en Field y utilizar transacciones inmediatas para el registro secuencial de auditoría.
 
 ## Consecuencias y controles
 
@@ -25,6 +25,7 @@ Adoptar `modernc.org/sqlite v1.63.0` para Field, con `modernc.org/libc v1.80.1` 
 - El mantenedor documenta una penalización de CPU en consultas CPU-bound frente a SQLite compilado en C. El registro de auditoría tiene una carga pequeña y principalmente transaccional, pero se medirá en hardware real.
 - La versión de `modernc.org/libc` debe coincidir exactamente con la fijada por el módulo sqlite.
 - Se probará build, apertura, cierre, recuperación y persistencia en Windows, macOS ARM64 y Linux antes de declarar estable el modo portable.
+- Las pruebas de URI cubren drive Windows (con y sin backslashes), UNC, POSIX, caracteres reservados y paths relativos; la suite incluye apertura real desde una ruta relativa.
 
 ## Reevaluación
 

@@ -263,34 +263,112 @@ func TestListDetectsMismatchBetweenEventJSONAndIndexedHash(t *testing.T) {
 	}
 }
 
-func TestSQLiteDSNHandlesWindowsDriveLetters(t *testing.T) {
-	dsn := sqliteDSN("C:/Users/runner/AppData/Local/SOPTRAZ/audit.sqlite")
+func TestSQLiteURIPath(t *testing.T) {
+	cwd, err := filepath.Abs(".")
+	if err != nil {
+		t.Fatalf("filepath.Abs(.) error = %v", err)
+	}
+
+	cases := []struct {
+		name    string
+		path    string
+		windows bool
+		want    string
+	}{
+		{
+			name:    "Windows drive path",
+			path:    "E:\\Shared\\Workspaces\\SOPTRAZ\\audit.sqlite",
+			windows: true,
+			want:    "/E:/Shared/Workspaces/SOPTRAZ/audit.sqlite",
+		},
+		{
+			name:    "Windows drive path with forward slashes",
+			path:    "c:/repo/audit.sqlite",
+			windows: true,
+			want:    "/c:/repo/audit.sqlite",
+		},
+		{
+			name:    "Windows UNC path",
+			path:    "\\\\server\\share\\repo\\audit.sqlite",
+			windows: true,
+			want:    "//server/share/repo/audit.sqlite",
+		},
+		{
+			name:    "POSIX absolute path",
+			path:    "/home/tech/SOPTRAZ/audit.sqlite",
+			windows: false,
+			want:    "/home/tech/SOPTRAZ/audit.sqlite",
+		},
+		{
+			name:    "POSIX path with URI control characters",
+			path:    "/home/tech/odd?dir#fragment/audit.sqlite",
+			windows: false,
+			want:    "/home/tech/odd?dir#fragment/audit.sqlite",
+		},
+		{
+			name:    "relative POSIX path becomes absolute",
+			path:    filepath.Join(".beads", "audit.sqlite"),
+			windows: false,
+			want:    filepath.Join(cwd, ".beads", "audit.sqlite"),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := sqliteURIPath(tc.path, tc.windows); got != tc.want {
+				t.Fatalf("sqliteURIPath(%q, windows=%v) = %q, want %q", tc.path, tc.windows, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSQLiteFileDSNWindowsDrivePathHasEmptyAuthority(t *testing.T) {
+	dsn := sqliteFileDSN("E:\\Shared\\Workspaces\\SOPTRAZ\\audit.sqlite", true)
+	want := "file:///E:/Shared/Workspaces/SOPTRAZ/audit.sqlite?_txlock=immediate"
+	if dsn != want {
+		t.Fatalf("DSN = %q, want %q", dsn, want)
+	}
+
 	parsed, err := url.Parse(dsn)
 	if err != nil {
 		t.Fatalf("url.Parse() error = %v", err)
 	}
-	if parsed.Scheme != "file" {
-		t.Fatalf("scheme = %q, want file", parsed.Scheme)
-	}
 	if parsed.Host != "" {
-		t.Fatalf("host = %q, want empty; drive letter must not become URI authority", parsed.Host)
+		t.Fatalf("URI authority = %q, want empty", parsed.Host)
 	}
-	if parsed.Path != "/C:/Users/runner/AppData/Local/SOPTRAZ/audit.sqlite" {
-		t.Fatalf("path = %q, want Windows drive path in URI path", parsed.Path)
+	if strings.Contains(dsn, "%5C") {
+		t.Fatalf("DSN contains escaped Windows separators: %q", dsn)
+	}
+}
+
+func TestSQLiteDSNRootsRelativePaths(t *testing.T) {
+	dsn := sqliteDSN(filepath.Join(".beads", "audit.sqlite"))
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatalf("url.Parse() error = %v", err)
+	}
+	if parsed.Host != "" || !strings.HasPrefix(dsn, "file:///") {
+		t.Fatalf("relative path DSN must have an empty authority: %q", dsn)
 	}
 	if parsed.Query().Get("_txlock") != "immediate" {
 		t.Fatalf("txlock = %q, want immediate", parsed.Query().Get("_txlock"))
 	}
 }
 
-func TestSQLiteDSNPreservesUnixAbsolutePaths(t *testing.T) {
-	dsn := sqliteDSN("/tmp/SOPTRAZ support/audit.sqlite")
-	parsed, err := url.Parse(dsn)
+func TestOpenAppendsToRelativeDatabasePath(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	store, err := Open(context.Background(), "audit.sqlite")
 	if err != nil {
-		t.Fatalf("url.Parse() error = %v", err)
+		t.Fatalf("Open(relative path) error = %v", err)
 	}
-	if parsed.Host != "" || parsed.Path != "/tmp/SOPTRAZ support/audit.sqlite" {
-		t.Fatalf("unexpected Unix file URI: host=%q path=%q", parsed.Host, parsed.Path)
+	defer store.Close()
+
+	event, err := store.Append(context.Background(), sampleDraft("intervention.created", "{\"source\":\"relative-path-test\"}"))
+	if err != nil {
+		t.Fatalf("Append() error = %v", err)
+	}
+	if err := store.Verify(context.Background(), event.InterventionID); err != nil {
+		t.Fatalf("Verify() error = %v", err)
 	}
 }
 

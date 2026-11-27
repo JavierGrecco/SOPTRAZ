@@ -52,6 +52,7 @@ Ambas ediciones compartirán contratos, procedimientos, motor de ejecución, dia
 - [Estrategia de integración](docs/architecture/integration-strategy.md)
 - [Contratos ejecutables](docs/contracts/README.md)
 - [Calidad y pruebas](docs/quality/testing-strategy.md)
+- [Revisión de fallos de CI](docs/quality/ci-failure-review.md)
 - [Roadmap](docs/roadmap/README.md)
 - [Registro de decisiones](docs/decisions/README.md)
 - [Contribución](CONTRIBUTING.md)

@@ -81,17 +81,68 @@ func Open(ctx context.Context, path string) (*Store, error) {
 // sqliteDSN converts a local absolute path into a SQLite file URI.
 // Windows drive letters must be part of the URI path (file:///C:/...), not
 // the authority (file://C:/...), otherwise SQLite rejects "C:" as a URI host.
-func sqliteDSN(absolutePath string) string {
-	filePath := filepath.ToSlash(absolutePath)
-	if len(filePath) >= 2 && filePath[1] == ':' {
-		filePath = "/" + filePath
-	}
+func sqliteDSN(path string) string {
+	return sqliteFileDSN(path, runtime.GOOS == "windows")
+}
 
-	fileURL := url.URL{Scheme: "file", Path: filePath}
+func sqliteFileDSN(path string, windows bool) string {
+	fileURL := url.URL{
+		Scheme: "file",
+		Path:   sqliteURIPath(path, windows),
+	}
 	query := fileURL.Query()
 	query.Set("_txlock", "immediate")
 	fileURL.RawQuery = query.Encode()
 	return fileURL.String()
+}
+
+// sqliteURIPath converts a filesystem path into the path component of a
+// file: URI that SQLite maps back to the same file.
+//
+// url.URL.String() writes "file://" before the path. A path that does not
+// begin with "/" therefore puts its first segment in the URI authority slot.
+// SQLite only accepts an empty authority or "localhost"; any other authority
+// is rejected with "invalid uri authority".
+//
+// Windows drive paths are normalized to /X:/path and UNC paths to
+// //server/share/path. Relative paths are made absolute before URI encoding.
+// The windows parameter keeps the Windows rules testable on every platform.
+func sqliteURIPath(path string, windows bool) string {
+	if !isRootedPath(path, windows) {
+		if absolutePath, err := filepath.Abs(path); err == nil {
+			path = absolutePath
+		}
+	}
+	if windows {
+		path = strings.ReplaceAll(path, "\\", "/")
+		if hasDriveLetter(path) {
+			path = "/" + path
+		}
+	}
+	return path
+}
+
+func isRootedPath(path string, windows bool) bool {
+	if strings.HasPrefix(path, "/") {
+		return true
+	}
+	if !windows {
+		return false
+	}
+	return strings.HasPrefix(path, "\\\\") || hasDriveLetter(path)
+}
+
+// hasDriveLetter reports whether path starts with an absolute Windows drive
+// designator such as "C:/" or "C:\\".
+func hasDriveLetter(path string) bool {
+	if len(path) < 3 || path[1] != ':' {
+		return false
+	}
+	drive := path[0]
+	if !((drive >= 'a' && drive <= 'z') || (drive >= 'A' && drive <= 'Z')) {
+		return false
+	}
+	return path[2] == '/' || path[2] == '\\'
 }
 
 func (s *Store) configure(ctx context.Context) error {

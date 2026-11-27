@@ -59,3 +59,7 @@ Cada procedimiento mutante requiere detección de objetivo, confirmación de dis
 ## CI inicial
 
 Compilar/probar CLI Go en runners Windows, macOS y Linux; ejecutar go vet y race detector en Linux. Ampliar al incorporar UI, Python y empaquetado.
+
+## Auditoría de CI
+
+El inventario de ejecuciones fallidas, sus causas raíz y las evidencias externas consultadas se mantiene en [Revisión de fallos de CI](ci-failure-review.md). CI debe ejecutar `go mod tidy -diff` y `go mod verify` además del formato, vet, pruebas multiplataforma y Race Detector.

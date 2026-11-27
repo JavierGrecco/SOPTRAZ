@@ -29,6 +29,11 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Verify Go module files
+        if: runner.os == 'Linux'
+        run: |
+          go mod tidy -diff
+          go mod verify
       - name: Verify formatting
         shell: bash
         run: |
