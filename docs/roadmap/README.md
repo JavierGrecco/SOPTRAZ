@@ -67,6 +67,21 @@ Runtime Go, registro local, IDs, acciones tipadas, permisos/riesgo, cancelación
 - [ ] Aplicar timeout, límites de stdout/stderr, validación de salida y auditoría de ejecución.
 - [ ] Probar timeout, cancelación, procesos hijos, salida excesiva y sustitución de binario en Windows, macOS y Linux.
 
+## M1.6 — Optimización y mantenimiento modular de Windows
+
+La vertical está registrada en [Issue #9](https://github.com/JavierGrecco/SOPTRAZ/issues/9) y definida por [ADR-0016](../decisions/ADR-0016-windows-optimization.md). Su alcance no adelanta la ejecución: las acciones mutantes dependen de M1.4 y M1.5.
+
+- [x] Investigar y registrar fuentes candidatas, licencias, límites y modelo de integración.
+- [x] Decidir arquitectura por catálogo declarativo propio, perfiles revisables y captura del estado real anterior (ADR-0016).
+- [ ] Definir JSON Schema/contrato de acción de optimización, incluidos compatibilidad por build/arquitectura, privilegios, riesgo, idempotencia, verificación y rollback exacto/parcial/no disponible.
+- [ ] Implementar baseline e inventario Windows de solo lectura dentro de Fase 2, sin requerir elevación innecesaria.
+- [ ] Auditar tweaks candidatos de WinUtil y Sophia individualmente; conservar código solo cuando licencia, soporte, side effects y restauración sean aceptables.
+- [ ] Habilitar la primera acción mutante de bajo riesgo solo detrás de M1.5, con estado previo, consentimiento, verificación y prueba en VM.
+- [ ] Implementar perfiles Mínimo, Equilibrado, Gaming, Batería, Privacidad y Personalizado como selecciones revisables de acciones compatibles, no como scripts opacos.
+- [ ] Incorporar accesos rápidos/menú extendido propio en Field después de que existan acciones seguras; la UI no contendrá lógica de sistema.
+- [ ] Validar Windows 10/11, builds, ediciones y x64/ARM64 según soporte de cada acción; probar reinicio, conflictos externos y rollback.
+- [ ] Medir antes/después antes de afirmar mejoras de FPS, latencia, RAM o disco.
+
 ## Fase 2 — Diagnóstico de solo lectura
 
 Completar primero M1.4 (catálogo TUF autenticado) y M1.5 (supervisor de procesos restringido): ruta del ejecutable resuelta desde manifiesto verificado, hash/versión, allowlist de argumentos tipados sin shell, timeout, cancelación, límites de salida, códigos de salida estructurados y registro de auditoría. Una vez probado, integrar osquery como primera POC opcional con consultas predefinidas, extensiones deshabilitadas y artefactos oficiales fijados por SO/arquitectura/hash. No ejecutar SQL libre ni instalar un servicio residente en esta etapa.
