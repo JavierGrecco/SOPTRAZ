@@ -291,3 +291,34 @@ Las páginas consultadas documentan capacidades y declaraciones del proveedor, p
 Adoptar la experiencia de Toolbox agrupada y contextual como capacidad propia de SOPTRAZ, manteniendo separadas presentación, catálogo de acciones y ejecución. La primera versión utilizará herramientas nativas y diagnósticos read-only. Los complementos de terceros serán enlaces o instalaciones bajo demanda desde fuentes verificadas. El menú de Explorer será opcional y posterior, y toda acción que modifique Windows seguirá condicionada a M1.4/M1.5.
 
 Esta decisión incorpora el valor funcional que observamos en MiniOS sin heredar sus binarios, licencias, ISO, presets ni cadena de mantenimiento.
+
+
+## 11. Segunda verificación del catálogo y comparativa Toolkit vs. DELTA
+
+La comparativa oficial de DProjects permite concretar mejor la frontera entre los productos:
+
+| Capacidad publicada | MiniOS Toolkit | DELTA |
+|---|---|---|
+| DirectX, Visual C++ y .NET | Sí, automático | Sí, automático |
+| Instalar software (navegadores, librerías y programas) | No indicado en la comparativa | Sí |
+| MENU Extendido | Versión normal | Versión avanzada |
+| Reparación de DLL faltantes en juegos | Sí | Sí |
+| Personalización de escritorio/íconos/temas | Básica | Avanzada |
+| Módulos especializados | Limitados | Más de 12 |
+| Tweaks de GPU para NVIDIA/AMD/Intel | No indicado como función Toolkit | Sí |
+| Tweaks de CPU, servicios y prioridades | No indicado como función Toolkit | Sí |
+| Optimización SSD/M.2/HDD y compresión | No indicado como función Toolkit | Sí |
+| Debloat selectivo de Copilot/telemetría/IA | No indicado como función Toolkit | Sí |
+
+DProjects caracteriza ambos como asistentes de post-instalación de una sola sesión, con DELTA como opción más profunda. Su página describe detección de portátil/sobremesa, GPU y discos; muestra los módulos y automatiza la aplicación en un flujo guiado. La comparativa es una declaración del proveedor, no un inventario de código ni una validación independiente de seguridad o reversibilidad.
+
+### Catálogo público a la fecha de corte
+
+En la página pública de descargas se listan, entre otros, Gaming Library v5.0, MENU Extendido v10.0, MonitorHUB v1.0.76, Replay v1.0.49, StartOne v1.0.69, Krenshot v1.0.72, Fortnite Cleaner v2.0 y NoUpdates v1.0.15. Esto es información del catálogo en la fecha de corte, no una certificación de autenticidad de los binarios ni prueba de qué herramientas exactas trae MENU Extendido.
+
+La misma página describe NoUpdates como una herramienta que puede activar, desactivar o pausar Windows Update incluso hasta 2099. SOPTRAZ debe excluir esta capacidad de perfiles recomendados y no ofrecer la desactivación permanente de actualizaciones. Las actualizaciones de seguridad no son un bloatware que debamos eliminar.
+
+La página de descargas también recomienda a sus usuarios crear una excepción temporal del antivirus si este marca herramientas propias de DProjects. Esa recomendación no es una señal concluyente de que el archivo sea malicioso, pero SOPTRAZ **no la adoptará**: no pediremos desactivar protección ni agregar exclusiones para ejecutar complementos. Un archivo que no pueda verificarse se bloquea y se informa.
+
+El catálogo indica que el menú y las aplicaciones de DProjects son compatibles con Windows 10 21H2 o posterior y Windows 11. SOPTRAZ mantendrá su propia matriz de soporte basada en pruebas, y solo dará soporte a instalaciones de Windows con licencia válida y procedencia conocida; no tomará como objetivo la compatibilidad con imágenes no oficiales.
+
