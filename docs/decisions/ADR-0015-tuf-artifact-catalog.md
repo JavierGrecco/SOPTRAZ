@@ -31,7 +31,7 @@ Field es offline-first. La confianza no puede depender de descargar una clave ju
 ## Consecuencias
 
 - Se aprovecha una implementación oficial del protocolo en lugar de mantener criptografía y actualización propietarias.
-- La primera capa online SOPTRAZ usa `updater.Updater` y `GetTargetInfo` oficiales para resolver delegaciones; limita el fetcher, bloquea redirects y serializa el Updater. Las pruebas de integración usan un repositorio TUF de laboratorio y no descargan el binario target.
+- La primera capa online SOPTRAZ usa `updater.Updater` y `GetTargetInfo` oficiales para resolver delegaciones; limita el fetcher, bloquea redirects y serializa el Updater. Cada refresh crea una instancia nueva porque go-tuf permite un único refresh por instancia; un refresh fallido invalida el Updater en memoria. Las pruebas de integración usan un repositorio TUF de laboratorio y no descargan el binario target.
 - Esta integración todavía requiere un `TrustAnchor` entregado externamente. No representa bootstrap de root de producción, persistencia anti-rollback completa ni soporte offline de producción.
 - La integración añade dependencias transitivas relevantes, incluida Sigstore; se revisarán SBOM, licencias y avisos en cada actualización.
 - go-tuf/v2.5.0 es reciente (publicado 2026-11-25): la adopción queda condicionada a pruebas de seguridad y matriz Windows/macOS/Linux.
