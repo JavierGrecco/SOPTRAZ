@@ -98,6 +98,32 @@ func TestDescriptorRejectsTraversalAndNonCanonicalPaths(t *testing.T) {
 	}
 }
 
+func TestDescriptorRejectsWindowsSpecialPathComponents(t *testing.T) {
+	base := testDescriptor([]byte("artifact"))
+	unsafePaths := []string{
+		`C:relative.exe`,
+		`osqueryi.exe:alternate-stream`,
+		`NUL.txt`,
+		`CON`,
+		`COM1.exe`,
+		`LPT9.log`,
+		`COM¹`,
+		`folder.`,
+		`folder `,
+		`bad|name`,
+		`bad<name`,
+	}
+	for _, candidate := range unsafePaths {
+		t.Run(candidate, func(t *testing.T) {
+			value := base
+			value.RelativePath = candidate
+			if err := value.Validate(); err == nil {
+				t.Fatalf("non-portable Windows path component %q must be rejected", candidate)
+			}
+		})
+	}
+}
+
 func TestDescriptorRejectsInvalidDigestAndSourceURI(t *testing.T) {
 	base := testDescriptor([]byte("bytes"))
 	badDigest := base

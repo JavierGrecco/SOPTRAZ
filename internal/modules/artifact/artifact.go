@@ -1,5 +1,7 @@
 // Package artifact resolves and verifies already-installed third-party executables.
-// It never downloads, installs or launches an artifact.
+// It never downloads, installs or launches an artifact. Descriptors must come from
+// a separately trusted registry: matching SHA-256 proves byte correspondence to
+// that descriptor, not publisher identity or release authenticity.
 package artifact
 
 import (
@@ -69,6 +71,28 @@ type Descriptor struct {
 	SourceURI    string
 }
 
+// portablePathComponent rejects names that can be interpreted specially by
+// Windows filesystems, even when the registry is read on Linux or macOS.
+func portablePathComponent(part string) bool {
+	if part == "" || strings.TrimRight(part, " .") != part {
+		return false
+	}
+	for _, character := range part {
+		if character < 0x20 || strings.ContainsRune(`<>":|?*`, character) {
+			return false
+		}
+	}
+	base := strings.ToUpper(strings.SplitN(part, ".", 2)[0])
+	switch base {
+	case "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$", "CLOCK$",
+		"COM¹", "COM²", "COM³", "LPT¹", "LPT²", "LPT³":
+		return false
+	}
+	if len(base) == 4 && (strings.HasPrefix(base, "COM") || strings.HasPrefix(base, "LPT")) && base[3] >= '1' && base[3] <= '9' {
+		return false
+	}
+	return true
+}
 func (descriptor Descriptor) Validate() error {
 	if !artifactIDPattern.MatchString(descriptor.ID) || len(descriptor.ID) > 128 {
 		return fmt.Errorf("%w: module/artefacto ID inválido", ErrInvalidDescriptor)
@@ -95,8 +119,8 @@ func (descriptor Descriptor) Validate() error {
 		return fmt.Errorf("%w: la ruta contiene segmentos ambiguos", ErrInvalidDescriptor)
 	}
 	for _, part := range strings.Split(descriptor.RelativePath, "/") {
-		if part == "" || part == "." || part == ".." {
-			return fmt.Errorf("%w: la ruta contiene un segmento no permitido", ErrInvalidDescriptor)
+		if part == "" || part == "." || part == ".." || !portablePathComponent(part) {
+			return fmt.Errorf("%w: la ruta contiene un segmento no permitido o no portable", ErrInvalidDescriptor)
 		}
 	}
 	u, err := url.Parse(descriptor.SourceURI)
