@@ -14,5 +14,7 @@ Las decisiones aceptadas se mantienen aquí. Una ADR registra contexto, alternat
 | ADR-0008 | Field y Hub con contratos compartidos | Aceptada |
 | ADR-0009 | JSON Schema Draft 2020-12 para contratos | Aceptada |
 | ADR-0010 | Ciclo de vida explícito de intervenciones | Aceptada |
+| ADR-0011 | Driver SQLite sin CGO para Field | Aceptada para primera implementación |
+| ADR-0012 | Registro append-only con hash chain por intervención | Aceptada |
 
 Pendiente: licencia de distribución, cifrado local, firmas de releases, packaging Python, sincronización e identidad antes de implementar esas funciones.

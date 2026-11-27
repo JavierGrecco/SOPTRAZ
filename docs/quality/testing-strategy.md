@@ -39,6 +39,14 @@ Cada procedimiento mutante requiere detección de objetivo, confirmación de dis
 - Pruebas de prompt injection en logs y salidas.
 - IA nunca amplía permisos.
 
+## Auditoría
+
+- Verificar secuencia, actor, previousHash, hash y cabecera final.
+- Rechazar cambios y borrados SQL ordinarios de eventos.
+- Probar detección de alteración del JSON, del hash indexado y de truncamiento.
+- Probar concurrencia de escritores y persistencia tras cerrar/reabrir la base.
+- No confundir hash chain local con almacenamiento WORM; checkpoints externos firmados se probarán por separado.
+
 ## Analítica Python
 
 - Fixtures JSON compartidos.

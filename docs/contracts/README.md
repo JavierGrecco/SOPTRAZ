@@ -39,6 +39,12 @@ El límite inicial es de 1 MiB por documento. Solo se aceptan tipos incorporados
 
 La validación estructural no sustituye la autorización en tiempo de ejecución, la comprobación criptográfica de firmas, la verificación de hashes de artefactos ni la evaluación semántica del activo.
 
+## Eventos de auditoría
+
+El esquema de evento define el formato serializado. La secuencia, el enlace previousHash y el hash se asignan en el store al anexar el evento. La canonicalización y el algoritmo de la versión 1.0.0 se describen en [Modelo de auditoría](../architecture/audit-model.md).
+
+La validación del JSON no sustituye `audit.Store.Verify`: un evento estructuralmente válido puede formar parte de una cadena rota.
+
 ## Versionado
 
 La versión del contrato (`schemaVersion`) se separa de la versión del módulo/acción. Cambios incompatibles requieren una nueva versión de esquema y migración. No se modifica silenciosamente un esquema publicado.

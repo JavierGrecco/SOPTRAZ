@@ -64,6 +64,12 @@ No usar eventos como sustituto de llamadas síncronas cuando se requiere respues
 - Cancelación y recuperación documentadas.
 - Resultado verificado independientemente del exit code.
 
+## Auditoría
+
+La lógica de eventos, canonicalización, hash y contrato vive en `internal/audit`. Los adaptadores persisten esos eventos detrás de `audit.Store`. Field utiliza `internal/storage/sqliteaudit`; Hub tendrá un adaptador PostgreSQL que deberá pasar los mismos fixtures y pruebas de contrato.
+
+La cadena de hashes es por intervención. Los triggers SQLite previenen UPDATE/DELETE accidentales; un checkpoint firmado fuera del archivo será necesario para detectar una reescritura total por un administrador con acceso a la base.
+
 ## Field y Hub
 
 Field funciona localmente con SQLite y no requiere servidor. Hub incorpora servicios multiusuario y PostgreSQL. La sincronización se realiza mediante eventos/paquetes versionados y outbox/inbox idempotentes; nunca se copia una base SQLite abierta a través de red.

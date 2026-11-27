@@ -31,14 +31,14 @@ Ambas ediciones compartirán contratos, procedimientos, motor de ejecución, dia
 - **TypeScript + React**: interfaz de usuario compartida.
 - **Python**: motor canónico de analítica numérica, estadística y modelos; se incorpora cuando exista una capacidad analítica real que lo requiera.
 - **PowerShell y herramientas nativas**: adaptadores del sistema operativo; no contienen reglas de negocio duplicadas.
-- **SQLite**: almacenamiento local/portable.
+- **SQLite**: almacenamiento local/portable, con el driver sin CGO `modernc.org/sqlite`.
 - **PostgreSQL**: almacenamiento multiusuario de Hub.
 - **JSON Schema / OpenAPI**: contratos versionados entre componentes y lenguajes.
 - **Ollama**: adaptador opcional para modelos locales.
 
 ## Estado del proyecto
 
-**Etapa: fundación arquitectónica y contratos iniciales.** La CLI Go permite consultar versión, información no identificable del host y validar manifiestos, acciones, intervenciones y eventos JSON. Estas capacidades no ejecutan reparaciones ni modifican el equipo.
+**Etapa: fundación arquitectónica y núcleo inicial.** La CLI Go permite consultar versión, información no identificable del host y validar manifiestos, acciones, intervenciones y eventos JSON. El dominio de auditoría y su adaptador SQLite ya permiten anexar y verificar eventos encadenados por intervención. Todavía no hay reparaciones de sistemas ni UI de Field/Hub.
 
 ## Documentación
 
@@ -46,6 +46,7 @@ Ambas ediciones compartirán contratos, procedimientos, motor de ejecución, dia
 - [Arquitectura general](docs/architecture/overview.md)
 - [Selección tecnológica](docs/architecture/technology-strategy.md)
 - [Límites y contratos de módulos](docs/architecture/module-contracts.md)
+- [Modelo de auditoría](docs/architecture/audit-model.md)
 - [Field y Hub](docs/architecture/editions.md)
 - [Política de IA](docs/architecture/ai-policy.md)
 - [Estrategia de integración](docs/architecture/integration-strategy.md)

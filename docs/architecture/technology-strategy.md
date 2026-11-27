@@ -19,7 +19,7 @@ Un dominio tiene un núcleo canónico. Otros componentes lo consumen mediante co
 | Adaptación Windows | PowerShell y APIs nativas | Administración y reparación Windows |
 | Adaptación macOS | APIs/utilidades nativas Apple | Respetar modelo operativo Apple |
 | Adaptación Linux | APIs/utilidades nativas | Respetar diferencias entre distribuciones |
-| Almacenamiento portable | SQLite | Base local embebida |
+| Almacenamiento portable | SQLite mediante modernc.org/sqlite | Driver database/sql sin CGO para Windows, macOS y Linux |
 | Almacenamiento multiusuario | PostgreSQL | Concurrencia e integridad |
 | IA remota/local | Adaptadores Go detrás de AI Gateway | Enrutamiento y políticas |
 | Contratos | JSON Schema y OpenAPI | Interoperabilidad sin acoplamiento interno |
@@ -47,6 +47,10 @@ Field no requerirá que el usuario instale Python. Cuando exista una capacidad a
 ## UI y Wails
 
 Wails v3 es el contenedor desktop elegido para el prototipo. Tiene soporte desktop estable para Windows, macOS y Linux, usa el WebView del sistema y requiere Go 1.26+. Linux necesita GTK/WebKit compatibles; se ofrecerá modo web local para hosts fuera de la matriz soportada.
+
+## Persistencia SQLite Field
+
+La primera implementación Field usa `modernc.org/sqlite` v1.63.0 con `modernc.org/libc` v1.80.1 fijado explícitamente. El pool tiene una sola conexión y las escrituras de auditoría usan transacciones inmediatas. El driver se eligió para no exigir CGO ni toolchains C en los builds portables. Sus dependencias y avisos de terceros deberán aparecer en el SBOM de releases. El rendimiento CPU-bound y el tamaño del binario deben medirse antes de declarar Field estable.
 
 ## Versionado y reproducibilidad
 

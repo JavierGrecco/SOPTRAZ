@@ -4,13 +4,14 @@
 
 - Ejecutable local/portable.
 - Offline-first, sin servidor obligatorio.
-- SQLite local.
+- SQLite local con driver sin CGO.
 - Diagnóstico e inventario del host conectado.
 - Procedimientos y herramientas locales.
 - Sesiones de intervención.
+- Auditoría append-only con hash chain por intervención.
 - Aprobación según riesgo.
 - Informes HTML/PDF/JSON.
-- Exportación de paquetes de intervención.
+- Exportación de paquetes de intervención (pendiente).
 - IA opt-in y fallback local.
 - Sin agente residente obligatorio.
 
@@ -26,7 +27,7 @@ Field no guarda claves API ni secretos del cliente en el pendrive por defecto. U
 - RBAC con alcance por organización/activo.
 - Inventario y políticas centrales.
 - Tareas, aprobaciones y SLA configurables.
-- Auditoría consolidada.
+- Auditoría consolidada con el mismo contrato lógico que Field.
 - Conectores ITSM y endpoint.
 - AI Gateway organizacional.
 - Agente residente opcional y expresamente enrolado.

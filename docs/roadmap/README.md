@@ -13,12 +13,15 @@ El roadmap prioriza una vertical funcional confiable antes de ampliar herramient
 - [x] Definir esquemas JSON para módulos, acciones, intervenciones y eventos.
 - [x] Añadir validador Go de contratos.
 - [x] Implementar y probar transiciones del ciclo de intervención.
-- [ ] Completar el modelo de auditoría append-only y los paquetes Field → Hub.
+- [x] Definir interfaz de auditoría y adaptador SQLite Field.
+- [x] Implementar hash chain por intervención, triggers append-only y verificación.
+- [ ] Implementar checkpoints firmados fuera de la base.
+- [ ] Completar paquetes de intervención y sincronización Field → Hub.
 - [ ] Definir ADR de firma de releases y política de distribución.
 
 ## Fase 1 — Core y auditoría
 
-Runtime Go, registro local, IDs, acciones tipadas, permisos/riesgo, cancelación, timeout, SQLite y migraciones. La validación de contratos se utiliza como puerta de entrada.
+Runtime Go, registro local, IDs, acciones tipadas, permisos/riesgo, cancelación, timeout, SQLite y migraciones. La validación de contratos se utiliza como puerta de entrada. Completar checkpoints externos, recuperación ante corrupción, exportación verificable y retención.
 
 ## Fase 2 — Diagnóstico de solo lectura
 
