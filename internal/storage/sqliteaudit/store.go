@@ -54,12 +54,7 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		return nil, fmt.Errorf("crear el directorio de auditoría: %w", err)
 	}
 
-	fileURL := url.URL{Scheme: "file", Path: filepath.ToSlash(absolutePath)}
-	query := fileURL.Query()
-	query.Set("_txlock", "immediate")
-	fileURL.RawQuery = query.Encode()
-
-	db, err := sql.Open("sqlite", fileURL.String())
+	db, err := sql.Open("sqlite", sqliteDSN(absolutePath))
 	if err != nil {
 		return nil, fmt.Errorf("abrir la base SQLite de auditoría: %w", err)
 	}
@@ -81,6 +76,22 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		return nil, err
 	}
 	return store, nil
+}
+
+// sqliteDSN converts a local absolute path into a SQLite file URI.
+// Windows drive letters must be part of the URI path (file:///C:/...), not
+// the authority (file://C:/...), otherwise SQLite rejects "C:" as a URI host.
+func sqliteDSN(absolutePath string) string {
+	filePath := filepath.ToSlash(absolutePath)
+	if len(filePath) >= 2 && filePath[1] == ':' {
+		filePath = "/" + filePath
+	}
+
+	fileURL := url.URL{Scheme: "file", Path: filePath}
+	query := fileURL.Query()
+	query.Set("_txlock", "immediate")
+	fileURL.RawQuery = query.Encode()
+	return fileURL.String()
 }
 
 func (s *Store) configure(ctx context.Context) error {

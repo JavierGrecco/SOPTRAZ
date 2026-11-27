@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -259,6 +260,37 @@ func TestListDetectsMismatchBetweenEventJSONAndIndexedHash(t *testing.T) {
 	}
 	if _, err := store.List(ctx, testInterventionID); !errors.Is(err, ErrCorruptChain) {
 		t.Fatalf("List() error = %v, want ErrCorruptChain", err)
+	}
+}
+
+func TestSQLiteDSNHandlesWindowsDriveLetters(t *testing.T) {
+	dsn := sqliteDSN("C:/Users/runner/AppData/Local/SOPTRAZ/audit.sqlite")
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatalf("url.Parse() error = %v", err)
+	}
+	if parsed.Scheme != "file" {
+		t.Fatalf("scheme = %q, want file", parsed.Scheme)
+	}
+	if parsed.Host != "" {
+		t.Fatalf("host = %q, want empty; drive letter must not become URI authority", parsed.Host)
+	}
+	if parsed.Path != "/C:/Users/runner/AppData/Local/SOPTRAZ/audit.sqlite" {
+		t.Fatalf("path = %q, want Windows drive path in URI path", parsed.Path)
+	}
+	if parsed.Query().Get("_txlock") != "immediate" {
+		t.Fatalf("txlock = %q, want immediate", parsed.Query().Get("_txlock"))
+	}
+}
+
+func TestSQLiteDSNPreservesUnixAbsolutePaths(t *testing.T) {
+	dsn := sqliteDSN("/tmp/SOPTRAZ support/audit.sqlite")
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatalf("url.Parse() error = %v", err)
+	}
+	if parsed.Host != "" || parsed.Path != "/tmp/SOPTRAZ support/audit.sqlite" {
+		t.Fatalf("unexpected Unix file URI: host=%q path=%q", parsed.Host, parsed.Path)
 	}
 }
 
