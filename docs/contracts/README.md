@@ -11,7 +11,7 @@ Los contratos externos usan JSON Schema Draft 2020-12. El runtime Go valida los 
 | intervention | intervention.schema.json | Registro portable de una intervención técnica |
 | event | intervention-event.schema.json | Evento ordenado y correlacionable de la intervención |
 
-Los esquemas se encuentran en `internal/contracts/schemas/`; ejemplos verificables están en `examples/contracts/`.
+Los esquemas están en `internal/contracts/schemas/`; ejemplos verificables, en `examples/contracts/`.
 
 ## Validar desde la CLI
 
@@ -22,24 +22,23 @@ soptraz validate intervention examples/contracts/intervention.example.json
 soptraz validate event examples/contracts/intervention-event.example.json
 ~~~
 
-El comando es de solo lectura. Devuelve:
-- código 0: documento válido;
-- código 1: archivo ausente, JSON inválido o contrato no válido;
-- código 2: argumentos incorrectos.
+El comando es de solo lectura. Código de salida: 0 documento válido; 1 archivo ausente, JSON inválido o contrato inválido; 2 argumentos incorrectos.
 
-El límite inicial es de 1 MiB por documento. El validador solo acepta los tipos incorporados y no resuelve referencias de esquema externas.
+El límite inicial es de 1 MiB por documento. Solo se aceptan tipos incorporados. No se descargan esquemas remotos.
 
-## Reglas estructurales iniciales
+## Reglas estructurales
 
-- Se rechazan propiedades desconocidas en los objetos de primer nivel y objetos anidados cerrados.
-- Los módulos `stable` requieren firma Ed25519 además de SHA-256.
+- Se rechazan propiedades desconocidas en objetos cerrados.
+- Los módulos `stable` requieren una firma Ed25519 declarada además de SHA-256.
 - Las acciones de riesgo `high` o `critical` requieren aprobación.
-- Las acciones `critical` requieren además privilegios administrativos.
-- Las fechas se validan como date-time y los identificadores de intervención/evento como UUID.
-- Los contratos declaran compatibilidad de plataforma y arquitectura.
+- Las acciones `critical` requieren también privilegios administrativos.
+- Efectos destructivos (borrar datos, escribir firmware o arranque) exigen riesgo crítico, administrador y aprobación.
+- La instalación de drivers exige riesgo alto/crítico, administrador y aprobación.
+- Los esquemas de entrada/salida de cada acción se compilan como JSON Schema y no pueden resolver referencias externas.
+- Fechas e identificadores se validan como date-time y UUID.
 
-La validación de esquema no sustituye la autorización en tiempo de ejecución, comprobación de firmas, verificación de hash de artefactos ni evaluación semántica del activo. Esas capas se implementarán separadamente.
+La validación estructural no sustituye la autorización en tiempo de ejecución, la comprobación criptográfica de firmas, la verificación de hashes de artefactos ni la evaluación semántica del activo.
 
 ## Versionado
 
-La versión del contrato (`schemaVersion`) se separa de la versión del módulo/acción. Cambios incompatibles crean una nueva versión de esquema y una ventana de migración. No se cambia un esquema publicado de forma silenciosa.
+La versión del contrato (`schemaVersion`) se separa de la versión del módulo/acción. Cambios incompatibles requieren una nueva versión de esquema y migración. No se modifica silenciosamente un esquema publicado.

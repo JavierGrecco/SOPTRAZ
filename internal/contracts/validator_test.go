@@ -70,6 +70,28 @@ func TestActionRequiresAdminAndApprovalForCriticalRisk(t *testing.T) {
 	}
 }
 
+func TestActionCompilesNestedSchemasAndBlocksRemoteReferences(t *testing.T) {
+	raw := string(readExample(t, "action-definition.example.json"))
+
+	invalidNested := strings.Replace(raw,
+		"\"properties\": {},",
+		"\"properties\": {\"device\": {\"type\": \"not-a-json-schema-type\"}},",
+		1,
+	)
+	if err := ValidateDocument("action", []byte(invalidNested)); err == nil {
+		t.Fatal("invalid nested parameter schema must be rejected")
+	}
+
+	remoteReference := strings.Replace(raw,
+		"\"inputSchema\": {",
+		"\"inputSchema\": {\"$ref\": \"https://example.invalid/external.json\",",
+		1,
+	)
+	if err := ValidateDocument("action", []byte(remoteReference)); err == nil {
+		t.Fatal("external parameter-schema references must be rejected")
+	}
+}
+
 func TestUnknownKindMalformedJSONTrailingJSONAndSizeLimitAreRejected(t *testing.T) {
 	if err := ValidateDocument("unknown", []byte("{}")); err == nil {
 		t.Fatal("unknown contract kind must be rejected")

@@ -29,6 +29,12 @@ var (
 	schemaInitErr   error
 )
 
+type denyExternalSchemaLoader struct{}
+
+func (denyExternalSchemaLoader) Load(url string) (any, error) {
+	return nil, fmt.Errorf("referencia de esquema externa deshabilitada: %s", url)
+}
+
 func loadSchemas() {
 	schemaOnce.Do(func() {
 		compiledSchemas = make(map[string]*jsonschema.Schema, len(schemaFiles))
@@ -103,6 +109,39 @@ func ValidateDocument(kind string, raw []byte) error {
 
 	if err := schema.Validate(document); err != nil {
 		return fmt.Errorf("contrato %s inválido: %w", kind, err)
+	}
+	if kind == "action" {
+		if err := validateActionParameterSchemas(document); err != nil {
+			return fmt.Errorf("esquema de parámetros/respuesta inválido: %w", err)
+		}
+	}
+	return nil
+}
+
+func validateActionParameterSchemas(document any) error {
+	action, ok := document.(map[string]any)
+	if !ok {
+		return fmt.Errorf("la definición de acción debe ser un objeto")
+	}
+
+	for _, field := range []string{"inputSchema", "outputSchema"} {
+		schemaDocument, ok := action[field].(map[string]any)
+		if !ok {
+			return fmt.Errorf("%s debe ser un objeto JSON Schema", field)
+		}
+
+		compiler := jsonschema.NewCompiler()
+		compiler.DefaultDraft(jsonschema.Draft2020)
+		compiler.AssertFormat()
+		compiler.UseLoader(denyExternalSchemaLoader{})
+
+		location := "urn:soptraz:action:" + field
+		if err := compiler.AddResource(location, schemaDocument); err != nil {
+			return fmt.Errorf("registrar %s: %w", field, err)
+		}
+		if _, err := compiler.Compile(location); err != nil {
+			return fmt.Errorf("compilar %s: %w", field, err)
+		}
 	}
 	return nil
 }
