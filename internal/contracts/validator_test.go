@@ -37,6 +37,32 @@ func TestExampleContractsValidate(t *testing.T) {
 	}
 }
 
+func TestCheckpointSchemaAcceptsEd25519AndECDSAP256(t *testing.T) {
+	raw := string(readExample(t, "audit-checkpoint.example.json"))
+	for _, algorithm := range []string{"ed25519", "ecdsa-p256-sha256"} {
+		t.Run(algorithm, func(t *testing.T) {
+			candidate := strings.Replace(raw, `"signatureAlgorithm": "ed25519"`, `"signatureAlgorithm": "`+algorithm+`"`, 1)
+			if candidate == raw && algorithm != "ed25519" {
+				t.Fatal("test fixture did not replace signatureAlgorithm")
+			}
+			if err := ValidateDocument("checkpoint", []byte(candidate)); err != nil {
+				t.Fatalf("checkpoint schema rejected %s: %v", algorithm, err)
+			}
+		})
+	}
+}
+
+func TestCheckpointSchemaRejectsUnsupportedSignatureAlgorithm(t *testing.T) {
+	raw := string(readExample(t, "audit-checkpoint.example.json"))
+	unsupported := strings.Replace(raw, `"signatureAlgorithm": "ed25519"`, `"signatureAlgorithm": "rsa-pss"`, 1)
+	if unsupported == raw {
+		t.Fatal("test fixture did not replace signatureAlgorithm")
+	}
+	if err := ValidateDocument("checkpoint", []byte(unsupported)); err == nil {
+		t.Fatal("unsupported checkpoint signature algorithm must be rejected")
+	}
+}
+
 func TestManifestRejectsUnknownFieldsAndUnsignedStableModules(t *testing.T) {
 	raw := string(readExample(t, "module-manifest.example.json"))
 	unknown := strings.Replace(raw, "\"description\":", "\"unexpected\": true, \"description\":", 1)

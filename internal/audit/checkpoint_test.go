@@ -118,6 +118,23 @@ func TestCheckpointRejectsInvalidSignatureEncoding(t *testing.T) {
 	}
 }
 
+func TestCheckpointRejectsValidLengthSignatureBitFlip(t *testing.T) {
+	checkpoint, privateKey := checkpointTestValue(t)
+	signed, err := SignCheckpoint(checkpoint, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signature, err := base64.StdEncoding.DecodeString(signed.Signature)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signature[len(signature)/2] ^= 0x01
+	signed.Signature = base64.StdEncoding.EncodeToString(signature)
+	if err := VerifySignedCheckpoint(signed, privateKey.Public().(ed25519.PublicKey)); err == nil {
+		t.Fatal("bit-flipped signature with valid encoding must be rejected")
+	}
+}
+
 func TestCheckpointDigestIsVerifiedStatementDigestAndChainSensitive(t *testing.T) {
 	checkpoint, privateKey := checkpointTestValue(t)
 	signed, err := SignCheckpoint(checkpoint, privateKey)
@@ -364,7 +381,13 @@ func TestVerifyCheckpointWithTrustStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	publicKey := privateKey.Public().(ed25519.PublicKey)
-	resolver := checkpointTestResolver{keyID: signed.Checkpoint.KeyID, key: publicKey}
+	resolver := checkpointTestResolver{
+		keyID: signed.Checkpoint.KeyID,
+		key: CheckpointPublicKey{
+			SignatureAlgorithm: CheckpointSignatureAlgorithm,
+			Ed25519:             publicKey,
+		},
+	}
 
 	if err := VerifyCheckpointWithTrustStore(context.Background(), signed, resolver); err != nil {
 		t.Fatalf("VerifyCheckpointWithTrustStore() error = %v", err)

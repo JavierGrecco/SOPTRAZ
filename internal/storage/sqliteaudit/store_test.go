@@ -2,7 +2,10 @@ package sqliteaudit
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -90,9 +93,16 @@ func TestCreateCheckpointUsesVerifiedSnapshotAndExternalSignature(t *testing.T) 
 	seed := sha256.Sum256([]byte("SOPTRAZ sqlite checkpoint adapter test key"))
 	privateKey := ed25519.NewKeyFromSeed(seed[:])
 	publicKey := privateKey.Public().(ed25519.PublicKey)
+	identity, err := audit.CheckpointKeyIdentityFromPublicKey(audit.CheckpointPublicKey{
+		SignatureAlgorithm: audit.CheckpointSignatureAlgorithm,
+		Ed25519:             publicKey,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	createdAt := time.Date(2026, 11, 27, 21, 30, 0, 0, time.UTC)
 	previousDigest := strings.Repeat("b", 64)
-	checkpoint, err := store.CreateCheckpoint(ctx, testInterventionID, previousDigest, publicKey, createdAt)
+	checkpoint, err := store.CreateCheckpoint(ctx, testInterventionID, previousDigest, identity, createdAt)
 	if err != nil {
 		t.Fatalf("CreateCheckpoint() error = %v", err)
 	}
@@ -117,17 +127,56 @@ func TestCreateCheckpointUsesVerifiedSnapshotAndExternalSignature(t *testing.T) 
 	}
 }
 
+func TestCreateCheckpointSupportsECDSAP256Identity(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	if _, err := store.Append(ctx, sampleDraft("intervention.created", `{"source":"p256"}`)); err != nil {
+		t.Fatal(err)
+	}
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, err := audit.CheckpointKeyIdentityFromPublicKey(audit.CheckpointPublicKey{
+		SignatureAlgorithm: audit.CheckpointSignatureAlgorithmECDSAP256SHA256,
+		ECDSAP256:           &privateKey.PublicKey,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpoint, err := store.CreateCheckpoint(
+		ctx,
+		testInterventionID,
+		"",
+		identity,
+		time.Date(2026, 11, 27, 21, 45, 0, 0, time.UTC),
+	)
+	if err != nil {
+		t.Fatalf("CreateCheckpoint() with P-256 identity: %v", err)
+	}
+	if checkpoint.SignatureAlgorithm != audit.CheckpointSignatureAlgorithmECDSAP256SHA256 || checkpoint.KeyID != identity.KeyID {
+		t.Fatalf("checkpoint did not preserve P-256 signer identity: %#v", checkpoint)
+	}
+}
+
 func TestCreateCheckpointRejectsEmptyLedger(t *testing.T) {
 	store := openTestStore(t)
 	seed := sha256.Sum256([]byte("SOPTRAZ empty checkpoint adapter test key"))
 	privateKey := ed25519.NewKeyFromSeed(seed[:])
 	publicKey := privateKey.Public().(ed25519.PublicKey)
+	identity, err := audit.CheckpointKeyIdentityFromPublicKey(audit.CheckpointPublicKey{
+		SignatureAlgorithm: audit.CheckpointSignatureAlgorithm,
+		Ed25519:             publicKey,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	_, err := store.CreateCheckpoint(
+	_, err = store.CreateCheckpoint(
 		context.Background(),
 		testInterventionID,
 		"",
-		publicKey,
+		identity,
 		time.Date(2026, 11, 27, 21, 30, 0, 0, time.UTC),
 	)
 	if err == nil || !strings.Contains(err.Error(), "sin eventos") {

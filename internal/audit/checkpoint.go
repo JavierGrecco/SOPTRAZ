@@ -3,8 +3,8 @@ package audit
 import (
 	"bytes"
 	"context"
-	"crypto/ed25519"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/sha256"
 	"encoding/base64"
@@ -93,8 +93,8 @@ func (publicKey CheckpointPublicKey) CanonicalBytes() ([]byte, error) {
 			return nil, fmt.Errorf("clave pública ECDSA P-256 inválida o ambigua")
 		}
 		curve := elliptic.P256()
-		if publicKey.ECDSAP256.Curve == nil || publicKey.ECDSAP256.Curve.Params().Name != curve.Params().Name || !curve.IsOnCurve(publicKey.ECDSAP256.X, publicKey.ECDSAP256.Y) {
-			return nil, fmt.Errorf("la clave pública no pertenece a la curva NIST P-256")
+		if publicKey.ECDSAP256.Curve == nil || !curve.IsOnCurve(publicKey.ECDSAP256.X, publicKey.ECDSAP256.Y) {
+			return nil, fmt.Errorf("la clave pública no contiene un punto válido de NIST P-256")
 		}
 		return elliptic.Marshal(curve, publicKey.ECDSAP256.X, publicKey.ECDSAP256.Y), nil
 	default:
@@ -221,17 +221,6 @@ func (checkpoint Checkpoint) Validate() error {
 		return fmt.Errorf("keyId debe ser el SHA-256 hexadecimal en minúsculas de la clave pública")
 	}
 	return nil
-}
-
-// CheckpointKeyID returns the full SHA-256 fingerprint of an Ed25519 public
-// key. Trust stores use this stable identifier to resolve the key separately
-// from the checkpoint package.
-func CheckpointKeyID(publicKey ed25519.PublicKey) (string, error) {
-	if len(publicKey) != ed25519.PublicKeySize {
-		return "", fmt.Errorf("clave pública Ed25519 inválida: longitud %d", len(publicKey))
-	}
-	digest := sha256.Sum256(publicKey)
-	return hex.EncodeToString(digest[:]), nil
 }
 
 // CheckpointSigningBytes returns the version 1 binary signing preimage.
@@ -400,7 +389,12 @@ func VerifySignedCheckpointWithPublicKey(signed SignedCheckpoint, publicKey Chec
 		digest := sha256.Sum256(message)
 		r := new(big.Int).SetBytes(signature[:32])
 		s := new(big.Int).SetBytes(signature[32:])
-		if !ecdsa.Verify(publicKey.ECDSAP256, digest[:], r, s) {
+		ecdsaKey := &ecdsa.PublicKey{
+			Curve: elliptic.P256(),
+			X:     new(big.Int).Set(publicKey.ECDSAP256.X),
+			Y:     new(big.Int).Set(publicKey.ECDSAP256.Y),
+		}
+		if !ecdsa.Verify(ecdsaKey, digest[:], r, s) {
 			return fmt.Errorf("firma ECDSA P-256 del checkpoint inválida")
 		}
 	default:

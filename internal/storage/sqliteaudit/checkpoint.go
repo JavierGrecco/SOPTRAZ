@@ -2,7 +2,6 @@ package sqliteaudit
 
 import (
 	"context"
-	"crypto/ed25519"
 	"fmt"
 	"time"
 
@@ -10,7 +9,8 @@ import (
 )
 
 // CreateCheckpoint builds an unsigned checkpoint from one verified SQLite
-// snapshot. The private key must remain in an external key provider.
+// snapshot and an externally managed public signer identity. The private key
+// never enters this adapter.
 //
 // previousCheckpointHash must come from a previously verified checkpoint or
 // an independent trust anchor. This method does not establish trust in it.
@@ -18,7 +18,7 @@ func (s *Store) CreateCheckpoint(
 	ctx context.Context,
 	interventionID string,
 	previousCheckpointHash string,
-	publicKey ed25519.PublicKey,
+	signerIdentity audit.CheckpointKeyIdentity,
 	createdAt time.Time,
 ) (audit.Checkpoint, error) {
 	snapshot, err := s.VerifiedSnapshot(ctx, interventionID)
@@ -29,12 +29,12 @@ func (s *Store) CreateCheckpoint(
 		return audit.Checkpoint{}, fmt.Errorf("no se puede crear un checkpoint para una intervención sin eventos")
 	}
 
-	checkpoint, err := audit.NewCheckpoint(
+	checkpoint, err := audit.NewCheckpointWithIdentity(
 		snapshot.InterventionID,
 		uint64(snapshot.Sequence),
 		snapshot.HeadHash,
 		previousCheckpointHash,
-		publicKey,
+		signerIdentity,
 		createdAt,
 	)
 	if err != nil {
