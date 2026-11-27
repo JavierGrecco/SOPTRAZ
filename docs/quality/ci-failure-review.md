@@ -3,11 +3,11 @@
 **Revisión:** 2026-11-27  
 **Repositorio:** `JavierGrecco/SOPTRAZ`  
 **Rama auditada:** `main`  
-**Alcance:** las 15 ejecuciones de CI creadas el 27 de noviembre de 2026 hasta el commit `8d677f5`.
+**Alcance:** las 16 ejecuciones de CI creadas el 27 de noviembre de 2026 hasta el commit `e9ac1e6`.
 
 ## Resultado ejecutivo
 
-Se revisaron las 15 ejecuciones registradas: **10 fallidas y 5 exitosas; no hubo ejecuciones canceladas**. Las fallidas se explican por seis causas raíz, algunas repetidas después de cada push. La última ejecución examinada, sobre el commit `8d677f5807ce07e993fe81ff59be51830b910c16` (run #15), terminó con los cuatro jobs en verde: Windows, macOS, Ubuntu y Go Race Detector.
+Se revisaron las 16 ejecuciones registradas: **10 fallidas y 6 exitosas; no hubo ejecuciones canceladas**. Las fallidas se explican por cinco familias de causa raíz, algunas repetidas después de cada push. La ejecución #16, sobre el commit `e9ac1e69a6f10b0ce29ccb08e4602745c1dc9af8`, terminó con los cuatro jobs en verde: Windows, macOS, Ubuntu y Go Race Detector.
 
 La revisión no atribuye cada job rojo a una causa distinta. Cuando tres runners fallan en el mismo paso con el mismo mensaje, se cuenta como una sola causa reproducida en tres plataformas.
 
@@ -17,7 +17,7 @@ La revisión no atribuye cada job rojo a una causa distinta. Cuando tres runners
 |---|---|---|---|---|
 | [#1](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46057622504) | `7a21dd5` | Formato en Windows, macOS y Ubuntu | `internal/app/cli/cli.go` e `internal/platform/host/info.go` no estaban formateados | Defecto inicial de formato, no de lógica. Corregido con `gofmt` en `f1d4254`. Race Detector había pasado. |
 | [#3](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46058756261) | `065b785` | `go vet` en las tres plataformas y Race Detector | `go: updates to go.mod needed; go mod tidy` | El módulo principal declaraba JSON Schema, pero no expresaba el requisito indirecto `golang.org/x/text v0.14.0` que exige el grafo del validador. Corregido en `8fb8f5f`. |
-| [#6](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46060274551) | `13203ed` | Formato/compilación en los tres sistemas y Race Detector | Delimitadores de strings JSON quedaron como `\`` literales inválidos; el Race Detector también informó falta del checksum de `modernc.org/sqlite v1.63.0` | Dos defectos distintos: fixture Go mal generado y `go.sum` sin las dos entradas del módulo SQLite. |
+| [#6](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46060274551) | `13203ed` | Formato/compilación en los tres sistemas y Race Detector | Los delimitadores de strings JSON quedaron escapados de forma inválida; el Race Detector también informó falta del checksum de `modernc.org/sqlite v1.63.0` | Dos defectos distintos: fixture Go mal generado y `go.sum` sin las dos entradas del módulo SQLite. |
 | [#7](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46060401041) | `8eda81c` | Formato/compilación y Race Detector | Persistían escapes incorrectos en los tests agregados; seguía sin estar completo el conjunto de checksums del driver SQLite | Repetición del defecto de fuente y de dependencias, no una regresión de la cadena de auditoría. |
 | [#8](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46060504326) | `ca50a1e` | Formato en los tres sistemas y Race Detector | El test de concurrencia contenía escapes sobrantes dentro de `fmt.Sprintf`; Race Detector seguía reclamando el checksum del driver | Repetición de los dos defectos previos. |
 | [#9](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46060840889) | `3dfe5de` | Formato en los tres sistemas | `gofmt` señaló tres archivos: constantes alineadas, concatenación de SQL y una línea en blanco | La dependencia ya podía ejecutar el Race Detector; quedaba normalizar formato. Se añadió además el diagnóstico `gofmt -d` a CI. |
@@ -26,9 +26,19 @@ La revisión no atribuye cada job rojo a una causa distinta. Cuando tres runners
 
 La ejecución posterior al arreglo de imports es [#12](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46061389071), commit `ccc07a7`: los cuatro jobs terminaron correctamente.
 
-| [#13](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46062376162) | \`9cc3976\` | Módulos en Ubuntu; \`go vet\` Windows/macOS; Race Detector | \`go mod tidy -diff\` quitó \`github.com/google/pprof\` y \`modernc.org/fileutil\` del \`go.mod\`; el código nuevo llamaba a \`strings\` sin importarlo | El manifiesto incluía dos requisitos indirectos redundantes que pertenecen al grafo transitivo de SQLite y el helper de rutas no tenía el import de \`strings\`. Se quitaron los requisitos redundantes y se incorporó el import. |
-| [#14](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46062502065) | \`eda9fc3\` | \`go vet\` Windows, macOS y Ubuntu; Race Detector | \`store.go\` contenía solo el bloque de imports (286 bytes): faltaban \`Store\`, \`Open\`, migraciones y funciones DSN | Error de integración introducido al reconstruir el blob: se creó una sustitución completa con solo imports en vez de modificar el bloque de imports. Restaurado el archivo completo desde el commit anterior y aplicado el import correcto en \`8d677f5\`. |
-| [#15](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46062674995) | \`8d677f5\` | Ninguno | Todos los pasos pasaron en los cuatro jobs | Restauración validada. Race Detector, módulo, formato, vet y tests terminaron en verde. |
+| [#13](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46062376162) | `9cc3976` | Módulos en Ubuntu; `go vet` Windows/macOS; Race Detector | `go mod tidy -diff` quitó `github.com/google/pprof` y `modernc.org/fileutil` del `go.mod`; el código nuevo llamaba a `strings` sin importarlo | El manifiesto incluía dos requisitos indirectos redundantes que pertenecen al grafo transitivo de SQLite y el helper de rutas no tenía el import de `strings`. Se quitaron los requisitos redundantes y se incorporó el import. |
+| [#14](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46062502065) | `eda9fc3` | `go vet` Windows, macOS y Ubuntu; Race Detector | `store.go` contenía solo el bloque de imports (286 bytes): faltaban `Store`, `Open`, migraciones y funciones DSN | Error de integración introducido al reconstruir el blob: se creó una sustitución completa con solo imports en vez de modificar el bloque de imports. Restaurado el archivo completo desde el commit anterior y aplicado el import correcto en `8d677f5`. |
+
+## Ejecuciones exitosas de referencia
+
+| Run | Commit | Resultado y utilidad |
+|---|---|---|
+| [#2](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46057813655) | `f1d4254` | Windows, macOS, Ubuntu y Race Detector verdes después de corregir el formato de los archivos Go iniciales. |
+| [#4](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46058857315) | `8fb8f5f` | Los cuatro jobs verdes después de completar el grafo de dependencias de JSON Schema. |
+| [#5](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46059065782) | `2cdc448` | Los cuatro jobs verdes en la base previa a la implementación persistente SQLite. |
+| [#12](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46061389071) | `ccc07a7` | Los cuatro jobs verdes después de corregir la URI de archivos SQLite en Windows. |
+| [#15](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46062674995) | `8d677f5` | Los cuatro jobs verdes después de restaurar el archivo completo store.go; incluye módulo, formato, vet, pruebas multiplataforma y Race Detector. |
+| [#16](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46063268875) | `e9ac1e6` | Los cuatro jobs verdes tras fijar las acciones por SHA, ejecutar tests sin caché y ampliar los casos SQLite para UNC, caracteres reservados, REPLACE y cabecera manipulada. |
 
 ## Causas raíz y correcciones permanentes
 
@@ -38,33 +48,29 @@ La ejecución posterior al arreglo de imports es [#12](https://github.com/Javier
 
 **Corrección permanente:** CI conserva la comprobación y ahora imprime `gofmt -d .` para exponer el diff exacto. No se deshabilitó ni se relajó el paso.
 
-### 2. Grafo de módulos Go
+### 2. Grafo de módulos y checksums Go
 
-El texto `go: updates to go.mod needed; to update it: go mod tidy` significa que el manifiesto declarado no describe el conjunto de requisitos que el cargador necesita para construir el módulo. En este caso, JSON Schema v6.0.3 declara `golang.org/x/text v0.14.0`; se incorporó esa dependencia indirecta de manera explícita.
+El texto `go: updates to go.mod needed; to update it: go mod tidy` significa que el manifiesto declarado no describe el conjunto de requisitos que el cargador necesita para construir el módulo. El run #3 mostró que JSON Schema v6.0.3 necesitaba `golang.org/x/text v0.14.0`, que se incorporó. Los runs #6 a #8 mostraron que faltaban las dos sumas del módulo `modernc.org/sqlite v1.63.0`. El run #13 detectó el caso inverso: `github.com/google/pprof` y `modernc.org/fileutil` estaban declarados redundantemente aunque ya pertenecían al grafo transitivo del driver.
 
 **Corrección permanente:** CI ejecuta `go mod tidy -diff` en Ubuntu. Ese modo compara el resultado de tidy sin modificar `go.mod` ni `go.sum`, y falla si hay diferencias. También ejecuta `go mod verify` para comprobar los módulos descargados.
 
-### 3. Fixtures y generación de código de prueba
+### 3. Construcción de código de prueba y helpers
 
-Los primeros tests de SQLite se construyeron con cadenas JSON delimitadas por backticks escapados de forma incorrecta, y después quedó un doble escape en el JSON generado por `fmt.Sprintf`. Las salidas exactas fueron `illegal character U+005C` y errores sintácticos derivados, antes de que comenzaran las pruebas SQLite.
+Los primeros tests de SQLite se construyeron con delimitadores JSON escapados de forma incorrecta, y después quedó un doble escape en el JSON generado por `fmt.Sprintf`. Las salidas exactas fueron `illegal character U+005C` y errores sintácticos derivados, antes de que comenzaran las pruebas SQLite. Más adelante, en el run #13, el nuevo helper de rutas llamó a `strings.ReplaceAll` y `strings.HasPrefix` sin importar el paquete `strings`; `go vet` y Race Detector lo detectaron en compilación.
 
-**Corrección permanente:** los fixtures usan strings Go válidos; los casos de concurrencia se compilan y pasan con Race Detector y en los tres runners.
+**Corrección permanente:** los fixtures usan strings Go válidos, el helper declara sus imports y los casos de concurrencia se compilan y pasan con Race Detector y en los tres runners.
 
-### 4. Integridad de dependencias
-
-El primer `go.sum` copiado desde el upstream del driver SQLite incluía dependencias transitivas, pero omitía el checksum del propio `modernc.org/sqlite v1.63.0`. El import directo requiere ambas entradas: checksum del módulo y checksum de su `go.mod`.
-
-**Corrección permanente:** se agregaron las entradas verificadas:
-- `modernc.org/sqlite v1.63.0 h1:ClxazqRFNfr7XPHTVLbyzTVz2PjWPz+BfJNu2e8JDMs=`
-- `modernc.org/sqlite v1.63.0/go.mod h1:Jzjh1mt4s0HuQ0KvtB1LIuHiGRmU2D5pgj8dUhW7/SE=`
-
-El control `go mod tidy -diff` evitará que una futura omisión o suma sobrante pase inadvertida.
-
-### 5. URI de SQLite en Windows
+### 4. URI de SQLite en Windows
 
 El código original usaba `url.URL{Scheme: "file", Path: "C:/..."}`. `net/url` serializa el path sin barra inicial como `file://C:/...`; SQLite interpreta `C:` como autoridad y lo rechaza. SQLite espera la letra de unidad dentro del path: `file:///C:/...`.
 
 **Corrección permanente:** el path se normaliza antes de serializarlo. Se cubren rutas con unidad Windows, unidad con barras, UNC, POSIX, caracteres reservados y rutas relativas; además, hay un test de integración que abre, escribe y verifica una base desde una ruta relativa real.
+
+### 5. Sustitución accidental de un archivo fuente completo
+
+El run #14 fue introducido por una corrección de integración nuestra: el blob de internal/storage/sqliteaudit/store.go se construyó con el bloque de imports (286 bytes) y se publicó como si fuera el archivo completo. Por eso los tres jobs go vet y Race Detector reportaron identificadores inexistentes como Store, Open, ErrCorruptChain y helpers DSN. No fue un problema de SQLite ni de los runners: el archivo había perdido realmente su implementación.
+
+**Corrección permanente:** se restauró el archivo completo desde el commit anterior, que conservaba el ledger, y se aplicaron únicamente los imports necesarios en 8d677f5. El run #15 validó esa restauración en Windows, macOS, Ubuntu y Race Detector. Para evitar repetirlo, las correcciones deben operar sobre el archivo completo recuperado, inspeccionar el diff y comprobar la presencia de definiciones críticas antes de crear el commit.
 
 ## Contraste con documentación y proyectos expertos
 
@@ -94,4 +100,4 @@ El código original usaba `url.URL{Scheme: "file", Path: "C:/..."}`. `net/url` s
 
 ## Límites de esta auditoría
 
-Las 15 ejecuciones examinadas corresponden al historial disponible del repositorio al 2026-11-27. La revisión no afirma que se hayan ejecutado pruebas locales en el Mac del usuario. La evidencia de compatibilidad descrita arriba proviene de los GitHub runners y de los logs asociados a los commits citados.
+Las 16 ejecuciones examinadas corresponden al historial disponible del repositorio al 2026-11-27. La revisión no afirma que se hayan ejecutado pruebas locales en el Mac del usuario. La evidencia de compatibilidad descrita arriba proviene de los GitHub runners y de los logs asociados a los commits citados.
