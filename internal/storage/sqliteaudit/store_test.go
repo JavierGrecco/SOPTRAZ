@@ -73,6 +73,90 @@ func TestAppendBuildsAndVerifiesHashChain(t *testing.T) {
 	}
 }
 
+func TestVerifiedSnapshotReturnsConsistentHeadAndEvents(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	first, err := store.Append(ctx, sampleDraft("intervention.created", `{"step":1}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := store.Append(ctx, sampleDraft("diagnostic.completed", `{"step":2}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	snapshot, err := store.VerifiedSnapshot(ctx, testInterventionID)
+	if err != nil {
+		t.Fatalf("VerifiedSnapshot() error = %v", err)
+	}
+	if snapshot.InterventionID != testInterventionID || snapshot.Sequence != 2 || snapshot.HeadHash != second.Hash {
+		t.Fatalf("unexpected snapshot head: %#v", snapshot)
+	}
+	if len(snapshot.Events) != 2 || snapshot.Events[0].Hash != first.Hash || snapshot.Events[1].Hash != second.Hash {
+		t.Fatalf("unexpected snapshot events: %#v", snapshot.Events)
+	}
+
+	if _, err := store.Append(ctx, sampleDraft("verification.completed", `{"step":3}`)); err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Sequence != 2 || len(snapshot.Events) != 2 || snapshot.HeadHash != second.Hash {
+		t.Fatalf("previous snapshot changed after a later append: %#v", snapshot)
+	}
+	latest, err := store.VerifiedSnapshot(ctx, testInterventionID)
+	if err != nil {
+		t.Fatalf("VerifiedSnapshot() after append: %v", err)
+	}
+	if latest.Sequence != 3 || len(latest.Events) != 3 {
+		t.Fatalf("latest snapshot did not include the new event: %#v", latest)
+	}
+}
+
+func TestVerifyIsConsistentWhileAppending(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	const appenders = 24
+	const verifications = 48
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	errs := make(chan error, appenders+verifications)
+
+	for index := 0; index < appenders; index++ {
+		wg.Add(1)
+		go func(value int) {
+			defer wg.Done()
+			<-start
+			_, err := store.Append(ctx, sampleDraft("diagnostic.completed", fmt.Sprintf("{\"writer\":%d}", value)))
+			if err != nil {
+				errs <- fmt.Errorf("Append(%d): %w", value, err)
+			}
+		}(index)
+	}
+	for index := 0; index < verifications; index++ {
+		wg.Add(1)
+		go func(value int) {
+			defer wg.Done()
+			<-start
+			if err := store.Verify(ctx, testInterventionID); err != nil {
+				errs <- fmt.Errorf("Verify(%d): %w", value, err)
+			}
+		}(index)
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
+	}
+
+	snapshot, err := store.VerifiedSnapshot(ctx, testInterventionID)
+	if err != nil {
+		t.Fatalf("final VerifiedSnapshot() error = %v", err)
+	}
+	if snapshot.Sequence != appenders || len(snapshot.Events) != appenders {
+		t.Fatalf("snapshot contains %d events at sequence %d, want %d", len(snapshot.Events), snapshot.Sequence, appenders)
+	}
+}
+
 func TestAppendIsSerializedForConcurrentWriters(t *testing.T) {
 	store := openTestStore(t)
 	ctx := context.Background()

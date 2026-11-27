@@ -339,10 +339,31 @@ func (s *Store) Append(ctx context.Context, draft audit.Draft) (audit.Event, err
 	return event, nil
 }
 
-// List returns the stored events in sequence order. Call Verify before relying
-// on them as a trusted chain.
+// eventQueryer is implemented by both sql.DB and sql.Tx.
+type eventQueryer interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
+// VerifiedSnapshot is a point-in-time view of one intervention's verified ledger.
+// Events, Sequence and HeadHash are read and verified in one SQLite transaction.
+type VerifiedSnapshot struct {
+	InterventionID string
+	Sequence       int64
+	HeadHash       string
+	Events         []audit.Event
+}
+
+// List returns the stored events in sequence order. It validates the original
+// JSON before decoding so ambiguous or malformed persisted data is rejected.
 func (s *Store) List(ctx context.Context, interventionID string) ([]audit.Event, error) {
-	rows, err := s.db.QueryContext(ctx,
+	if ctx == nil {
+		return nil, fmt.Errorf("el contexto de auditoría no puede ser nil")
+	}
+	return listEvents(ctx, s.db, interventionID)
+}
+
+func listEvents(ctx context.Context, queryer eventQueryer, interventionID string) ([]audit.Event, error) {
+	rows, err := queryer.QueryContext(ctx,
 		"SELECT event_json, hash FROM audit_events "+
 			"WHERE intervention_id = ? ORDER BY sequence ASC",
 		interventionID,
@@ -377,37 +398,75 @@ func (s *Store) List(ctx context.Context, interventionID string) ([]audit.Event,
 	return events, nil
 }
 
-// Verify validates every event, its sequence, its previous-hash link, its
-// computed hash, and the persisted head checkpoint for one intervention.
-func (s *Store) Verify(ctx context.Context, interventionID string) error {
+// VerifiedSnapshot reads the head and events in one read-only transaction.
+// This prevents concurrent appends from making the head and event list describe
+// different database states. It is also the source for checkpoint/export code.
+func (s *Store) VerifiedSnapshot(ctx context.Context, interventionID string) (VerifiedSnapshot, error) {
+	if ctx == nil {
+		return VerifiedSnapshot{}, fmt.Errorf("el contexto de auditoría no puede ser nil")
+	}
+	if interventionID == "" {
+		return VerifiedSnapshot{}, fmt.Errorf("el ID de intervención está vacío")
+	}
+
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return VerifiedSnapshot{}, fmt.Errorf("iniciar instantánea de auditoría: %w", err)
+	}
+	defer tx.Rollback()
+
 	var headSequence int64
 	var headHash string
-	err := s.db.QueryRowContext(ctx,
+	err = tx.QueryRowContext(ctx,
 		"SELECT sequence, head_hash FROM audit_heads WHERE intervention_id = ?",
 		interventionID,
 	).Scan(&headSequence, &headHash)
 	if errors.Is(err, sql.ErrNoRows) {
-		var count int
-		if countErr := s.db.QueryRowContext(ctx,
+		var eventCount int64
+		if countErr := tx.QueryRowContext(ctx,
 			"SELECT COUNT(*) FROM audit_events WHERE intervention_id = ?",
 			interventionID,
-		).Scan(&count); countErr != nil {
-			return fmt.Errorf("comprobar eventos sin cabecera: %w", countErr)
+		).Scan(&eventCount); countErr != nil {
+			return VerifiedSnapshot{}, fmt.Errorf("comprobar eventos sin cabecera: %w", countErr)
 		}
-		if count != 0 {
-			return fmt.Errorf("%w: hay eventos sin cabecera", ErrCorruptChain)
+		if eventCount != 0 {
+			return VerifiedSnapshot{}, fmt.Errorf("%w: hay eventos sin cabecera", ErrCorruptChain)
 		}
-		return nil
+		if err := tx.Commit(); err != nil {
+			return VerifiedSnapshot{}, fmt.Errorf("confirmar instantánea vacía: %w", err)
+		}
+		return VerifiedSnapshot{InterventionID: interventionID, Events: make([]audit.Event, 0)}, nil
 	}
 	if err != nil {
-		return fmt.Errorf("leer cabecera de verificación: %w", err)
+		return VerifiedSnapshot{}, fmt.Errorf("leer cabecera de verificación: %w", err)
 	}
 
-	events, err := s.List(ctx, interventionID)
+	events, err := listEvents(ctx, tx, interventionID)
 	if err != nil {
-		return err
+		return VerifiedSnapshot{}, err
+	}
+	if err := verifyEventChain(interventionID, headSequence, headHash, events); err != nil {
+		return VerifiedSnapshot{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return VerifiedSnapshot{}, fmt.Errorf("confirmar instantánea de auditoría: %w", err)
 	}
 
+	return VerifiedSnapshot{
+		InterventionID: interventionID,
+		Sequence:       headSequence,
+		HeadHash:       headHash,
+		Events:         events,
+	}, nil
+}
+
+// Verify validates an intervention against a single, consistent read snapshot.
+func (s *Store) Verify(ctx context.Context, interventionID string) error {
+	_, err := s.VerifiedSnapshot(ctx, interventionID)
+	return err
+}
+
+func verifyEventChain(interventionID string, headSequence int64, headHash string, events []audit.Event) error {
 	var expectedSequence int64 = 1
 	var expectedPreviousHash string
 	for _, event := range events {

@@ -57,13 +57,9 @@ No se habilita WAL en esta primera edición. Se prioriza el modo de journaling p
 
 ## 4. Verificación
 
-`Verify(interventionID)` comprueba:
-1. que la secuencia empiece en 1 y no tenga huecos;
-2. que todos los eventos pertenezcan a la intervención consultada;
-3. que previousHash coincida con el evento anterior;
-4. que cada evento cumpla el contrato JSON;
-5. que el SHA-256 calculado coincida con el guardado;
-6. que secuencia/hash finales coincidan con audit_heads.
+`VerifiedSnapshot(interventionID)` lee la cabecera y todos los eventos en una única transacción de solo lectura. Valida el JSON estricto almacenado, recorre la cadena completa y devuelve eventos, secuencia y headHash del mismo estado consistente. `Verify` utiliza esa misma operación y descarta el snapshot. Esto evita que un Append concurrente haga comparar una cabecera antigua con una lista posterior.
+
+La instantánea verificada será la entrada del generador de checkpoints y del exportador del archivo .soptraz; no se debe leer la cabecera y los eventos mediante consultas independientes.
 
 `List` devuelve los eventos en orden y valida el JSON original con el contrato estricto antes de decodificarlo; rechaza claves duplicadas, UTF-8 inválido y escapes UTF-16 aislados incluso si el decodificador estándar podría normalizarlos. También comprueba que la columna hash indexada coincida con el JSON almacenado. Quien consuma datos como evidencia confiable debe ejecutar Verify.
 

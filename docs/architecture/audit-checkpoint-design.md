@@ -95,6 +95,7 @@ La exportación se escribe a un archivo temporal en el mismo filesystem, se vali
 - `SignCheckpoint` y `VerifySignedCheckpoint` firman y validan Ed25519 y rechazan firma/clave incorrectas.
 - `VerifyCheckpointWithTrustStore` resuelve `keyId` mediante una interfaz externa y falla cerrado si el resolver devuelve error.
 - `CheckpointDigest` calcula el digest firmado que se utilizará como `previousCheckpointHash`.
+- SQLite expone `VerifiedSnapshot`: eventos, secuencia y headHash verificados dentro de una única transacción de lectura; el generador de checkpoint y el exportador deberán consumir esta instantánea.
 - JSON Schema de `SignedCheckpoint` está embebido y el fixture de ejemplo valida estructuralmente. La validez criptográfica se prueba con claves deterministas solo de test.
 
 No hay todavía un `TrustStore` de producción ni se guarda ninguna clave privada. La interfaz es el límite para integrar el almacén protegido de Windows/macOS/Linux en una fase posterior.

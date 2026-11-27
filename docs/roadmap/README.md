@@ -15,6 +15,7 @@ El roadmap prioriza una vertical funcional confiable antes de ampliar herramient
 - [x] Implementar y probar transiciones del ciclo de intervención.
 - [x] Definir interfaz de auditoría y adaptador SQLite Field.
 - [x] Implementar hash chain por intervención, triggers append-only y verificación.
+- [x] Exponer una instantánea verificada de eventos y cabecera en una única transacción de lectura.
 - [x] Especificar el diseño de checkpoints firmados y anclaje independiente (ADR-0013).
 - [ ] Implementar checkpoints firmados fuera de la base.
 - [ ] Completar paquetes de intervención y sincronización Field → Hub.
