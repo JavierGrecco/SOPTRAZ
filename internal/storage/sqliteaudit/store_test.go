@@ -83,7 +83,7 @@ func TestAppendIsSerializedForConcurrentWriters(t *testing.T) {
 		wg.Add(1)
 		go func(index int) {
 			defer wg.Done()
-			_, err := store.Append(ctx, sampleDraft("operation.completed", fmt.Sprintf("{\\"index\\":%d}", index)))
+			_, err := store.Append(ctx, sampleDraft("operation.completed", fmt.Sprintf("{\"index\":%d}", index)))
 			if err != nil {
 				errs <- err
 			}
@@ -149,7 +149,7 @@ func TestVerifyDetectsAlteredEventWhenTriggerIsBypassed(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := store.db.ExecContext(ctx,
-		"UPDATE audit_events SET event_json = replace(event_json, '\\"network\\"', '\\"tampered\\"') WHERE event_id = ?",
+		"UPDATE audit_events SET event_json = replace(event_json, '\"network\"', '\"tampered\"') WHERE event_id = ?",
 		event.EventID,
 	); err != nil {
 		t.Fatal(err)
