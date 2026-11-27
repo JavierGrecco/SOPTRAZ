@@ -1,0 +1,16 @@
+# Registro de decisiones arquitectónicas (ADR)
+
+Las decisiones aceptadas se mantienen aquí. Una ADR registra contexto, alternativas, decisión, consecuencias y estado. No se reemplaza silenciosamente: se crea una ADR que la superseda.
+
+| ID | Decisión | Estado |
+|---|---|---|
+| ADR-0001 | Monolito modular inicial | Aceptada |
+| ADR-0002 | Go + Wails v3 + TypeScript/React | Aceptada para prototipo |
+| ADR-0003 | Núcleo canónico por dominio; Python para analítica | Aceptada |
+| ADR-0004 | SQLite Field y PostgreSQL Hub | Aceptada como dirección |
+| ADR-0005 | IA gratuita primero, failover y modelo local | Aceptada |
+| ADR-0006 | Procedimientos tipados y auditables | Aceptada |
+| ADR-0007 | Integrar herramientas maduras | Aceptada |
+| ADR-0008 | Field y Hub con contratos compartidos | Aceptada |
+
+Pendiente: licencia de distribución, cifrado local, firmas de releases, packaging Python, sincronización e identidad antes de implementar esas funciones.
