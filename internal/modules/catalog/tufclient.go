@@ -27,15 +27,15 @@ var (
 // is never read from this config: it must come from a TrustAnchor that was
 // pinned or enrolled through a separately verified channel.
 type TUFClientConfig struct {
-	MetadataURL       string
-	TargetsURL        string
-	MetadataCacheDir  string
-	TargetCacheDir    string
-	RequestTimeout    time.Duration
-	RetryInterval     time.Duration
-	RetryCount        uint
-	MaxRootRotations  int64
-	MaxDelegations    int
+	MetadataURL      string
+	TargetsURL       string
+	MetadataCacheDir string
+	TargetCacheDir   string
+	RequestTimeout   time.Duration
+	RetryInterval    time.Duration
+	RetryCount       uint
+	MaxRootRotations int64
+	MaxDelegations   int
 	// AllowInsecureLoopbackHTTP is intended for local deterministic tests only.
 	// Plain HTTP to non-loopback hosts is always rejected.
 	AllowInsecureLoopbackHTTP bool
