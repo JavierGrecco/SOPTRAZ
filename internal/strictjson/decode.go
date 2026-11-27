@@ -1,5 +1,5 @@
 // Package strictjson decodes JSON while rejecting ambiguous object names and
-// malformed UTF-8 before application-specific validation.
+// malformed UTF-8 and unpaired UTF-16 escapes before application validation.
 package strictjson
 
 import (
@@ -19,6 +19,9 @@ func Decode(raw []byte) (any, error) {
 	if !utf8.Valid(raw) {
 		return nil, fmt.Errorf("el documento JSON contiene UTF-8 inválido")
 	}
+	if err := validateEscapedSurrogates(raw); err != nil {
+		return nil, err
+	}
 
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.UseNumber()
@@ -34,6 +37,80 @@ func Decode(raw []byte) (any, error) {
 		return nil, fmt.Errorf("contenido adicional después del documento JSON: %w", err)
 	}
 	return value, nil
+}
+
+
+// validateEscapedSurrogates rejects unpaired UTF-16 surrogate escapes before
+// encoding/json can replace them with U+FFFD. A valid high/low pair is kept.
+func validateEscapedSurrogates(raw []byte) error {
+	inString := false
+	for index := 0; index < len(raw); {
+		switch raw[index] {
+		case '"':
+			inString = !inString
+			index++
+		case '\\':
+			if !inString || index+1 >= len(raw) {
+				index++
+				continue
+			}
+			if raw[index+1] != 'u' {
+				index += 2
+				continue
+			}
+			if index+6 > len(raw) {
+				return nil // The JSON decoder reports the incomplete escape.
+			}
+			unit, valid := parseHexUnit(raw[index+2 : index+6])
+			if !valid {
+				index += 6 // Let the JSON decoder report malformed hexadecimal.
+				continue
+			}
+			switch {
+			case unit >= 0xD800 && unit <= 0xDBFF:
+				if index+12 > len(raw) || raw[index+6] != '\\' || raw[index+7] != 'u' {
+					return fmt.Errorf("escape UTF-16 alto sin un par sustituto bajo")
+				}
+				low, valid := parseHexUnit(raw[index+8 : index+12])
+				if !valid {
+					index += 6
+					continue
+				}
+				if low < 0xDC00 || low > 0xDFFF {
+					return fmt.Errorf("escape UTF-16 alto seguido por una unidad que no es sustituto bajo")
+				}
+				index += 12
+			case unit >= 0xDC00 && unit <= 0xDFFF:
+				return fmt.Errorf("escape UTF-16 bajo sin un par sustituto alto")
+			default:
+				index += 6
+			}
+		default:
+			index++
+		}
+	}
+	return nil
+}
+
+func parseHexUnit(value []byte) (uint16, bool) {
+	if len(value) != 4 {
+		return 0, false
+	}
+	var unit uint16
+	for _, digit := range value {
+		unit <<= 4
+		switch {
+		case digit >= '0' && digit <= '9':
+			unit |= uint16(digit - '0')
+		case digit >= 'a' && digit <= 'f':
+			unit |= uint16(digit-'a') + 10
+		case digit >= 'A' && digit <= 'F':
+			unit |= uint16(digit-'A') + 10
+		default:
+			return 0, false
+		}
+	}
+	return unit, true
 }
 
 func decodeValue(decoder *json.Decoder, depth int) (any, error) {

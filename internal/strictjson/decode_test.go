@@ -66,3 +66,39 @@ func TestDecodeRejectsExcessiveNesting(t *testing.T) {
 		t.Fatalf("Decode() error = %v, want nesting-depth rejection", err)
 	}
 }
+
+func TestDecodeRejectsUnpairedUTF16SurrogateEscapes(t *testing.T) {
+\tcases := []string{
+\t\t\`{"value":"\uD800"}\`,
+\t\t\`{"value":"\uDEAD"}\`,
+\t\t\`{"\uDC00":"value"}\`,
+\t\t\`{"value":"\uD800\u0041"}\`,
+\t}
+\tfor _, raw := range cases {
+\t\tt.Run(raw, func(t *testing.T) {
+\t\t\tif _, err := Decode([]byte(raw)); err == nil || !strings.Contains(strings.ToLower(err.Error()), "sustituto") {
+\t\t\t\tt.Fatalf("Decode() error = %v, want unpaired-surrogate rejection", err)
+\t\t\t}
+\t\t})
+\t}
+}
+
+func TestDecodeAcceptsValidUTF16PairAndEscapedBackslash(t *testing.T) {
+\tvalidPair := []byte(\`{"value":"\uD83D\uDE00"}\`)
+\tvalue, err := Decode(validPair)
+\tif err != nil {
+\t\tt.Fatalf("Decode() rejected valid surrogate pair: %v", err)
+\t}
+\tif got := value.(map[string]any)["value"]; got != "😀" {
+\t\tt.Fatalf("decoded value = %#v, want emoji", got)
+\t}
+
+\tliteralEscape := []byte(\`{"value":"\\uD800"}\`)
+\tvalue, err = Decode(literalEscape)
+\tif err != nil {
+\t\tt.Fatalf("Decode() rejected escaped backslash text: %v", err)
+\t}
+\tif got := value.(map[string]any)["value"]; got != \`\\uD800\` {
+\t\tt.Fatalf("decoded literal = %#v, want literal escape text", got)
+\t}
+}

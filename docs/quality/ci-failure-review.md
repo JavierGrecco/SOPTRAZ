@@ -3,11 +3,11 @@
 **Revisión:** 2026-11-27  
 **Repositorio:** `JavierGrecco/SOPTRAZ`  
 **Rama auditada:** `main`  
-**Alcance:** 29 ejecuciones de Actions disponibles al 27 de noviembre de 2026, hasta el commit `cea6909`.
+**Alcance:** 30 ejecuciones de Actions disponibles al 27 de noviembre de 2026, hasta el commit `0596d38`.
 
 ## Resultado ejecutivo
 
-Se revisaron 29 ejecuciones: **24 pushes del CI principal en main (12 fallidos y 12 exitosos), 1 PR de Dependabot exitoso y 4 ejecuciones dinámicas de Dependabot exitosas; no hubo cancelaciones**. Las doce fallidas se explican por seis familias de causa raíz, algunas repetidas tras cada push. El run principal más reciente, [#25](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46066212890), sobre `cea6909`, detectó un error en dos fixtures de prueba que representan claves JSON escapadas; el fuzzing de payloads pasó.
+Se revisaron 30 ejecuciones: **25 pushes del CI principal en main (12 fallidos y 13 exitosos), 1 PR de Dependabot exitoso y 4 ejecuciones dinámicas de Dependabot exitosas; no hubo cancelaciones**. Las doce fallidas se explican por seis familias de causa raíz, algunas repetidas tras cada push. El run principal más reciente, [#26](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46066404539), sobre `0596d38`, terminó verde en Windows, macOS, Ubuntu, Race Detector y fuzzing.
 
 La revisión no atribuye cada job rojo a una causa distinta. Cuando tres runners fallan en el mismo paso con el mismo mensaje, se cuenta como una sola causa reproducida en tres plataformas.
 
@@ -47,7 +47,8 @@ La ejecución posterior al arreglo de imports es [#12](https://github.com/Javier
 | [#20](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46064474486) | `074c47f` | Los cuatro jobs verdes tras incorporar ADR-0013 y el diseño de checkpoint firmado / bundle Field → Hub. |
 | [#21](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46065064799) | `268b6cd` | Los cinco jobs verdes: módulo, formato, vet, tests Windows/macOS/Ubuntu, Race Detector y fuzz de payloads JSON (16.810 ejecuciones, 66 casos interesantes nuevos, sin fallo). |
 | [#22](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46065386846) | `cb3c381` | Los cinco jobs verdes tras actualizar la revisión de CI y el estado del endurecimiento de payloads. |
-| [#24](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46065887175) | `bfe7f7b` | Los cinco jobs verdes después de aplicar `gofmt` a los primitives de checkpoint Ed25519. El run #23 anterior había fallado solo en formato; Race Detector y fuzzing ya estaban verdes. |
+| [#24](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46065887175) | `bfe7f7b` | Los cinco jobs verdes después de aplicar `gofmt` a las primitivas de checkpoint Ed25519. El run #23 anterior había fallado solo en formato; Race Detector y fuzzing ya estaban verdes. |
+| [#26](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46066404539) | `0596d38` | Los cinco jobs verdes después de corregir los dos fixtures de nombres Unicode escapados que habían fallado en #25. |
 
 ## Causas raíz y correcciones permanentes
 
@@ -109,4 +110,6 @@ El run #14 fue introducido por una corrección de integración nuestra: el blob 
 
 ## Límites de esta auditoría
 
-Las 29 ejecuciones examinadas corresponden al historial disponible del repositorio al 2026-11-27. El run #17 corresponde al PR de Dependabot; los cuatro runs dinámicos de Dependabot se identifican por separado y no se mezclan con los 24 pushes del CI principal. La revisión no afirma que se hayan ejecutado pruebas locales en el Mac del usuario. El run #23 se cuenta como una sola causa de formato reproducida en tres runners; no como tres defectos independientes. El run #25 se cuenta como un defecto de test repetido por matriz, no como cuatro defectos diferentes. La evidencia de compatibilidad descrita arriba proviene de los GitHub runners y de los logs asociados a los commits citados.
+Las 30 ejecuciones examinadas corresponden al historial disponible del repositorio al 2026-11-27. El run #17 corresponde al PR de Dependabot; los cuatro runs dinámicos de Dependabot se identifican por separado y no se mezclan con los 25 pushes del CI principal. La revisión no afirma que se hayan ejecutado pruebas locales en el Mac del usuario. El run #23 se cuenta como una sola causa de formato reproducida en tres runners; no como tres defectos independientes. El run #25 se cuenta como un defecto de test repetido por matriz, no como cuatro defectos diferentes. La evidencia de compatibilidad descrita arriba proviene de los GitHub runners y de los logs asociados a los commits citados.
+
+6. La [documentación oficial de Go para `encoding/json`](https://pkg.go.dev/encoding/json) confirma que el decodificador tradicional sustituye UTF-8 inválido y pares sustitutos UTF-16 inválidos por U+FFFD; el [RFC 8259, sección 8.2](https://www.rfc-editor.org/rfc/rfc8259#section-8.2) advierte que el resultado de procesar sustitutos aislados es impredecible. El paquete interno `strictjson` rechaza esos escapes, además de claves duplicadas, UTF-8 inválido, documentos concatenados y profundidad excesiva.
