@@ -37,14 +37,39 @@ func testDescriptor(content []byte) Descriptor {
 	}
 }
 
+func newTestResolver(t *testing.T, root string, platform Platform) *Resolver {
+	t.Helper()
+	resolver, err := NewResolver(root, platform)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := resolver.Close(); err != nil {
+			t.Errorf("close artifact resolver: %v", err)
+		}
+	})
+	return resolver
+}
+
+func newTestResolverWithLimit(t *testing.T, root string, platform Platform, maxBytes int64) *Resolver {
+	t.Helper()
+	resolver, err := newResolver(root, platform, maxBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := resolver.Close(); err != nil {
+			t.Errorf("close artifact resolver: %v", err)
+		}
+	})
+	return resolver
+}
+
 func TestResolveVerifiesInstalledArtifact(t *testing.T) {
 	root := t.TempDir()
 	content := []byte("trusted osquery test executable bytes")
 	path := writeArtifact(t, root, "osquery/5.24.1/linux-amd64/osqueryi", content)
-	resolver, err := NewResolver(root, Platform{OS: "linux", Architecture: "amd64"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	resolver := newTestResolver(t, root, Platform{OS: "linux", Architecture: "amd64"})
 	resolved, err := resolver.Resolve(testDescriptor(content))
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
@@ -62,10 +87,7 @@ func TestResolveRejectsUnsupportedPlatformWithoutFallback(t *testing.T) {
 	root := t.TempDir()
 	content := []byte("artifact")
 	writeArtifact(t, root, "osquery/5.24.1/linux-amd64/osqueryi", content)
-	resolver, err := NewResolver(root, Platform{OS: "windows", Architecture: "amd64"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	resolver := newTestResolver(t, root, Platform{OS: "windows", Architecture: "amd64"})
 	_, err = resolver.Resolve(testDescriptor(content))
 	if !errors.Is(err, ErrUnsupportedPlatform) {
 		t.Fatalf("Resolve() error = %v, want ErrUnsupportedPlatform", err)
@@ -75,10 +97,7 @@ func TestResolveRejectsUnsupportedPlatformWithoutFallback(t *testing.T) {
 func TestResolveRejectsChangedArtifactBytes(t *testing.T) {
 	root := t.TempDir()
 	writeArtifact(t, root, "osquery/5.24.1/linux-amd64/osqueryi", []byte("tampered bytes"))
-	resolver, err := NewResolver(root, Platform{OS: "linux", Architecture: "amd64"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	resolver := newTestResolver(t, root, Platform{OS: "linux", Architecture: "amd64"})
 	_, err = resolver.Resolve(testDescriptor([]byte("original bytes")))
 	if !errors.Is(err, ErrArtifactIntegrity) {
 		t.Fatalf("Resolve() error = %v, want ErrArtifactIntegrity", err)
@@ -152,10 +171,7 @@ func TestResolveRejectsDirectoryLinkEscapingManagedRoot(t *testing.T) {
 	}
 	value := testDescriptor(content)
 	value.RelativePath = "osquery/linux-amd64/osqueryi"
-	resolver, err := NewResolver(root, Platform{OS: "linux", Architecture: "amd64"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	resolver := newTestResolver(t, root, Platform{OS: "linux", Architecture: "amd64"})
 	_, err = resolver.Resolve(value)
 	if !errors.Is(err, ErrArtifactPath) {
 		t.Fatalf("Resolve() path %q (target %q) error = %v, want ErrArtifactPath", value.RelativePath, target, err)
@@ -166,10 +182,7 @@ func TestResolveRejectsOversizedArtifact(t *testing.T) {
 	root := t.TempDir()
 	content := []byte("too large")
 	writeArtifact(t, root, "osquery/5.24.1/linux-amd64/osqueryi", content)
-	resolver, err := newResolver(root, Platform{OS: "linux", Architecture: "amd64"}, 4)
-	if err != nil {
-		t.Fatal(err)
-	}
+	resolver := newTestResolverWithLimit(t, root, Platform{OS: "linux", Architecture: "amd64"}, 4)
 	_, err = resolver.Resolve(testDescriptor(content))
 	if err == nil || !strings.Contains(err.Error(), "límite") {
 		t.Fatalf("Resolve() error = %v, want size limit error", err)
@@ -192,10 +205,7 @@ func TestResolveRejectsSymlinkedArtifactPath(t *testing.T) {
 	}
 	value := testDescriptor(content)
 	value.RelativePath = "osquery/osqueryi"
-	resolver, err := NewResolver(root, Platform{OS: "linux", Architecture: "amd64"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	resolver := newTestResolver(t, root, Platform{OS: "linux", Architecture: "amd64"})
 	_, err = resolver.Resolve(value)
 	if !errors.Is(err, ErrArtifactPath) {
 		t.Fatalf("Resolve() error = %v, want ErrArtifactPath", err)
