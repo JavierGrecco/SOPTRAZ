@@ -30,14 +30,14 @@ func testDescriptor(content []byte) Descriptor {
 	return Descriptor{
 		SchemaVersion: ArtifactDescriptorSchemaVersion,
 		ID:            "soptraz.osquery",
-		Version:      "5.24.1",
-		OS:           "linux",
-		Architecture: "amd64",
-		RelativePath: "osquery/5.24.1/linux-amd64/osqueryi",
-		SHA256:       hex.EncodeToString(digest[:]),
-		SizeBytes:    int64(len(content)),
-		License:      "Apache-2.0 OR GPL-2.0-only",
-		SourceURI:    "https://github.com/osquery/osquery/releases/tag/5.24.1",
+		Version:       "5.24.1",
+		OS:            "linux",
+		Architecture:  "amd64",
+		RelativePath:  "osquery/5.24.1/linux-amd64/osqueryi",
+		SHA256:        hex.EncodeToString(digest[:]),
+		SizeBytes:     int64(len(content)),
+		License:       "Apache-2.0 OR GPL-2.0-only",
+		SourceURI:     "https://github.com/osquery/osquery/releases/tag/5.24.1",
 	}
 }
 
