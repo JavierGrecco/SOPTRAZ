@@ -17,7 +17,7 @@ const (
 	MaxTimestampMetadataBytes int64 = 16_384
 	MaxSnapshotMetadataBytes  int64 = 2_000_000
 	MaxTargetsMetadataBytes   int64 = 5_000_000
-	MaxTargetBytes             int64 = 512 << 20
+	MaxTargetBytes            int64 = 512 << 20
 )
 
 var (
@@ -50,9 +50,9 @@ type MetadataSession struct {
 // VerifiedTarget contains only the target path, byte length and SHA-256
 // authenticated by the complete root/timestamp/snapshot/targets chain.
 type VerifiedTarget struct {
-	Path     string
-	Length   int64
-	SHA256   string
+	Path   string
+	Length int64
+	SHA256 string
 }
 
 func (session *MetadataSession) UpdateTimestamp(raw []byte) error {

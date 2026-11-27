@@ -1,7 +1,6 @@
 package catalog
 
 import (
-	"crypto"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
@@ -9,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sigstore/sigstore/pkg/signature"
 	"github.com/theupdateframework/go-tuf/v2/metadata"
 )
 
