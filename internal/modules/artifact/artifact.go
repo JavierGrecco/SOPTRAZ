@@ -20,10 +20,10 @@ import (
 const DefaultMaxArtifactBytes int64 = 512 << 20
 
 var (
-	ErrInvalidDescriptor = errors.New("descriptor de artefacto inválido")
+	ErrInvalidDescriptor   = errors.New("descriptor de artefacto inválido")
 	ErrUnsupportedPlatform = errors.New("plataforma o arquitectura no compatible")
-	ErrArtifactPath = errors.New("ruta de artefacto no permitida")
-	ErrArtifactIntegrity = errors.New("integridad del artefacto no válida")
+	ErrArtifactPath        = errors.New("ruta de artefacto no permitida")
+	ErrArtifactIntegrity   = errors.New("integridad del artefacto no válida")
 )
 
 var artifactIDPattern = regexp.MustCompile(`^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$`)
@@ -116,9 +116,9 @@ type ResolvedArtifact struct {
 // Resolver verifies artifacts under one application-managed directory.
 // It does not trust PATH, search other locations or fall back to another build.
 type Resolver struct {
-	root       string
-	platform   Platform
-	maxBytes   int64
+	root     string
+	platform Platform
+	maxBytes int64
 }
 
 func NewResolver(root string, platform Platform) (*Resolver, error) {
