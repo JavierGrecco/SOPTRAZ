@@ -376,4 +376,3 @@ func TestMetadataSessionRejectsInvalidExternalArtifactDescriptor(t *testing.T) {
 		t.Fatalf("VerifyDescriptor() error = %v, want ErrInvalidTargetDescriptor", err)
 	}
 }
-
