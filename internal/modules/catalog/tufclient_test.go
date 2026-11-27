@@ -140,7 +140,7 @@ func makeDelegatedRepositoryFixture(t *testing.T) delegatedRepositoryFixture {
 			KeyIDs:    []string{delegatedKeyID},
 			Threshold: 1,
 			Terminating: true,
-			Paths:     []string{"osquery/*"},
+			Paths:     []string{"osquery/*/*/*"},
 		}},
 	}
 	topTargetsJSON := signedMetadataBytes(t, topTargets, topTargetsKey)
@@ -250,6 +250,15 @@ func TestTUFClientResolvesAndVerifiesDelegatedArtifactTarget(t *testing.T) {
 	if downloadedTarget {
 		t.Fatalf("metadata lookup unexpectedly downloaded an artifact target: %v", *requests)
 	}
+
+	// go-tuf permits one Refresh per Updater instance. TUFClient must create
+	// a fresh updater and revalidate cached metadata before refreshing again.
+	if err := client.Refresh(); err != nil {
+		t.Fatalf("Refresh() on an existing client error = %v", err)
+	}
+	if _, err := client.ResolveDescriptor(fixture.descriptor); err != nil {
+		t.Fatalf("ResolveDescriptor() after Refresh() error = %v", err)
+	}
 }
 
 func TestTUFClientRejectsDescriptorMismatchForDelegatedTarget(t *testing.T) {
@@ -308,5 +317,44 @@ func TestTUFClientRejectsPlainHTTPOutsideExplicitLoopbackMode(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("NewTUFClient() accepted non-loopback HTTP")
+	}
+}
+func TestTUFClientDoesNotFollowMetadataRedirects(t *testing.T) {
+	fixture := makeDelegatedRepositoryFixture(t)
+	var redirectedRequests int
+	var redirectedMu sync.Mutex
+	destination := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		redirectedMu.Lock()
+		redirectedRequests++
+		redirectedMu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(destination.Close)
+
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, destination.URL+"/metadata/"+strings.TrimPrefix(r.URL.Path, "/metadata/"), http.StatusFound)
+	}))
+	t.Cleanup(source.Close)
+
+	anchor, err := NewPinnedTrustAnchor(fixture.rootJSON, rootPin(fixture.rootJSON))
+	if err != nil {
+		t.Fatalf("NewPinnedTrustAnchor() error = %v", err)
+	}
+	cacheRoot := t.TempDir()
+	_, err = NewTUFClient(anchor, TUFClientConfig{
+		MetadataURL:               source.URL + "/metadata",
+		MetadataCacheDir:          filepath.Join(cacheRoot, "metadata"),
+		TargetCacheDir:            filepath.Join(cacheRoot, "targets"),
+		RequestTimeout:            3 * time.Second,
+		RetryCount:                1,
+		AllowInsecureLoopbackHTTP: true,
+	})
+	if err == nil {
+		t.Fatal("NewTUFClient() accepted redirected TUF metadata")
+	}
+	redirectedMu.Lock()
+	defer redirectedMu.Unlock()
+	if redirectedRequests != 0 {
+		t.Fatalf("TUF client followed a metadata redirect %d time(s)", redirectedRequests)
 	}
 }
