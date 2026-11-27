@@ -40,7 +40,7 @@ func TestHelpIsReadOnlyAndSuccessful(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("Run() code = %d, want 0; stderr=%q", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "No modifica el equipo") {
+	if !strings.Contains(stdout.String(), "No modifica el equipo") || !strings.Contains(stdout.String(), "checkpoint") {
 		t.Fatalf("unexpected help output: %q", stdout.String())
 	}
 }
@@ -85,6 +85,23 @@ func TestValidateAcceptsValidManifest(t *testing.T) {
 		t.Fatalf("Run() code = %d; stderr=%q", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "Contrato manifest válido") {
+		t.Fatalf("unexpected output: %q", stdout.String())
+	}
+}
+
+func TestValidateAcceptsCheckpointExample(t *testing.T) {
+	examplePath := filepath.Join("..", "..", "..", "examples", "contracts", "audit-checkpoint.example.json")
+	raw, err := os.ReadFile(examplePath)
+	if err != nil {
+		t.Fatalf("read checkpoint example: %v", err)
+	}
+	path := writeTempJSON(t, string(raw))
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"validate", "checkpoint", path}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run() code = %d; stderr=%q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Contrato checkpoint válido") {
 		t.Fatalf("unexpected output: %q", stdout.String())
 	}
 }

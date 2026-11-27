@@ -55,9 +55,9 @@
           "additionalProperties": false,
           "required": ["algorithm", "keyId", "value"],
           "properties": {
-            "algorithm": {"const": "ed25519"},
-            "keyId": {"type": "string", "minLength": 3, "maxLength": 100},
-            "value": {"type": "string", "pattern": "^[A-Za-z0-9+/]+={0,2}$", "minLength": 40}
+            "algorithm": {"enum": ["ed25519", "ecdsa-p256-sha256"]},
+            "keyId": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+            "value": {"type": "string", "pattern": "^[A-Za-z0-9+/]{86}==$"}
           }
         }
       }

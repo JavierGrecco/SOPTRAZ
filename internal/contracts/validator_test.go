@@ -63,6 +63,40 @@ func TestCheckpointSchemaRejectsUnsupportedSignatureAlgorithm(t *testing.T) {
 	}
 }
 
+func TestStableManifestAcceptsSupportedSignatureAlgorithms(t *testing.T) {
+	base := string(readExample(t, "module-manifest.example.json"))
+	base = strings.Replace(base, `"supportStatus": "experimental"`, `"supportStatus": "stable"`, 1)
+	base = strings.Replace(base, `"integrity": {`, `"integrity": {
+    "signature": {
+      "algorithm": "ed25519",
+      "keyId": "`+strings.Repeat("b", 64)+`",
+      "value": "`+strings.Repeat("A", 86)+`=="
+    },`, 1)
+	for _, algorithm := range []string{"ed25519", "ecdsa-p256-sha256"} {
+		t.Run(algorithm, func(t *testing.T) {
+			candidate := strings.Replace(base, `"algorithm": "ed25519"`, `"algorithm": "`+algorithm+`"`, 1)
+			if err := ValidateDocument("manifest", []byte(candidate)); err != nil {
+				t.Fatalf("stable manifest should accept %s: %v", algorithm, err)
+			}
+		})
+	}
+}
+
+func TestStableManifestRejectsUnsupportedSignatureAlgorithm(t *testing.T) {
+	base := string(readExample(t, "module-manifest.example.json"))
+	base = strings.Replace(base, `"supportStatus": "experimental"`, `"supportStatus": "stable"`, 1)
+	base = strings.Replace(base, `"integrity": {`, `"integrity": {
+    "signature": {
+      "algorithm": "ed25519",
+      "keyId": "`+strings.Repeat("b", 64)+`",
+      "value": "`+strings.Repeat("A", 86)+`=="
+    },`, 1)
+	candidate := strings.Replace(base, `"algorithm": "ed25519"`, `"algorithm": "rsa-pss"`, 1)
+	if err := ValidateDocument("manifest", []byte(candidate)); err == nil {
+		t.Fatal("stable manifest must reject unsupported signature algorithms")
+	}
+}
+
 func TestManifestRejectsUnknownFieldsAndUnsignedStableModules(t *testing.T) {
 	raw := string(readExample(t, "module-manifest.example.json"))
 	unknown := strings.Replace(raw, "\"description\":", "\"unexpected\": true, \"description\":", 1)
