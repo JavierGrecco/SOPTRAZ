@@ -19,8 +19,8 @@ import (
 )
 
 type delegatedRepositoryFixture struct {
-	rootJSON  []byte
-	metadata  map[string][]byte
+	rootJSON   []byte
+	metadata   map[string][]byte
 	descriptor artifact.Descriptor
 	targetPath string
 }
@@ -136,11 +136,11 @@ func makeDelegatedRepositoryFixture(t *testing.T) delegatedRepositoryFixture {
 			delegatedKeyID: delegatedTUFKey,
 		},
 		Roles: []metadata.DelegatedRole{{
-			Name:      "osquery",
-			KeyIDs:    []string{delegatedKeyID},
-			Threshold: 1,
+			Name:        "osquery",
+			KeyIDs:      []string{delegatedKeyID},
+			Threshold:   1,
 			Terminating: true,
-			Paths:     []string{"osquery/*/*/*"},
+			Paths:       []string{"osquery/*/*/*"},
 		}},
 	}
 	topTargetsJSON := signedMetadataBytes(t, topTargets, topTargetsKey)
