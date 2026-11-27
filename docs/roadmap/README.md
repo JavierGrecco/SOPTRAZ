@@ -46,10 +46,12 @@ Runtime Go, registro local, IDs, acciones tipadas, permisos/riesgo, cancelación
 
 - [x] Seleccionar TUF/go-tuf v2 por ADR-0015; descartar el módulo legacy v0.x.
 - [ ] Fijar root.json inicial en SOPTRAZ y definir threshold, rotación y revocación de claves.
-- [ ] Implementar cliente TUF: root, timestamp, snapshot, targets y delegaciones; autenticar descriptor artifact v1 como target.
+- [x] Validar la cadena root fijada → timestamp → snapshot → targets y rechazar metadata fuera de orden, vencida, alterada o excesiva (sesión determinista de pruebas; aún no es cliente de producción).
+- [x] Vincular descriptor artifact v1 completo en `targets.custom` con igualdad exacta de ID, versión, SO/arquitectura, licencia, procedencia, ruta, tamaño y SHA-256 frente al target firmado.
+- [ ] Implementar cliente de producción con `updater.Updater` oficial para root, timestamp, snapshot, targets y delegaciones; mantener límites y sincronización.
 - [ ] Persistir metadata y estado anti-rollback atómicamente; probar recuperación tras reinicio.
 - [ ] Definir modo offline que revalide metadata cacheada, vigente y anti-rollback; no usar TOFU ni UnsafeLocalMode como bypass.
-- [ ] Probar rotación root, thresholds, firma inválida, expiración, rollback/freeze, consistent snapshots, tamaño/hash y cache corrupta.
+- [ ] Probar rotación root, thresholds, firma inválida, expiración, rollback/freeze, consistent snapshots, delegaciones y cache corrupta.
 - [ ] Configurar fetcher con timeout, límites de bytes y reintentos acotados; serializar el Updater no concurrente.
 - [ ] Revisar SBOM, licencia Apache-2.0 y dependencias transitivas de go-tuf v2.5.0.
 
