@@ -33,6 +33,7 @@ type TrustState struct {
 type TrustAnchor struct {
 	mu          sync.RWMutex
 	trusted     *trustedmetadata.TrustedMetadata
+	rootJSON    []byte
 	rootSHA256  [sha256.Size]byte
 	rootVersion int64
 }
@@ -67,6 +68,7 @@ func NewPinnedTrustAnchor(rootJSON []byte, expectedSHA256 string) (*TrustAnchor,
 
 	return &TrustAnchor{
 		trusted:     trusted,
+		rootJSON:    append([]byte(nil), rootJSON...),
 		rootSHA256:  digest,
 		rootVersion: trusted.Root.Signed.Version,
 	}, nil
@@ -87,6 +89,29 @@ func (anchor *TrustAnchor) State() (TrustState, error) {
 		Version: anchor.rootVersion,
 		SHA256:  hex.EncodeToString(anchor.rootSHA256[:]),
 	}, nil
+}
+
+// NewMetadataSession creates an isolated TUF metadata update session from the
+// currently trusted root. A session never performs network I/O and is not
+// persisted; callers must discard it after any verification error.
+//
+// TUF TrustedMetadata is not safe for concurrent use. MetadataSession serializes
+// all operations on its private instance.
+func (anchor *TrustAnchor) NewMetadataSession() (*MetadataSession, error) {
+	if anchor == nil {
+		return nil, fmt.Errorf("%w: ancla no inicializada", ErrInvalidTrustAnchor)
+	}
+	anchor.mu.RLock()
+	rootJSON := append([]byte(nil), anchor.rootJSON...)
+	anchor.mu.RUnlock()
+	if len(rootJSON) == 0 {
+		return nil, fmt.Errorf("%w: root.json ausente", ErrInvalidTrustAnchor)
+	}
+	trusted, err := trustedmetadata.New(rootJSON)
+	if err != nil {
+		return nil, fmt.Errorf("%w: no se pudo abrir sesión con root.json: %v", ErrInvalidTrustAnchor, err)
+	}
+	return &MetadataSession{trusted: trusted}, nil
 }
 
 // VerifyAndRotateRoot accepts only the immediately following root version,
@@ -112,6 +137,7 @@ func (anchor *TrustAnchor) VerifyAndRotateRoot(nextRootJSON []byte) (TrustState,
 		return TrustState{}, fmt.Errorf("%w: %v", ErrInvalidRootUpdate, err)
 	}
 	digest := sha256.Sum256(nextRootJSON)
+	anchor.rootJSON = append(anchor.rootJSON[:0], nextRootJSON...)
 	anchor.rootSHA256 = digest
 	anchor.rootVersion = rotated.Signed.Version
 	return TrustState{
