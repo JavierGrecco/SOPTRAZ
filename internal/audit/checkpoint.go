@@ -71,7 +71,10 @@ type CheckpointKeyResolver interface {
 // CheckpointSigner keeps private-key operations outside the audit store.
 // ECDSA implementations return canonical 64-byte P1363 r||s with low-S.
 type CheckpointSigner interface {
-	Identity(ctx context.Context) (CheckpointKeyIdentity, error)
+	// Identity returns the public key corresponding to the private operation.
+	// The returned key is used to verify the signature before it is published.
+	Identity(ctx context.Context) (CheckpointPublicKey, error)
+	// Sign returns 64-byte Ed25519 or IEEE P1363 r||s ECDSA P-256 low-S.
 	Sign(ctx context.Context, message []byte) ([]byte, error)
 }
 
@@ -93,13 +96,32 @@ func (publicKey CheckpointPublicKey) CanonicalBytes() ([]byte, error) {
 			return nil, fmt.Errorf("clave pública ECDSA P-256 inválida o ambigua")
 		}
 		curve := elliptic.P256()
-		if publicKey.ECDSAP256.Curve == nil || !curve.IsOnCurve(publicKey.ECDSAP256.X, publicKey.ECDSAP256.Y) {
-			return nil, fmt.Errorf("la clave pública no contiene un punto válido de NIST P-256")
+		if !sameCurve(publicKey.ECDSAP256.Curve, curve) || !curve.IsOnCurve(publicKey.ECDSAP256.X, publicKey.ECDSAP256.Y) {
+			return nil, fmt.Errorf("la clave pública no pertenece a NIST P-256")
 		}
 		return elliptic.Marshal(curve, publicKey.ECDSAP256.X, publicKey.ECDSAP256.Y), nil
 	default:
 		return nil, fmt.Errorf("algoritmo de firma de checkpoint no compatible %q", publicKey.SignatureAlgorithm)
 	}
+}
+
+// sameCurve compares full parameters instead of trusting an external display name.
+func sameCurve(left, right elliptic.Curve) bool {
+	if left == nil || right == nil {
+		return false
+	}
+	leftParams := left.Params()
+	rightParams := right.Params()
+	if leftParams == nil || rightParams == nil {
+		return false
+	}
+	return leftParams.Name == rightParams.Name &&
+		leftParams.BitSize == rightParams.BitSize &&
+		leftParams.P.Cmp(rightParams.P) == 0 &&
+		leftParams.N.Cmp(rightParams.N) == 0 &&
+		leftParams.B.Cmp(rightParams.B) == 0 &&
+		leftParams.Gx.Cmp(rightParams.Gx) == 0 &&
+		leftParams.Gy.Cmp(rightParams.Gy) == 0
 }
 
 // CheckpointKeyIDFromPublicKey hashes the canonical public-key representation.
@@ -273,21 +295,21 @@ type ed25519CheckpointSigner struct {
 	privateKey ed25519.PrivateKey
 }
 
-func (signer ed25519CheckpointSigner) Identity(ctx context.Context) (CheckpointKeyIdentity, error) {
+func (signer ed25519CheckpointSigner) Identity(ctx context.Context) (CheckpointPublicKey, error) {
 	if ctx == nil {
-		return CheckpointKeyIdentity{}, fmt.Errorf("el contexto del firmante no puede ser nil")
+		return CheckpointPublicKey{}, fmt.Errorf("el contexto del firmante no puede ser nil")
 	}
 	if err := ctx.Err(); err != nil {
-		return CheckpointKeyIdentity{}, err
+		return CheckpointPublicKey{}, err
 	}
 	if len(signer.privateKey) != ed25519.PrivateKeySize {
-		return CheckpointKeyIdentity{}, fmt.Errorf("clave privada Ed25519 inválida: longitud %d", len(signer.privateKey))
+		return CheckpointPublicKey{}, fmt.Errorf("clave privada Ed25519 inválida: longitud %d", len(signer.privateKey))
 	}
 	publicKey := signer.privateKey.Public().(ed25519.PublicKey)
-	return CheckpointKeyIdentityFromPublicKey(CheckpointPublicKey{
+	return CheckpointPublicKey{
 		SignatureAlgorithm: CheckpointSignatureAlgorithm,
 		Ed25519:            publicKey,
-	})
+	}, nil
 }
 
 func (signer ed25519CheckpointSigner) Sign(ctx context.Context, message []byte) ([]byte, error) {
@@ -318,9 +340,13 @@ func SignCheckpointWithSigner(ctx context.Context, checkpoint Checkpoint, signer
 	if signer == nil {
 		return SignedCheckpoint{}, fmt.Errorf("el firmante de checkpoints no puede ser nil")
 	}
-	identity, err := signer.Identity(ctx)
+	publicKey, err := signer.Identity(ctx)
 	if err != nil {
-		return SignedCheckpoint{}, fmt.Errorf("obtener identidad del firmante: %w", err)
+		return SignedCheckpoint{}, fmt.Errorf("obtener clave pública del firmante: %w", err)
+	}
+	identity, err := CheckpointKeyIdentityFromPublicKey(publicKey)
+	if err != nil {
+		return SignedCheckpoint{}, fmt.Errorf("validar clave pública del firmante: %w", err)
 	}
 	if err := identity.Validate(); err != nil {
 		return SignedCheckpoint{}, err
@@ -346,7 +372,11 @@ func SignCheckpointWithSigner(ctx context.Context, checkpoint Checkpoint, signer
 	if err := validateCheckpointSignature(checkpoint.SignatureAlgorithm, signature); err != nil {
 		return SignedCheckpoint{}, err
 	}
-	return SignedCheckpoint{Checkpoint: checkpoint, Signature: base64.StdEncoding.EncodeToString(signature)}, nil
+	signed := SignedCheckpoint{Checkpoint: checkpoint, Signature: base64.StdEncoding.EncodeToString(signature)}
+	if err := VerifySignedCheckpointWithPublicKey(signed, publicKey); err != nil {
+		return SignedCheckpoint{}, fmt.Errorf("la firma no corresponde a la clave pública declarada por el proveedor: %w", err)
+	}
+	return signed, nil
 }
 
 // VerifySignedCheckpoint is the Ed25519-specific compatibility verifier.

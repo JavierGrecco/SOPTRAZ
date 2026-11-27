@@ -281,15 +281,62 @@ func TestCheckpointDigestRejectsInvalidSignatureBeforeReturningAnchor(t *testing
 	}
 }
 
+type checkpointTestMismatchedSigner struct {
+	publicKey  CheckpointPublicKey
+	privateKey ed25519.PrivateKey
+}
+
+func (signer checkpointTestMismatchedSigner) Identity(_ context.Context) (CheckpointPublicKey, error) {
+	return signer.publicKey, nil
+}
+
+func (signer checkpointTestMismatchedSigner) Sign(_ context.Context, message []byte) ([]byte, error) {
+	return ed25519.Sign(signer.privateKey, message), nil
+}
+
+func TestSignCheckpointWithSignerRejectsPrivatePublicKeyMismatch(t *testing.T) {
+	declaredPublic, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, actualPrivate, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey := CheckpointPublicKey{
+		SignatureAlgorithm: CheckpointSignatureAlgorithm,
+		Ed25519:            declaredPublic,
+	}
+	identity, err := CheckpointKeyIdentityFromPublicKey(publicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpoint, err := NewCheckpointWithIdentity(
+		"2aef4e6d-9d50-4cb6-9c96-22a26abf1587",
+		1,
+		strings.Repeat("d", 64),
+		"",
+		identity,
+		time.Date(2026, 11, 27, 22, 0, 0, 0, time.UTC),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := checkpointTestMismatchedSigner{publicKey: publicKey, privateKey: actualPrivate}
+	if _, err := SignCheckpointWithSigner(context.Background(), checkpoint, signer); err == nil || !strings.Contains(err.Error(), "no corresponde") {
+		t.Fatalf("SignCheckpointWithSigner() error = %v, want private/public key mismatch rejection", err)
+	}
+}
+
 type checkpointTestECDSASigner struct {
 	privateKey *ecdsa.PrivateKey
 }
 
-func (signer checkpointTestECDSASigner) Identity(_ context.Context) (CheckpointKeyIdentity, error) {
-	return CheckpointKeyIdentityFromPublicKey(CheckpointPublicKey{
+func (signer checkpointTestECDSASigner) Identity(_ context.Context) (CheckpointPublicKey, error) {
+	return CheckpointPublicKey{
 		SignatureAlgorithm: CheckpointSignatureAlgorithmECDSAP256SHA256,
 		ECDSAP256:          &signer.privateKey.PublicKey,
-	})
+	}, nil
 }
 
 func (signer checkpointTestECDSASigner) Sign(_ context.Context, message []byte) ([]byte, error) {
