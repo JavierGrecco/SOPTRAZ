@@ -1,16 +1,15 @@
 package audit
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"time"
-	"unicode/utf8"
+
+	"github.com/JavierGrecco/SOPTRAZ/internal/strictjson"
 )
 
 const (
@@ -60,8 +59,8 @@ type Store interface {
 }
 
 // NormalizePayload parses an object payload and returns deterministic JSON.
-// JSON object keys are emitted in sorted order by encoding/json; numbers are
-// retained as json.Number to avoid float conversion during canonicalization.
+// Duplicate keys and invalid UTF-8 are rejected before canonicalization.
+// Numbers are retained as json.Number to avoid float conversion.
 func NormalizePayload(raw []byte) (json.RawMessage, error) {
 	if len(raw) == 0 {
 		return nil, fmt.Errorf("el payload de auditoría está vacío")
@@ -69,24 +68,11 @@ func NormalizePayload(raw []byte) (json.RawMessage, error) {
 	if len(raw) > MaxPayloadBytes {
 		return nil, fmt.Errorf("el payload supera el límite de %d bytes", MaxPayloadBytes)
 	}
-	if !utf8.Valid(raw) {
-		return nil, fmt.Errorf("el payload contiene UTF-8 inválido")
-	}
 
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.UseNumber()
-
-	value, err := decodeJSONValue(decoder)
+	value, err := strictjson.Decode(raw)
 	if err != nil {
 		return nil, fmt.Errorf("payload JSON inválido: %w", err)
 	}
-	if _, err := decoder.Token(); err != io.EOF {
-		if err == nil {
-			return nil, fmt.Errorf("el payload contiene más de un documento JSON")
-		}
-		return nil, fmt.Errorf("contenido adicional en el payload: %w", err)
-	}
-
 	object, ok := value.(map[string]any)
 	if !ok || object == nil {
 		return nil, fmt.Errorf("el payload de auditoría debe ser un objeto JSON")
@@ -97,76 +83,6 @@ func NormalizePayload(raw []byte) (json.RawMessage, error) {
 		return nil, fmt.Errorf("no se pudo canonicalizar el payload: %w", err)
 	}
 	return json.RawMessage(canonical), nil
-}
-
-// decodeJSONValue builds a JSON value while rejecting duplicate object keys.
-// encoding/json otherwise accepts duplicate keys and keeps the last value,
-// which can make two downstream parsers interpret audit evidence differently.
-func decodeJSONValue(decoder *json.Decoder) (any, error) {
-	token, err := decoder.Token()
-	if err != nil {
-		return nil, err
-	}
-
-	delimiter, ok := token.(json.Delim)
-	if !ok {
-		return token, nil
-	}
-
-	switch delimiter {
-	case '{':
-		object := make(map[string]any)
-		for decoder.More() {
-			keyToken, err := decoder.Token()
-			if err != nil {
-				return nil, err
-			}
-			key, ok := keyToken.(string)
-			if !ok {
-				return nil, fmt.Errorf("se esperaba una clave de objeto JSON")
-			}
-			if _, exists := object[key]; exists {
-				return nil, fmt.Errorf("clave JSON duplicada %q", key)
-			}
-
-			value, err := decodeJSONValue(decoder)
-			if err != nil {
-				return nil, err
-			}
-			object[key] = value
-		}
-
-		closing, err := decoder.Token()
-		if err != nil {
-			return nil, err
-		}
-		if closing != json.Delim('}') {
-			return nil, fmt.Errorf("objeto JSON sin cierre")
-		}
-		return object, nil
-
-	case '[':
-		values := make([]any, 0)
-		for decoder.More() {
-			value, err := decodeJSONValue(decoder)
-			if err != nil {
-				return nil, err
-			}
-			values = append(values, value)
-		}
-
-		closing, err := decoder.Token()
-		if err != nil {
-			return nil, err
-		}
-		if closing != json.Delim(']') {
-			return nil, fmt.Errorf("array JSON sin cierre")
-		}
-		return values, nil
-
-	default:
-		return nil, fmt.Errorf("delimitador JSON inesperado %q", delimiter)
-	}
 }
 
 // ComputeHash computes the event hash from its immutable fields, including the

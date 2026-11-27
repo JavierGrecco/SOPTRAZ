@@ -3,12 +3,12 @@ package contracts
 import (
 	"bytes"
 	"embed"
-	"encoding/json"
 	"fmt"
-	"io"
 	"sync"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
+
+	"github.com/JavierGrecco/SOPTRAZ/internal/strictjson"
 )
 
 //go:embed schemas/*.schema.json
@@ -90,22 +90,9 @@ func ValidateDocument(kind string, raw []byte) error {
 		return fmt.Errorf("tipo de contrato desconocido %q (válidos: manifest, action, intervention, event, checkpoint)", kind)
 	}
 
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.UseNumber()
-	var document any
-	if err := decoder.Decode(&document); err != nil {
-		if err == io.EOF {
-			return fmt.Errorf("el documento está vacío")
-		}
+	document, err := strictjson.Decode(raw)
+	if err != nil {
 		return fmt.Errorf("JSON inválido: %w", err)
-	}
-
-	var trailing any
-	if err := decoder.Decode(&trailing); err != io.EOF {
-		if err == nil {
-			return fmt.Errorf("el archivo contiene más de un documento JSON")
-		}
-		return fmt.Errorf("contenido adicional después del documento JSON: %w", err)
 	}
 
 	if err := schema.Validate(document); err != nil {

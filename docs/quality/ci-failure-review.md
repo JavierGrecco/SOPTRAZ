@@ -3,11 +3,11 @@
 **Revisión:** 2026-11-27  
 **Repositorio:** `JavierGrecco/SOPTRAZ`  
 **Rama auditada:** `main`  
-**Alcance:** 25 ejecuciones de Actions disponibles al 27 de noviembre de 2026, hasta el commit `268b6cd`.
+**Alcance:** 28 ejecuciones de Actions disponibles al 27 de noviembre de 2026, hasta el commit `bfe7f7b`.
 
 ## Resultado ejecutivo
 
-Se revisaron 25 ejecuciones: **20 pushes del CI principal en main (10 fallidos y 10 exitosos), 1 PR de Dependabot exitoso y 4 ejecuciones dinámicas de Dependabot exitosas; no hubo cancelaciones**. Las diez fallidas se explican por cinco familias de causa raíz, algunas repetidas tras cada push. La última ejecución principal, [#21](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46065064799), sobre `268b6cd`, terminó verde en Windows, macOS, Ubuntu, Race Detector y fuzzing de payloads.
+Se revisaron 28 ejecuciones: **23 pushes del CI principal en main (11 fallidos y 12 exitosos), 1 PR de Dependabot exitoso y 4 ejecuciones dinámicas de Dependabot exitosas; no hubo cancelaciones**. Las once fallidas se explican por seis familias de causa raíz, algunas repetidas tras cada push. La última ejecución principal, [#24](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46065887175), sobre `bfe7f7b`, terminó verde en Windows, macOS, Ubuntu, Race Detector y fuzzing de payloads.
 
 La revisión no atribuye cada job rojo a una causa distinta. Cuando tres runners fallan en el mismo paso con el mismo mensaje, se cuenta como una sola causa reproducida en tres plataformas.
 
@@ -26,8 +26,9 @@ La revisión no atribuye cada job rojo a una causa distinta. Cuando tres runners
 
 La ejecución posterior al arreglo de imports es [#12](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46061389071), commit `ccc07a7`: los cuatro jobs terminaron correctamente.
 
-| [#13](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46062376162) | `9cc3976` | Módulos en Ubuntu; `go vet` Windows/macOS; Race Detector | `go mod tidy -diff` quitó `github.com/google/pprof` y `modernc.org/fileutil` del `go.mod`; el código nuevo llamaba a `strings` sin importarlo | El manifiesto incluía dos requisitos indirectos redundantes que pertenecen al grafo transitivo de SQLite y el helper de rutas no tenía el import de `strings`. Se quitaron los requisitos redundantes y se incorporó el import. |
+| [#13](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46062376162) | `9cc3976` | Módulos en Ubuntu; `go vet` Windows/macOS; Race Detector | `go mod tidy -diff` quitó `github.com/google/pprof` y `modernc.org/fileutil` del `go.mod`; el helper de rutas no tenía imports para `runtime` y `strings` | El manifiesto incluía dos requisitos indirectos redundantes que pertenecen al grafo transitivo de SQLite y el helper de rutas no declaraba los paquetes `runtime` y `strings`. Se quitaron los requisitos redundantes y se incorporaron ambos imports. |
 | [#14](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46062502065) | `eda9fc3` | `go vet` Windows, macOS y Ubuntu; Race Detector | `store.go` contenía solo el bloque de imports (286 bytes): faltaban `Store`, `Open`, migraciones y funciones DSN | Error de integración introducido al reconstruir el blob: se creó una sustitución completa con solo imports en vez de modificar el bloque de imports. Restaurado el archivo completo desde el commit anterior y aplicado el import correcto en `8d677f5`. |
+| [#23](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46065694412) | `125cd12` | Formato en Windows, macOS y Ubuntu | `internal/audit/checkpoint.go` no estaba formateado | Defecto de formato introducido al añadir los primitives Ed25519. Race Detector y fuzzing pasaron. Corregido con `gofmt` en `bfe7f7b`; el run #24 volvió a verificarlo en los tres sistemas. |
 
 ## Ejecuciones exitosas de referencia
 
@@ -44,6 +45,8 @@ La ejecución posterior al arreglo de imports es [#12](https://github.com/Javier
 | [#19](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46063747648) | `b71fbe9` | Los cuatro jobs verdes tras integrar setup-go v7.1.0 en main. |
 | [#20](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46064474486) | `074c47f` | Los cuatro jobs verdes tras incorporar ADR-0013 y el diseño de checkpoint firmado / bundle Field → Hub. |
 | [#21](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46065064799) | `268b6cd` | Los cinco jobs verdes: módulo, formato, vet, tests Windows/macOS/Ubuntu, Race Detector y fuzz de payloads JSON (16.810 ejecuciones, 66 casos interesantes nuevos, sin fallo). |
+| [#22](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46065386846) | `cb3c381` | Los cinco jobs verdes tras actualizar la revisión de CI y el estado del endurecimiento de payloads. |
+| [#24](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46065887175) | `bfe7f7b` | Los cinco jobs verdes después de aplicar `gofmt` a los primitives de checkpoint Ed25519. El run #23 anterior había fallado solo en formato; Race Detector y fuzzing ya estaban verdes. |
 
 ## Causas raíz y correcciones permanentes
 
@@ -61,7 +64,7 @@ El texto `go: updates to go.mod needed; to update it: go mod tidy` significa que
 
 ### 3. Construcción de código de prueba y helpers
 
-Los primeros tests de SQLite se construyeron con delimitadores JSON escapados de forma incorrecta, y después quedó un doble escape en el JSON generado por `fmt.Sprintf`. Las salidas exactas fueron `illegal character U+005C` y errores sintácticos derivados, antes de que comenzaran las pruebas SQLite. Más adelante, en el run #13, el nuevo helper de rutas llamó a `strings.ReplaceAll` y `strings.HasPrefix` sin importar el paquete `strings`; `go vet` y Race Detector lo detectaron en compilación.
+Los primeros tests de SQLite se construyeron con delimitadores JSON escapados de forma incorrecta, y después quedó un doble escape en el JSON generado por `fmt.Sprintf`. Las salidas exactas fueron `illegal character U+005C` y errores sintácticos derivados, antes de que comenzaran las pruebas SQLite. Más adelante, en el run #13, el nuevo helper de rutas llamó a `runtime.GOOS` y a `strings.ReplaceAll`/`strings.HasPrefix` sin importar los paquetes `runtime` y `strings`; `go vet` y Race Detector lo detectaron en compilación.
 
 **Corrección permanente:** los fixtures usan strings Go válidos, el helper declara sus imports y los casos de concurrencia se compilan y pasan con Race Detector y en los tres runners.
 
@@ -105,4 +108,4 @@ El run #14 fue introducido por una corrección de integración nuestra: el blob 
 
 ## Límites de esta auditoría
 
-Las 25 ejecuciones examinadas corresponden al historial disponible del repositorio al 2026-11-27. El run #17 corresponde al PR de Dependabot; los cuatro runs dinámicos de Dependabot se identifican por separado y no se mezclan con los 18 pushes del CI principal. La revisión no afirma que se hayan ejecutado pruebas locales en el Mac del usuario. La evidencia de compatibilidad descrita arriba proviene de los GitHub runners y de los logs asociados a los commits citados.
+Las 28 ejecuciones examinadas corresponden al historial disponible del repositorio al 2026-11-27. El run #17 corresponde al PR de Dependabot; los cuatro runs dinámicos de Dependabot se identifican por separado y no se mezclan con los 23 pushes del CI principal. La revisión no afirma que se hayan ejecutado pruebas locales en el Mac del usuario. El run #23 se cuenta como una sola causa de formato reproducida en tres runners; no como tres defectos independientes. La evidencia de compatibilidad descrita arriba proviene de los GitHub runners y de los logs asociados a los commits citados.

@@ -107,3 +107,20 @@ func TestUnknownKindMalformedJSONTrailingJSONAndSizeLimitAreRejected(t *testing.
 		t.Fatal("oversized document must be rejected")
 	}
 }
+
+func TestValidateDocumentRejectsDuplicateKeysIncludingEscapedNames(t *testing.T) {
+	raw := []byte(`{"schemaVersion":"1.0.0","metadata":{"owner":"one","o\\u0077ner":"two"}}`)
+	err := ValidateDocument("manifest", raw)
+	if err == nil || !strings.Contains(err.Error(), "clave JSON duplicada") {
+		t.Fatalf("ValidateDocument() error = %v, want duplicate-key rejection", err)
+	}
+}
+
+func TestValidateDocumentRejectsInvalidUTF8(t *testing.T) {
+	raw := append([]byte(`{"schemaVersion":"1.0.0","description":"`), 0xff)
+	raw = append(raw, []byte(`"}`)...)
+	err := ValidateDocument("manifest", raw)
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "utf-8") {
+		t.Fatalf("ValidateDocument() error = %v, want invalid UTF-8 rejection", err)
+	}
+}
