@@ -27,6 +27,7 @@ var (
 	ErrUnsupportedPlatform = errors.New("plataforma o arquitectura no compatible")
 	ErrArtifactPath        = errors.New("ruta de artefacto no permitida")
 	ErrArtifactIntegrity   = errors.New("integridad del artefacto no válida")
+	ErrResolverClosed      = errors.New("el resolver de artefactos está cerrado")
 )
 
 var artifactIDPattern = regexp.MustCompile(`^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$`)
@@ -141,12 +142,14 @@ type ResolvedArtifact struct {
 // Resolver verifies artifacts under one application-managed directory.
 // It does not trust PATH, search other locations or fall back to another build.
 type Resolver struct {
-	root      *os.Root
-	rootPath  string
-	platform  Platform
-	maxBytes  int64
-	closeOnce sync.Once
-	closeErr  error
+	root     *os.Root
+	rootPath string
+	platform Platform
+	maxBytes int64
+
+	mu       sync.RWMutex
+	closed   bool
+	closeErr error
 }
 
 func NewResolver(root string, platform Platform) (*Resolver, error) {
@@ -185,24 +188,34 @@ func newResolver(root string, platform Platform, maxBytes int64) (*Resolver, err
 	}, nil
 }
 
-// Close releases the confined directory handle. It is safe to call more than once.
+// Close releases the confined directory handle. It waits for in-flight
+// resolutions, prevents new ones from starting, and is safe to call repeatedly.
 func (resolver *Resolver) Close() error {
 	if resolver == nil {
 		return nil
 	}
-	resolver.closeOnce.Do(func() {
-		if resolver.root != nil {
-			resolver.closeErr = resolver.root.Close()
-		}
-	})
+	resolver.mu.Lock()
+	defer resolver.mu.Unlock()
+	if resolver.closed {
+		return resolver.closeErr
+	}
+	resolver.closed = true
+	if resolver.root != nil {
+		resolver.closeErr = resolver.root.Close()
+	}
 	return resolver.closeErr
 }
 
 // Resolve accepts only an exact platform match and verifies the bytes on disk.
 // No PATH lookup, download, extraction or process execution is performed.
 func (resolver *Resolver) Resolve(descriptor Descriptor) (ResolvedArtifact, error) {
-	if resolver == nil || resolver.root == nil {
+	if resolver == nil {
 		return ResolvedArtifact{}, fmt.Errorf("resolver de artefactos no inicializado")
+	}
+	resolver.mu.RLock()
+	defer resolver.mu.RUnlock()
+	if resolver.closed || resolver.root == nil {
+		return ResolvedArtifact{}, ErrResolverClosed
 	}
 	if err := descriptor.Validate(); err != nil {
 		return ResolvedArtifact{}, err

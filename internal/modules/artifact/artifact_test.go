@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -65,6 +66,58 @@ func newTestResolverWithLimit(t *testing.T, root string, platform Platform, maxB
 	return resolver
 }
 
+func TestResolverCloseIsIdempotentAndRejectsFurtherResolutions(t *testing.T) {
+	root := t.TempDir()
+	content := []byte("trusted artifact")
+	writeArtifact(t, root, "osquery/5.24.1/linux-amd64/osqueryi", content)
+	resolver := newTestResolver(t, root, Platform{OS: "linux", Architecture: "amd64"})
+	if err := resolver.Close(); err != nil {
+		t.Fatalf("first Close() error = %v", err)
+	}
+	if err := resolver.Close(); err != nil {
+		t.Fatalf("second Close() error = %v, want idempotent close", err)
+	}
+	if _, err := resolver.Resolve(testDescriptor(content)); !errors.Is(err, ErrResolverClosed) {
+		t.Fatalf("Resolve() after Close() error = %v, want ErrResolverClosed", err)
+	}
+}
+
+func TestResolverCloseIsSafeDuringConcurrentResolutions(t *testing.T) {
+	root := t.TempDir()
+	content := []byte("trusted artifact")
+	writeArtifact(t, root, "osquery/5.24.1/linux-amd64/osqueryi", content)
+	resolver := newTestResolver(t, root, Platform{OS: "linux", Architecture: "amd64"})
+	const workers = 8
+	start := make(chan struct{})
+	var group sync.WaitGroup
+	errorsFound := make(chan error, workers)
+	for worker := 0; worker < workers; worker++ {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			<-start
+			for attempt := 0; attempt < 20; attempt++ {
+				_, err := resolver.Resolve(testDescriptor(content))
+				if errors.Is(err, ErrResolverClosed) {
+					return
+				}
+				if err != nil {
+					errorsFound <- err
+					return
+				}
+			}
+		}()
+	}
+	close(start)
+	if err := resolver.Close(); err != nil {
+		t.Fatalf("Close() during concurrent Resolve() error = %v", err)
+	}
+	group.Wait()
+	close(errorsFound)
+	for err := range errorsFound {
+		t.Errorf("unexpected concurrent Resolve() error: %v", err)
+	}
+}
 func TestResolveVerifiesInstalledArtifact(t *testing.T) {
 	root := t.TempDir()
 	content := []byte("trusted osquery test executable bytes")
