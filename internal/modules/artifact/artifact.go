@@ -102,6 +102,7 @@ func portablePathComponent(part string) bool {
 	}
 	return true
 }
+
 // ValidateRelativePath applies the same cross-platform path policy to catalog targets
 // and artifact descriptors. TUF target paths must not acquire different filesystem
 // semantics when they are later resolved on Windows, macOS or Linux.
