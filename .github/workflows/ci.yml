@@ -36,6 +36,8 @@ jobs:
           if [ -n "$files" ]; then
             echo "Go files need gofmt:"
             echo "$files"
+            echo "gofmt diff (diagnostic):"
+            gofmt -d .
             exit 1
           fi
       - name: Vet
