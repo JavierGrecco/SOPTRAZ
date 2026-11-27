@@ -187,19 +187,27 @@ func (session *MetadataSession) Target(targetPath string) (VerifiedTarget, error
 // the exact artifact v1 descriptor. TUF's signed target length and SHA-256 must
 // also match the descriptor. This binds version, platform, architecture,
 // license, provenance, path, size and digest to the authenticated target.
-func (session *MetadataSession) VerifyDescriptor(descriptor artifact.Descriptor) (VerifiedTarget, error) {
-	if session == nil {
-		return VerifiedTarget{}, fmt.Errorf("%w: sesión no inicializada", ErrMetadataSequence)
-	}
+func verifySignedArtifactTarget(targetPath string, target *metadata.TargetFiles, descriptor artifact.Descriptor) (VerifiedTarget, error) {
 	if err := descriptor.Validate(); err != nil {
 		return VerifiedTarget{}, fmt.Errorf("%w: %v", ErrInvalidTargetDescriptor, err)
 	}
-
-	session.mu.Lock()
-	defer session.mu.Unlock()
-	verified, target, err := session.targetLocked(descriptor.RelativePath)
-	if err != nil {
-		return VerifiedTarget{}, err
+	if err := artifact.ValidateRelativePath(targetPath); err != nil {
+		return VerifiedTarget{}, fmt.Errorf("%w: %v", ErrInvalidTarget, err)
+	}
+	if target == nil {
+		return VerifiedTarget{}, ErrTargetNotFound
+	}
+	if target.Length <= 0 || target.Length > MaxTargetBytes {
+		return VerifiedTarget{}, fmt.Errorf("%w: longitud fuera del límite", ErrInvalidTarget)
+	}
+	digest, ok := target.Hashes["sha256"]
+	if !ok || len(digest) != sha256.Size {
+		return VerifiedTarget{}, fmt.Errorf("%w: se requiere un SHA-256 de 32 bytes", ErrInvalidTarget)
+	}
+	verified := VerifiedTarget{
+		Path:   targetPath,
+		Length: target.Length,
+		SHA256: hex.EncodeToString(digest),
 	}
 	if target.Custom == nil {
 		return VerifiedTarget{}, fmt.Errorf("%w: el target no publica custom artifact v1", ErrInvalidTargetDescriptor)
@@ -212,4 +220,20 @@ func (session *MetadataSession) VerifyDescriptor(descriptor artifact.Descriptor)
 		return VerifiedTarget{}, ErrTargetDescriptorMismatch
 	}
 	return verified, nil
+}
+
+// VerifyDescriptor verifies the top-level target and binds its complete artifact
+// descriptor to the TUF-signed custom metadata.
+func (session *MetadataSession) VerifyDescriptor(descriptor artifact.Descriptor) (VerifiedTarget, error) {
+	if session == nil {
+		return VerifiedTarget{}, fmt.Errorf("%w: sesión no inicializada", ErrMetadataSequence)
+	}
+
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	_, target, err := session.targetLocked(descriptor.RelativePath)
+	if err != nil {
+		return VerifiedTarget{}, err
+	}
+	return verifySignedArtifactTarget(descriptor.RelativePath, target, descriptor)
 }
