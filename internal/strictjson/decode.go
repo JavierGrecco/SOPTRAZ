@@ -1,5 +1,5 @@
-// Package strictjson decodes JSON while rejecting ambiguous object names and
-// malformed UTF-8 and unpaired UTF-16 escapes before application validation.
+// Package strictjson decodes JSON while rejecting ambiguous object names,
+// malformed UTF-8, and unpaired UTF-16 escapes before application validation.
 package strictjson
 
 import (

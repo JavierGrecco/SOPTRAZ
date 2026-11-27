@@ -3,11 +3,11 @@
 **Revisión:** 2026-11-27  
 **Repositorio:** `JavierGrecco/SOPTRAZ`  
 **Rama auditada:** `main`  
-**Alcance:** 30 ejecuciones de Actions disponibles al 27 de noviembre de 2026, hasta el commit `0596d38`.
+**Alcance:** 31 ejecuciones de Actions disponibles al 27 de noviembre de 2026, hasta el commit `4f9a282`.
 
 ## Resultado ejecutivo
 
-Se revisaron 30 ejecuciones: **25 pushes del CI principal en main (12 fallidos y 13 exitosos), 1 PR de Dependabot exitoso y 4 ejecuciones dinámicas de Dependabot exitosas; no hubo cancelaciones**. Las doce fallidas se explican por seis familias de causa raíz, algunas repetidas tras cada push. El run principal más reciente, [#26](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46066404539), sobre `0596d38`, terminó verde en Windows, macOS, Ubuntu, Race Detector y fuzzing.
+Se revisaron 31 ejecuciones: **26 pushes del CI principal en main (13 fallidos y 13 exitosos), 1 PR de Dependabot exitoso y 4 ejecuciones dinámicas de Dependabot exitosas; no hubo cancelaciones**. Las trece fallidas se explican por cinco familias de causa raíz, algunas repetidas tras cada push. El run principal más reciente, [#27](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46066682481), sobre `4f9a282`, falló en la sintaxis de un archivo de pruebas generado; el fuzzing pasó.
 
 La revisión no atribuye cada job rojo a una causa distinta. Cuando tres runners fallan en el mismo paso con el mismo mensaje, se cuenta como una sola causa reproducida en tres plataformas.
 
@@ -30,6 +30,7 @@ La ejecución posterior al arreglo de imports es [#12](https://github.com/Javier
 | [#14](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46062502065) | `eda9fc3` | `go vet` Windows, macOS y Ubuntu; Race Detector | `store.go` contenía solo el bloque de imports (286 bytes): faltaban `Store`, `Open`, migraciones y funciones DSN | Error de integración introducido al reconstruir el blob: se creó una sustitución completa con solo imports en vez de modificar el bloque de imports. Restaurado el archivo completo desde el commit anterior y aplicado el import correcto en `8d677f5`. |
 | [#23](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46065694412) | `125cd12` | Formato en Windows, macOS y Ubuntu | `internal/audit/checkpoint.go` no estaba formateado | Defecto de formato introducido al añadir las primitivas Ed25519. Race Detector y fuzzing pasaron. Corregido con `gofmt` en `bfe7f7b`; el run #24 volvió a verificarlo en los tres sistemas. |
 | [#25](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46066212890) | `cea6909` | Tests en Windows, macOS, Ubuntu y Race Detector | Dos fixtures de regresión usaban `\\u0072ole` y `o\\u0077ner` (dos barras), que JSON interpreta como una barra literal seguida de texto, no como escapes Unicode equivalentes. | Error al generar los tests, no del decodificador: los nombres no eran duplicados después del parseo. Los logs muestran los mismos dos fallos en los cuatro jobs; fuzzing pasó. Se corrigieron los fixtures para usar un único escape JSON. |
+| [#27](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46066682481) | `4f9a282` | Formato en los tres sistemas y Race Detector | `internal/strictjson/decode_test.go` contenía secuencias `\\t` y delimitadores de raw string escapados literalmente en las pruebas Unicode; `gofmt` informó `illegal character U+005C`. | Error de generación del archivo de pruebas, no del parser de producción. Los mismos defectos impidieron compilar en Windows, macOS, Ubuntu y Race Detector; el fuzzing separado pasó. La corrección reconstruye el bloque de pruebas como código Go normal y conserva los escapes JSON dentro de raw strings. |
 
 ## Ejecuciones exitosas de referencia
 
@@ -66,7 +67,7 @@ El texto `go: updates to go.mod needed; to update it: go mod tidy` significa que
 
 ### 3. Construcción de código de prueba y helpers
 
-Los primeros tests de SQLite se construyeron con delimitadores JSON escapados de forma incorrecta, y después quedó un doble escape en el JSON generado por `fmt.Sprintf`. Las salidas exactas fueron `illegal character U+005C` y errores sintácticos derivados, antes de que comenzaran las pruebas SQLite. Más adelante, en el run #13, el nuevo helper de rutas llamó a `runtime.GOOS` y a `strings.ReplaceAll`/`strings.HasPrefix` sin importar los paquetes `runtime` y `strings`; `go vet` y Race Detector lo detectaron en compilación.
+Los primeros tests de SQLite se construyeron con delimitadores JSON escapados de forma incorrecta, y después quedó un doble escape en el JSON generado por `fmt.Sprintf`. Las salidas exactas fueron `illegal character U+005C` y errores sintácticos derivados, antes de que comenzaran las pruebas SQLite. El run #25 repitió el patrón por escapes Unicode mal generados; el #27 lo repitió por secuencias `\\t` y delimitadores raw mal escapados en el nuevo test de Unicode. En ambos casos falló el código de prueba, no el parser; el run #26 corrigió #25. Más adelante, en el run #13, el nuevo helper de rutas llamó a `runtime.GOOS` y a `strings.ReplaceAll`/`strings.HasPrefix` sin importar los paquetes `runtime` y `strings`; `go vet` y Race Detector lo detectaron en compilación.
 
 **Corrección permanente:** los fixtures usan strings Go válidos, el helper declara sus imports y los casos de concurrencia se compilan y pasan con Race Detector y en los tres runners.
 
@@ -89,6 +90,7 @@ El run #14 fue introducido por una corrección de integración nuestra: el blob 
 3. El proyecto [Dicklesworthstone/beads_viewer, issue #198](https://github.com/Dicklesworthstone/beads_viewer/issues/198) reportó exactamente `invalid uri authority: E:%5C...`. Su autor confirmó la reproducción y la corrigió en [commit 5845a0e](https://github.com/Dicklesworthstone/beads_viewer/commit/5845a0e112c42fd865193e585d7b1e752992ee71), usando una función de normalización aislada y tests para drive, UNC, relativo y POSIX. SOPTRAZ adopta esa estrategia de normalización y amplía la verificación con apertura y escritura real.
 4. El propio [modernc.org/sqlite v1.63.0](https://github.com/modernc-org/sqlite/tree/v1.63.0) documenta que el driver es pure Go/no-CGO, pero distribuye un grafo transitivo y componentes SQLite generados. Por eso se deben mantener checksums, SBOM y avisos de terceros antes de empaquetar Field.
 5. La [guía de Go Modules](https://go.dev/wiki/Modules) recomienda `go mod tidy` para poner el manifiesto en un estado coherente y recuerda que tidy considera tests, combinaciones de plataforma y build tags, no solo el build que está corriendo en el SO actual.
+6. La [documentación oficial de Go para `encoding/json`](https://pkg.go.dev/encoding/json) confirma que el decodificador tradicional sustituye UTF-8 inválido y pares sustitutos UTF-16 inválidos por U+FFFD; el [RFC 8259, sección 8.2](https://www.rfc-editor.org/rfc/rfc8259#section-8.2) advierte que el resultado de procesar sustitutos aislados es impredecible. El paquete interno `strictjson` rechaza esos escapes, además de claves duplicadas, UTF-8 inválido, documentos concatenados y profundidad excesiva.
 
 ## Controles de CI reforzados tras la auditoría
 
@@ -110,6 +112,5 @@ El run #14 fue introducido por una corrección de integración nuestra: el blob 
 
 ## Límites de esta auditoría
 
-Las 30 ejecuciones examinadas corresponden al historial disponible del repositorio al 2026-11-27. El run #17 corresponde al PR de Dependabot; los cuatro runs dinámicos de Dependabot se identifican por separado y no se mezclan con los 25 pushes del CI principal. La revisión no afirma que se hayan ejecutado pruebas locales en el Mac del usuario. El run #23 se cuenta como una sola causa de formato reproducida en tres runners; no como tres defectos independientes. El run #25 se cuenta como un defecto de test repetido por matriz, no como cuatro defectos diferentes. La evidencia de compatibilidad descrita arriba proviene de los GitHub runners y de los logs asociados a los commits citados.
+Las 31 ejecuciones examinadas corresponden al historial disponible del repositorio al 2026-11-27. El run #17 corresponde al PR de Dependabot; los cuatro runs dinámicos de Dependabot se identifican por separado y no se mezclan con los 26 pushes del CI principal. La revisión no afirma que se hayan ejecutado pruebas locales en el Mac del usuario. El run #23 se cuenta como una sola causa de formato reproducida en tres runners; #25 y #27 son defectos únicos de generación de tests repetidos por la matriz, no múltiples causas independientes. La evidencia de compatibilidad descrita arriba proviene de los GitHub runners y de los logs asociados a los commits citados.
 
-6. La [documentación oficial de Go para `encoding/json`](https://pkg.go.dev/encoding/json) confirma que el decodificador tradicional sustituye UTF-8 inválido y pares sustitutos UTF-16 inválidos por U+FFFD; el [RFC 8259, sección 8.2](https://www.rfc-editor.org/rfc/rfc8259#section-8.2) advierte que el resultado de procesar sustitutos aislados es impredecible. El paquete interno `strictjson` rechaza esos escapes, además de claves duplicadas, UTF-8 inválido, documentos concatenados y profundidad excesiva.
