@@ -3,11 +3,11 @@
 **Revisión:** 2026-11-27  
 **Repositorio:** `JavierGrecco/SOPTRAZ`  
 **Rama auditada:** `main`  
-**Alcance:** 49 ejecuciones de Actions disponibles al 27 de noviembre de 2026, hasta el commit `cb69391`.
+**Alcance:** 61 ejecuciones de Actions disponibles al 27 de noviembre de 2026, hasta el commit `fb70b55`.
 
 ## Resultado ejecutivo
 
-Se revisaron 49 ejecuciones: **44 pushes del CI principal en main (18 fallidos y 26 exitosos), 1 PR de Dependabot exitoso y 4 ejecuciones dinámicas de Dependabot exitosas; no hubo cancelaciones**. Las dieciocho fallidas se agrupan en siete familias de causa raíz, algunas repetidas por la matriz. Los runs #43 y #44 cerraron verdes la primera entrega del registro de artefactos; el más reciente al cierre de esta revisión, [#44](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46071816981), sobre `03faaa6`, pasó Windows, macOS, Ubuntu, Race Detector y fuzzing.
+Se revisaron 61 ejecuciones: **56 pushes del CI principal en main (23 fallidos y 33 exitosos), 1 PR de Dependabot exitoso y 4 ejecuciones dinámicas de Dependabot exitosas; no hubo cancelaciones**. Los runs #52–#54 comparten una regresión de construcción del fuente `artifact.go`; #55 fue solo formato del fixture. El run más reciente, [#57](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46075075169), sobre `fb70b55`, pasó Windows, macOS, Ubuntu, Race Detector y fuzzing.
 
 La revisión no atribuye cada job rojo a una causa distinta. Cuando tres runners fallan en el mismo paso con el mismo mensaje, se cuenta como una sola causa reproducida en tres plataformas.
 
@@ -36,6 +36,11 @@ La ejecución posterior al arreglo de imports es [#12](https://github.com/Javier
 | [#34](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46069340518) | `282adc0` | Formato en Windows, macOS y Ubuntu | `gofmt` detectó alineación de constantes, campos e imports de los tipos P-256. | El código compilaba: Race Detector y fuzzing pasaron. La corrección aislada llegó en `f55af4f` y fue aceptada en #35. |
 | [#41](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46071331988) | `0c7e26d` | Formato en Ubuntu, macOS y Windows | `gofmt` detectó alineación de sentinels y campos del `Resolver` en `internal/modules/artifact/artifact.go`. | Defecto de formato de la primera entrega del resolver; Race Detector y fuzzing pasaron. Se aplicó `gofmt` sin cambiar lógica en `0d34763`; el run #42 dejó visible además una expectativa incorrecta en el test de ruta. |
 | [#42](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46071468643) | `0d34763` | `go test` macOS y Windows; Ubuntu pasó | `TestResolveVerifiesInstalledArtifact` comparaba `ResolvedArtifact.Path` contra el path original de `t.TempDir()`. `NewResolver` usa `EvalSymlinks`, por lo que macOS devolvió `/private/...` en vez del alias `/var/...`; Windows también normalizó la ruta. | Fallo del fixture, no del hash/resolver: esperaba una ruta no canonicalizada. Race Detector y fuzzing pasaron. Corregido usando `filepath.EvalSymlinks(path)` para la expectativa; #43 validó el arreglo en los cinco jobs. |
+| [#48](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46072865911) | `aee5ec2` | Formato en Windows, macOS y Ubuntu; Race Detector | La migración a `os.Root` dejó una separación en blanco faltante antes de un comentario (`gofmt`) y cinco pruebas usaban `err =` sin declarar la variable después de migrar al helper que crea el resolver. Race Detector detectó los mismos errores de compilación; fuzzing pasó. | Dos defectos de integración en los archivos nuevos del resolver/tests, no un fallo de `os.Root`. Se añadió `:=` en las pruebas, se corrigió formato y #49 validó los cinco jobs. |
+| [#52](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46073840120) | `4b93557` | Formato en los tres sistemas y Race Detector | La edición que introdujo SemVer dañó la declaración de regex y duplicó parte del encabezado dentro de `artifact.go`; el parser Go informó `expected type`, `illegal character '?'` y declaraciones fuera de lugar. | Defecto de construcción del fuente, no del esquema JSON ni del resolver. Fuzzing pasó; los paquetes no pudieron compilar. |
+| [#53](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46073939230) | `436344a` | Formato en Ubuntu/macOS y Race Detector | Persistía la corrupción de `artifact.go`; el commit cambió el esquema/tests pero no restauró el paquete Go. | Repetición de la misma regresión raíz de #52. |
+| [#54](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46074231305) | `8be0986` | Formato/compilación y Race Detector | Un segundo intento de restauración volvió a insertar el texto del paquete dentro de la declaración de regex, dejando encabezados duplicados y sintaxis Go inválida. | Repetición del defecto de construcción automatizada. Se restauró desde `7c4177f`, último commit verde, y se verificó que hubiera un solo paquete y una sola función `Resolve` antes de publicar. |
+| [#55](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46074536789) | `3e78fed` | Formato en Windows, macOS y Ubuntu; Race Detector y fuzzing pasaron | `gofmt` pidió alinear campos nuevos del fixture `testDescriptor`. | Defecto de formato de pruebas únicamente; producción compiló y Race Detector/fuzzing pasaron. Se ajustó el fixture y #56 verificó los cinco jobs. |
 
 ## Ejecuciones exitosas de referencia
 
@@ -67,6 +72,14 @@ La ejecución posterior al arreglo de imports es [#12](https://github.com/Javier
 | [#40](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46071004167) | `5a86713` | Los cinco jobs verdes; se rechazan parámetros incompletos de P-256 sin panic. |
 | [#43](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46071637678) | `3d264d1` | Los cinco jobs verdes tras comparar la ruta esperada del test en forma canonicalizada. |
 | [#44](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46071816981) | `03faaa6` | Los cinco jobs verdes; se rechazan componentes de ruta no portables/reservados de Windows en cualquier plataforma. |
+| [#45](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46072264269) | `cb69391` | Cinco jobs verdes tras documentar resolver y puerta segura de integración. |
+| [#46](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46072307338) | `5f082cd` | Cinco jobs verdes tras sincronizar roadmap y revisión de CI hasta #44. |
+| [#47](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46072591187) | `88578f7` | Cinco jobs verdes tras añadir confinamiento de rutas bajo la raíz administrada. |
+| [#49](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46073046521) | `293ca99` | Cinco jobs verdes al migrar a `os.Root` y sincronizar `Close` con resoluciones concurrentes. |
+| [#50](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46073235441) | `179a741` | Cinco jobs verdes; cierre idempotente, rechazo de uso posterior y test concurrente aprobado por Race Detector. |
+| [#51](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46073431042) | `7c4177f` | Cinco jobs verdes; la API pública deriva la plataforma real y valida combinaciones SO/arquitectura. |
+| [#56](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46074662090) | `a994401` | Cinco jobs verdes tras restaurar el resolver desde el último commit verde, integrar descriptor v1 y validar SemVer/tamaño con fixture formateado. |
+| [#57](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46075075169) | `fb70b55` | Cinco jobs verdes tras sincronizar contrato de artefactos, arquitectura y roadmap. |
 
 ## Causas raíz y correcciones permanentes
 
@@ -129,5 +142,5 @@ El run #14 fue introducido por una corrección de integración nuestra: el blob 
 
 ## Límites de esta auditoría
 
-Las 49 ejecuciones examinadas corresponden al historial disponible del repositorio al 2026-11-27: 44 pushes, un PR de Dependabot y cuatro ejecuciones dinámicas. El run #17 corresponde al PR; los cuatro runs dinámicos se identifican por separado y no se mezclan con los pushes. La revisión no afirma que se hayan ejecutado pruebas locales en el Mac del usuario. El run #23 se cuenta como una sola causa de formato reproducida en tres runners; #25 y #27 son defectos únicos de generación de tests; #28, #34 y #41 fueron defectos de formato; #33 fue un defecto de integración del refactor; #42 fue una expectativa de test incorrecta sobre rutas canonicalizadas. La evidencia de compatibilidad descrita arriba proviene de los GitHub runners y de los logs asociados a los commits citados.
+Las 61 ejecuciones examinadas corresponden al historial disponible del repositorio al 2026-11-27: 56 pushes, un PR de Dependabot y cuatro ejecuciones dinámicas. El run #17 corresponde al PR; los cuatro runs dinámicos se identifican por separado y no se mezclan con los pushes. La revisión no afirma que se hayan ejecutado pruebas locales en el Mac del usuario. Los runs #52–#54 se cuentan como una sola regresión raíz de construcción de `artifact.go`; #55 fue formato del fixture. La evidencia de compatibilidad descrita arriba proviene de GitHub runners y de los logs asociados a los commits citados.
 
