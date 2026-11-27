@@ -1,6 +1,6 @@
 # ADR-0015: Catálogo autenticado de artefactos con TUF/go-tuf v2
 
-- Estado: Aceptada para la arquitectura; cliente y cache offline pendientes de implementación.
+- Estado: Primera capa online con resolución de targets delegados implementada; bootstrap de root productivo, persistencia anti-rollback y política offline pendientes.
 - Fecha: 2026-11-27
 - Relacionada: ADR-0007, ADR-0009, ADR-0014, Issue #5 (catálogo), Issue #4 (supervisor).
 
