@@ -122,6 +122,33 @@ func TestValidateAcceptsArtifactDescriptorExample(t *testing.T) {
 		t.Fatalf("unexpected output: %q", stdout.String())
 	}
 }
+func TestValidateArtifactRejectsUnsafePathAndCredentials(t *testing.T) {
+	examplePath := filepath.Join("..", "..", "..", "examples", "contracts", "artifact-descriptor.example.json")
+	raw, err := os.ReadFile(examplePath)
+	if err != nil {
+		t.Fatalf("read artifact descriptor example: %v", err)
+	}
+	cases := []struct {
+		name string
+		invalid string
+	}{
+		{name: "path traversal", invalid: strings.Replace(string(raw), `"relativePath": "osquery/5.24.1/linux-amd64/osqueryi"`, `"relativePath": "../escape.exe"`, 1)},
+		{name: "URI credentials", invalid: strings.Replace(string(raw), `"sourceUri": "https://github.com/osquery/osquery/releases/tag/5.24.1"`, `"sourceUri": "https://user:secret@example.com/osqueryi"`, 1)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeTempJSON(t, tc.invalid)
+			var stdout, stderr bytes.Buffer
+			code := Run([]string{"validate", "artifact", path}, &stdout, &stderr)
+			if code != 1 {
+				t.Fatalf("Run() code = %d, want 1; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+			}
+			if !strings.Contains(stderr.String(), "descriptor de artefacto inválido") {
+				t.Fatalf("unexpected error: %q", stderr.String())
+			}
+		})
+	}
+}
 func TestValidateRejectsUnknownKindAndInvalidDocument(t *testing.T) {
 	path := writeTempJSON(t, validManifest)
 	var stdout, stderr bytes.Buffer

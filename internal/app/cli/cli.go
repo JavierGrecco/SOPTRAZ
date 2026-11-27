@@ -8,6 +8,7 @@ import (
 
 	"github.com/JavierGrecco/SOPTRAZ/internal/buildinfo"
 	"github.com/JavierGrecco/SOPTRAZ/internal/contracts"
+	"github.com/JavierGrecco/SOPTRAZ/internal/modules/artifact"
 	"github.com/JavierGrecco/SOPTRAZ/internal/platform/host"
 )
 
@@ -58,6 +59,17 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		if err := contracts.ValidateDocument(args[1], raw); err != nil {
 			fmt.Fprintf(stderr, "contrato inválido: %v\n", err)
 			return 1
+		}
+		if args[1] == "artifact" {
+			var descriptor artifact.Descriptor
+			if err := json.Unmarshal(raw, &descriptor); err != nil {
+				fmt.Fprintf(stderr, "descriptor de artefacto inválido: %v\n", err)
+				return 1
+			}
+			if err := descriptor.Validate(); err != nil {
+				fmt.Fprintf(stderr, "descriptor de artefacto inválido: %v\n", err)
+				return 1
+			}
 		}
 		fmt.Fprintf(stdout, "Contrato %s válido: %s\n", args[1], args[2])
 		return 0
