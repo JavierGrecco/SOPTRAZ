@@ -14,27 +14,27 @@ import (
 )
 
 const (
-	CheckpointSchemaVersion     = "1.0.0"
+	CheckpointSchemaVersion      = "1.0.0"
 	CheckpointSignatureAlgorithm = "ed25519"
-	checkpointDomainSeparator   = "SOPTRAZ-AUDIT-CHECKPOINT-V1\x00"
-	checkpointDigestDomain      = "SOPTRAZ-AUDIT-CHECKPOINT-DIGEST-V1\x00"
-	maxCheckpointFieldBytes     = 4096
+	checkpointDomainSeparator    = "SOPTRAZ-AUDIT-CHECKPOINT-V1\x00"
+	checkpointDigestDomain       = "SOPTRAZ-AUDIT-CHECKPOINT-DIGEST-V1\x00"
+	maxCheckpointFieldBytes      = 4096
 )
 
 // Checkpoint commits to one immutable head of an intervention audit chain.
 // CreatedAt is informational and is not a trusted timestamp.
 type Checkpoint struct {
-	SchemaVersion         string `json:"schemaVersion"`
-	CheckpointID          string `json:"checkpointId"`
-	InterventionID        string `json:"interventionId"`
-	EventSchemaVersion    string `json:"eventSchemaVersion"`
-	HashAlgorithm         string `json:"hashAlgorithm"`
-	SignatureAlgorithm    string `json:"signatureAlgorithm"`
-	Sequence              uint64 `json:"sequence"`
-	HeadHash              string `json:"headHash"`
+	SchemaVersion          string `json:"schemaVersion"`
+	CheckpointID           string `json:"checkpointId"`
+	InterventionID         string `json:"interventionId"`
+	EventSchemaVersion     string `json:"eventSchemaVersion"`
+	HashAlgorithm          string `json:"hashAlgorithm"`
+	SignatureAlgorithm     string `json:"signatureAlgorithm"`
+	Sequence               uint64 `json:"sequence"`
+	HeadHash               string `json:"headHash"`
 	PreviousCheckpointHash string `json:"previousCheckpointHash,omitempty"`
-	CreatedAt             string `json:"createdAt"`
-	KeyID                 string `json:"keyId"`
+	CreatedAt              string `json:"createdAt"`
+	KeyID                  string `json:"keyId"`
 }
 
 // SignedCheckpoint contains a checkpoint and its Ed25519 signature.
