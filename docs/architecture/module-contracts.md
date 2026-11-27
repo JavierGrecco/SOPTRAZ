@@ -1,6 +1,6 @@
 # Contratos y límites de módulos
 
-**Estado:** contratos ejecutables implementados con JSON Schema 2020-12 y validador Go para manifiestos, acciones, intervenciones, eventos y checkpoints. Existe una primera pieza del registro: un resolver de artefactos instalados con coincidencia exacta de plataforma, hash y política de rutas. Aún no existe catálogo autenticado, cargador de módulos ni supervisor para ejecutar herramientas externas.
+**Estado:** contratos ejecutables implementados con JSON Schema 2020-12 y validador Go para manifiestos, acciones, intervenciones, eventos, checkpoints y descriptores de artefactos. El descriptor `artifact` v1 se valida desde CLI; el resolver comprueba plataforma real, ruta portable, archivo regular, tamaño exacto y SHA-256. Siguen pendientes catálogo autenticado, cargador de módulos y supervisor.
 
 ## Estructura de un módulo
 
@@ -25,9 +25,13 @@ Un módulo no expone sus tablas ni tipos internos. Los consumidores usan DTO/con
 
 ## Resolución de artefactos instalados
 
-`internal/modules/artifact` recibe un descriptor confiable desde un futuro catálogo autenticado y resuelve solo un archivo ya instalado bajo una raíz administrada. Comprueba SO/arquitectura exactos (sin fallback), ruta relativa portable, ausencia de traversal y enlaces simbólicos, archivo regular, tamaño máximo y SHA-256. No consulta `PATH`, no descarga, no extrae y no ejecuta el archivo.
+El contrato `artifact-descriptor.schema.json` v1 declara `schemaVersion`, `artifactId`, versión SemVer, SO/arquitectura, `relativePath`, SHA-256, `sizeBytes`, licencia y `sourceUri`. Se valida mediante `soptraz validate artifact`. El límite de documentos CLI es 1 MiB; cada binario está limitado a 512 MiB.
 
-El `SourceURI` y el SHA-256 del descriptor no autentican por sí solos al editor. El catálogo debe obtener ese descriptor de una fuente firmada o de una política administrada de confianza. El resolver solo demuestra que los bytes encontrados coinciden con el digest declarado. La ruta devuelta está canonicalizada; el futuro supervisor debe volver a verificar justo antes de crear el proceso y operar desde un directorio protegido contra escritura no autorizada.
+`internal/modules/artifact` consume un descriptor confiable y resuelve solo un archivo instalado bajo una raíz administrada. Comprueba SO/arquitectura reales exactos (sin fallback), ruta portable, ausencia de traversal y symlinks/reparse points, archivo regular, tamaño máximo, igualdad exacta entre `sizeBytes` y bytes leídos y SHA-256. No consulta `PATH`, no descarga, no extrae ni ejecuta el archivo.
+
+`sourceUri` es procedencia declarada, no autenticidad. SHA-256 prueba correspondencia entre el archivo y el descriptor, no la identidad del publicador. Sigue pendiente un catálogo autenticado mediante firma del publicador o política administrada de confianza.
+
+La resolución usa un handle `os.Root`, que confina operaciones relativas frente a traversal y enlaces fuera de la raíz. No es sandbox ni impide por sí solo bind mounts, límites de filesystem o todos los archivos especiales; la raíz debe ser privada y escribible solo por SOPTRAZ/usuario confiable. La ruta devuelta es un nombre de punto en el tiempo, no una capacidad ejecutable; el futuro supervisor deberá reabrir/verificar justo antes de crear el proceso.
 
 ## Contrato de acción
 

@@ -11,6 +11,7 @@ Los contratos externos usan JSON Schema Draft 2020-12. El runtime Go valida los 
 | intervention | intervention.schema.json | Registro portable de una intervención técnica |
 | event | intervention-event.schema.json | Evento ordenado y correlacionable de la intervención |
 | checkpoint | audit-checkpoint.schema.json | Cabeza firmada del ledger de auditoría de una intervención |
+| artifact | artifact-descriptor.schema.json | Descriptor v1 de artefacto: plataforma, ruta, versión, tamaño, SHA-256, licencia y procedencia declarada |
 
 Los esquemas están en `internal/contracts/schemas/`; ejemplos verificables, en `examples/contracts/`.
 
@@ -22,11 +23,12 @@ soptraz validate action examples/contracts/action-definition.example.json
 soptraz validate intervention examples/contracts/intervention.example.json
 soptraz validate event examples/contracts/intervention-event.example.json
 soptraz validate checkpoint examples/contracts/audit-checkpoint.example.json
+soptraz validate artifact examples/contracts/artifact-descriptor.example.json
 ~~~
 
 El comando es de solo lectura. Código de salida: 0 documento válido; 1 archivo ausente, JSON inválido o contrato inválido; 2 argumentos incorrectos.
 
-El límite inicial es de 1 MiB por documento. Solo se aceptan tipos incorporados. No se descargan esquemas remotos.
+El límite inicial es de 1 MiB por documento. Solo se aceptan tipos incorporados. No se descargan esquemas remotos. Cada descriptor limita el binario a 512 MiB y declara `sizeBytes`; el resolver exige igualdad exacta con los bytes leídos y comprueba SHA-256.
 
 ## Reglas estructurales
 
@@ -39,7 +41,7 @@ El límite inicial es de 1 MiB por documento. Solo se aceptan tipos incorporados
 - Los esquemas de entrada/salida de cada acción se compilan como JSON Schema y no pueden resolver referencias externas.
 - Fechas e identificadores se validan como date-time y UUID.
 
-La validación estructural no sustituye la autorización en tiempo de ejecución, la comprobación criptográfica de firmas, la verificación de hashes de artefactos ni la evaluación semántica del activo. `soptraz validate checkpoint` valida solo el esquema; la verificación criptográfica requiere `VerifyCheckpointWithTrustStore` y una clave obtenida por canal independiente.
+La validación estructural no sustituye la autorización en tiempo de ejecución, la comprobación criptográfica de firmas, la verificación de hashes de artefactos ni la evaluación semántica del activo. `soptraz validate artifact` valida el JSON Schema; el resolver añade las comprobaciones de ruta portable, traversal/symlinks, plataforma real y tamaño/hash exactos. `sourceUri` y SHA-256 no autentican al publicador: sigue pendiente un catálogo firmado o una política de confianza independiente. `soptraz validate checkpoint` valida solo el esquema; la verificación criptográfica requiere `VerifyCheckpointWithTrustStore` y una clave obtenida por canal independiente.
 
 ## Eventos de auditoría
 
