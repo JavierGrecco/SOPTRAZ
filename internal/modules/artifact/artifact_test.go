@@ -49,7 +49,11 @@ func TestResolveVerifiesInstalledArtifact(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	if resolved.Path != path || resolved.Size != int64(len(content)) || resolved.Descriptor.ID != "soptraz.osquery" {
+	canonicalPath, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		t.Fatalf("canonicalize expected artifact path: %v", err)
+	}
+	if resolved.Path != canonicalPath || resolved.Size != int64(len(content)) || resolved.Descriptor.ID != "soptraz.osquery" {
 		t.Fatalf("unexpected resolved artifact: %#v", resolved)
 	}
 }
