@@ -7,6 +7,8 @@
 | Proyecto | Área | Decisión | Límite |
 |---|---|---|---|
 | GLPI | ITSM, tickets, activos y organizaciones | Conector Hub | No desarrollar otro Service Desk completo |
+| TUF / go-tuf/v2 | Catálogo y actualización segura de herramientas | Adoptar implementación oficial v2 para metadata y targets | Raíz fijada; no TOFU; no usar UnsafeLocalMode como bypass; probar expiración/rollback y offline |
+| Sigstore Cosign | Firma/procedencia de releases públicas | Adaptador opcional para identidad y attestations upstream | Complementa TUF; no reemplaza la raíz ni el catálogo offline-first de Field |
 | Fleet | Endpoint management | Conector Hub opcional | Aprovechar gestión existente |
 | osquery | Inventario y consultas | Primera POC read-only tras el supervisor de procesos | El resolver local ya comprueba hash, plataforma y ruta; catálogo autenticado y supervisor pendientes. Consultas predefinidas; extensiones deshabilitadas; sin SQL libre ni servicio residente |
 | Sysinternals | Diagnóstico Windows | Herramientas opcionales | Respetar licencia y distribución |
@@ -34,6 +36,8 @@
 9. Prueba en laboratorio.
 10. Actualización, rollback y retirada.
 11. Verificar la procedencia del descriptor, no solo la coincidencia SHA-256. El resolver comprueba los bytes frente al descriptor; la autenticidad del editor debe venir de una firma/catálogo o política independiente.
+12. Probar ciclo TUF: root fijado, rotación consecutiva, umbral de firmas, expiración, versiones anti-rollback, snapshot/targets enlazados por hash y consistent snapshots.
+13. Probar offline solo con cache previamente verificada y no expirada; prohibir TOFU y bypasses de validación.
 
 ## Clasificación
 

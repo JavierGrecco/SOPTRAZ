@@ -1,6 +1,6 @@
 # Contratos y límites de módulos
 
-**Estado:** contratos ejecutables implementados con JSON Schema 2020-12 y validador Go para manifiestos, acciones, intervenciones, eventos, checkpoints y descriptores de artefactos. El descriptor `artifact` v1 se valida desde CLI; el resolver comprueba plataforma real, ruta portable, archivo regular, tamaño exacto y SHA-256. Siguen pendientes catálogo autenticado, cargador de módulos y supervisor.
+**Estado:** contratos ejecutables implementados con JSON Schema 2020-12 y validador Go para manifiestos, acciones, intervenciones, eventos, checkpoints y descriptores de artefactos. El descriptor artifact v1 se valida desde CLI; el resolver comprueba plataforma real, ruta portable, archivo regular, tamaño exacto y SHA-256. ADR-0015 selecciona TUF/go-tuf v2 para autenticar el catálogo; el cliente y la cache offline aún deben implementarse y probarse. Siguen pendientes cargador de módulos y supervisor.
 
 ## Estructura de un módulo
 
@@ -32,6 +32,14 @@ El contrato `artifact-descriptor.schema.json` v1 declara `schemaVersion`, `artif
 `sourceUri` es procedencia declarada, no autenticidad. SHA-256 prueba correspondencia entre el archivo y el descriptor, no la identidad del publicador. Sigue pendiente un catálogo autenticado mediante firma del publicador o política administrada de confianza.
 
 La resolución usa un handle `os.Root`, que confina operaciones relativas frente a traversal y enlaces fuera de la raíz. No es sandbox ni impide por sí solo bind mounts, límites de filesystem o todos los archivos especiales; la raíz debe ser privada y escribible solo por SOPTRAZ/usuario confiable. La ruta devuelta es un nombre de punto en el tiempo, no una capacidad ejecutable; el futuro supervisor deberá reabrir/verificar justo antes de crear el proceso.
+
+## Catálogo autenticado y metadata TUF
+
+El catálogo no se autenticará con un SHA-256 aislado ni con una firma propietaria. ADR-0015 adopta go-tuf/v2: raíz fijada en la aplicación; roles root, timestamp, snapshot y targets; umbrales y delegaciones; expiración y versiones monotónicas; consistent snapshots. Cada target TUF vinculará su descriptor y binario mediante longitud y hashes.
+
+No confiar en una raíz descargada mediante Trust-On-First-Use. No usar UpdaterConfig.UnsafeLocalMode para convertir una cache incompleta o vencida en confianza: la librería documenta que se aparta del flujo TUF. Field offline solo aceptará metadata previamente autenticada, persistida atómicamente, no expirada y con estado anti-rollback comprobado. La restauración tras reinicio debe estar cubierta por pruebas.
+
+El Updater de go-tuf no es seguro para concurrencia: SOPTRAZ deberá serializarlo o aislar instancias. El fetcher tendrá timeout finito, límites de bytes y reintentos acotados. La autenticidad del catálogo no equivale a autorización de ejecución.
 
 ## Contrato de acción
 

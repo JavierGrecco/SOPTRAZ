@@ -23,6 +23,7 @@ Un dominio tiene un núcleo canónico. Otros componentes lo consumen mediante co
 | Almacenamiento multiusuario | PostgreSQL | Concurrencia e integridad |
 | IA remota/local | Adaptadores Go detrás de AI Gateway | Enrutamiento y políticas |
 | Contratos | JSON Schema y OpenAPI | Interoperabilidad sin acoplamiento interno |
+| Catálogo de artefactos confiables | TUF mediante go-tuf/v2 | Raíz de confianza, roles delegados, umbral de firmas, expiración y protección contra rollback/freeze |
 
 ## Propiedad de la lógica
 
@@ -54,13 +55,20 @@ La primera implementación Field usa `modernc.org/sqlite` v1.63.0 con `modernc.o
 
 ## Versionado y reproducibilidad
 
-- Go: versión estable soportada fijada en go.mod/toolchain.
+- Go: go.mod fija Go 1.27.4; los runners instalan esa versión mediante go-version-file.
+- Catálogo: ADR-0015 selecciona go-tuf/v2 v2.5.0 (Apache-2.0, mínimo Go 1.27); falta completar el cliente y la política offline.
 - Node: versión LTS fijada para build, nunca requisito de runtime.
 - Frontend: lockfile pnpm.
 - Python: pyproject.toml y lockfile reproducible cuando se incorpore.
 - Herramientas OEM/externas: versiones y hashes declarados.
 - CI: pruebas por SO y arquitectura.
 - Dependencias actualizadas mediante PR con changelog y pruebas.
+
+## Confianza de artefactos externos
+
+El descriptor local artifact v1 no autentica al publicador: SHA-256 comprueba integridad respecto del descriptor, no identidad ni autorización. El catálogo se basará en TUF (go-tuf/v2), con root fijado en SOPTRAZ, roles timestamp, snapshot y targets, delegaciones y metadata versionada con expiración. No se usará Trust-On-First-Use para la raíz ni UnsafeLocalMode como atajo offline: ese modo se aparta del flujo TUF. El modo sin red solo podrá usar metadata previamente verificada, vigente y protegida contra rollback.
+
+Un descriptor TUF verificado y un binario cuyo hash coincide no autorizan por sí solos su ejecución; esa autorización pertenece al supervisor posterior.
 
 ## No hacer
 
