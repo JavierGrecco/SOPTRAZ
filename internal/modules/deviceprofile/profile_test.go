@@ -286,7 +286,6 @@ func TestTriStateJSONRejectsOutOfRangeValue(t *testing.T) {
 	}
 }
 
-
 func TestNormalizeObservationsFillsOmittedEnumsAsUnknown(t *testing.T) {
 	normalized := NormalizeObservations(Observations{})
 	if normalized.Capabilities.PowerSource != PowerSourceUnknown {
