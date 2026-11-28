@@ -43,7 +43,7 @@ func TestHelpIsReadOnlyAndSuccessful(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("Run() code = %d, want 0; stderr=%q", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "No modifica el equipo") || !strings.Contains(stdout.String(), "checkpoint") || !strings.Contains(stdout.String(), "artifact") || !strings.Contains(stdout.String(), "device-profile") || !strings.Contains(stdout.String(), "time-status") {
+	if !strings.Contains(stdout.String(), "No modifica el equipo") || !strings.Contains(stdout.String(), "checkpoint") || !strings.Contains(stdout.String(), "artifact") || !strings.Contains(stdout.String(), "device-profile") || !strings.Contains(stdout.String(), "time-status") || !strings.Contains(stdout.String(), "process-profile") {
 		t.Fatalf("unexpected help output: %q", stdout.String())
 	}
 }
@@ -283,5 +283,22 @@ func TestDeviceProfileReportRetainsObservedFormFactorEvidence(t *testing.T) {
 	}
 	if len(report.Profile.Evidence) != 1 || report.Profile.Evidence[0].Value != "30" {
 		t.Fatalf("unexpected evidence: %#v", report.Profile.Evidence)
+	}
+}
+
+func TestValidateAcceptsReadOnlyProcessProfileExample(t *testing.T) {
+	examplePath := filepath.Join("..", "..", "..", "examples", "contracts", "process-profile.example.json")
+	raw, err := os.ReadFile(examplePath)
+	if err != nil {
+		t.Fatalf("read process profile example: %v", err)
+	}
+	path := writeTempJSON(t, string(raw))
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"validate", "process-profile", path}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run() code = %d; stderr=%q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Contrato process-profile válido") {
+		t.Fatalf("unexpected output: %q", stdout.String())
 	}
 }
