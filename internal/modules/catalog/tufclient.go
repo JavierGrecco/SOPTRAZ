@@ -205,9 +205,35 @@ func (client *TUFClient) refreshLocked() error {
 		client.updater = nil
 		return fmt.Errorf("inicializar updater TUF oficial: %w", err)
 	}
-	if err := officialUpdater.Refresh(); err != nil {
+
+	refreshErr := officialUpdater.Refresh()
+
+	// go-tuf updates its trusted root one consecutive version at a time and
+	// persists each verified root. A new Updater, however, starts from
+	// config.LocalTrustedRoot and writes that root to the cache again. Keep
+	// the latest root that this Updater actually verified, including when a
+	// later timestamp/snapshot/targets step fails.
+	trusted := officialUpdater.GetTrustedMetadataSet()
+	if trusted.Root == nil {
 		client.updater = nil
-		return fmt.Errorf("actualizar metadata TUF: %w", err)
+		if refreshErr != nil {
+			return fmt.Errorf("actualizar metadata TUF: %w", refreshErr)
+		}
+		return fmt.Errorf("%w: updater TUF no devolvió una raíz confiable", ErrTUFClientUnavailable)
+	}
+	rootJSON, rootErr := trusted.Root.ToBytes(false)
+	if rootErr != nil {
+		client.updater = nil
+		if refreshErr != nil {
+			return fmt.Errorf("actualizar metadata TUF: %v; conservar raíz verificada: %w", refreshErr, rootErr)
+		}
+		return fmt.Errorf("serializar raíz TUF verificada: %w", rootErr)
+	}
+	client.config.LocalTrustedRoot = append([]byte(nil), rootJSON...)
+
+	if refreshErr != nil {
+		client.updater = nil
+		return fmt.Errorf("actualizar metadata TUF: %w", refreshErr)
 	}
 	client.updater = officialUpdater
 	return nil

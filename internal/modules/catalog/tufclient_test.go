@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -19,11 +20,12 @@ import (
 )
 
 type delegatedRepositoryFixture struct {
-	rootJSON   []byte
-	rootSigner testSigningKey
-	metadata   map[string][]byte
-	descriptor artifact.Descriptor
-	targetPath string
+	rootJSON      []byte
+	rootSigner    testSigningKey
+	timestampJSON []byte
+	metadata      map[string][]byte
+	descriptor    artifact.Descriptor
+	targetPath    string
 }
 
 func addFixtureRootKey(t *testing.T, root *metadata.Metadata[metadata.RootType], key testSigningKey, role string) {
@@ -156,8 +158,9 @@ func makeDelegatedRepositoryFixture(t *testing.T) delegatedRepositoryFixture {
 	timestampJSON := signedMetadataBytes(t, timestamp, timestampKey)
 
 	return delegatedRepositoryFixture{
-		rootJSON:   rootJSON,
-		rootSigner: rootKey,
+		rootJSON:      rootJSON,
+		rootSigner:    rootKey,
+		timestampJSON: timestampJSON,
 		metadata: map[string][]byte{
 			"timestamp.json": timestampJSON,
 			"snapshot.json":  snapshotJSON,
@@ -495,5 +498,117 @@ func TestTUFClientRejectsRootRotationMissingPreviouslyTrustedSignature(t *testin
 	}
 	if fetchedTimestamp {
 		t.Fatalf("TUF updater continued to timestamp metadata after rejecting root rotation; requests = %v", *requests)
+	}
+}
+
+func TestTUFClientRefreshStartsFromLatestVerifiedRoot(t *testing.T) {
+	fixture := makeDelegatedRepositoryFixture(t)
+	fixture.metadata["2.root.json"] = makeRotatedRootMetadata(t, fixture, true)
+
+	server, requests, requestsMu := startDelegatedMetadataServer(t, fixture)
+	client := newFixtureTUFClient(t, fixture, server.URL+"/metadata", 4)
+
+	root, err := metadata.Root().FromBytes(client.config.LocalTrustedRoot)
+	if err != nil {
+		t.Fatalf("parse client trusted root: %v", err)
+	}
+	if root.Signed.Version != 2 {
+		t.Fatalf("client trusted root version = %d, want 2", root.Signed.Version)
+	}
+
+	requestsMu.Lock()
+	*requests = nil
+	requestsMu.Unlock()
+
+	if err := client.Refresh(); err != nil {
+		t.Fatalf("Refresh() after root rotation error = %v", err)
+	}
+
+	requestsMu.Lock()
+	defer requestsMu.Unlock()
+	foundRootV2 := false
+	foundRootV3Probe := false
+	for _, requestPath := range *requests {
+		switch requestPath {
+		case "/metadata/2.root.json":
+			foundRootV2 = true
+		case "/metadata/3.root.json":
+			foundRootV3Probe = true
+		}
+	}
+	if foundRootV2 {
+		t.Fatalf("Refresh() replayed already trusted root v2 instead of continuing from v2; requests = %v", *requests)
+	}
+	if !foundRootV3Probe {
+		t.Fatalf("Refresh() did not probe the next root version; requests = %v", *requests)
+	}
+}
+
+func TestTUFClientPreservesVerifiedRootWhenLaterMetadataRefreshFails(t *testing.T) {
+	fixture := makeDelegatedRepositoryFixture(t)
+	rootV2 := makeRotatedRootMetadata(t, fixture, true)
+
+	server, requests, requestsMu := startDelegatedMetadataServer(t, fixture)
+	client := newFixtureTUFClient(t, fixture, server.URL+"/metadata", 4)
+
+	// Publish the next trusted root only after the initial v1 refresh has
+	// completed. The following refresh must accept v2 and then fail at timestamp.
+	fixture.metadata["2.root.json"] = rootV2
+	requestsMu.Lock()
+	*requests = nil
+	requestsMu.Unlock()
+	delete(fixture.metadata, "timestamp.json")
+
+	if err := client.Refresh(); err == nil {
+		t.Fatal("Refresh() unexpectedly succeeded without timestamp metadata")
+	}
+	if _, err := client.ResolveDescriptor(fixture.descriptor); !errors.Is(err, ErrTUFClientUnavailable) {
+		t.Fatalf("ResolveDescriptor() after failed Refresh() error = %v, want ErrTUFClientUnavailable", err)
+	}
+
+	root, err := metadata.Root().FromBytes(client.config.LocalTrustedRoot)
+	if err != nil {
+		t.Fatalf("parse trusted root after failed Refresh(): %v", err)
+	}
+	if root.Signed.Version != 2 {
+		t.Fatalf("trusted root version after later metadata failure = %d, want 2", root.Signed.Version)
+	}
+
+	requestsMu.Lock()
+	foundRootV2DuringFailedRefresh := false
+	for _, requestPath := range *requests {
+		if requestPath == "/metadata/2.root.json" {
+			foundRootV2DuringFailedRefresh = true
+			break
+		}
+	}
+	*requests = nil
+	requestsMu.Unlock()
+	if !foundRootV2DuringFailedRefresh {
+		t.Fatal("failed refresh did not fetch the v2 root before timestamp failed")
+	}
+
+	// Restore timestamp and retry. The new Updater must now start from v2,
+	// not from the original v1 pin, and still resolve delegated metadata.
+	fixture.metadata["timestamp.json"] = fixture.timestampJSON
+	if err := client.Refresh(); err != nil {
+		t.Fatalf("Refresh() after restoring timestamp error = %v", err)
+	}
+
+	requestsMu.Lock()
+	foundRootV2 := false
+	for _, requestPath := range *requests {
+		if requestPath == "/metadata/2.root.json" {
+			foundRootV2 = true
+			break
+		}
+	}
+	requestsMu.Unlock()
+	if foundRootV2 {
+		t.Fatalf("client re-requested root v2 after a later metadata failure; requests = %v", *requests)
+	}
+
+	if _, err := client.ResolveDescriptor(fixture.descriptor); err != nil {
+		t.Fatalf("ResolveDescriptor() after recovered refresh error = %v", err)
 	}
 }
