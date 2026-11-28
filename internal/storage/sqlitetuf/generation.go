@@ -225,19 +225,6 @@ func (store *Store) CommitGeneration(
 		if err != nil {
 			return Generation{}, fmt.Errorf("%w: insertar metadata del rol %q: %v", ErrInvalidTrustStore, role.Role, err)
 		}
-		for _, parent := range role.Parents {
-			_, err = tx.ExecContext(ctx,
-				"INSERT INTO generation_role_parents(repository_id, generation_id, child_role, parent_role) "+
-					"VALUES(?, ?, ?, ?)",
-				repositoryID,
-				generationID,
-				role.Role,
-				parent,
-			)
-			if err != nil {
-				return Generation{}, fmt.Errorf("%w: insertar delegación %q -> %q: %v", ErrInvalidTrustStore, parent, role.Role, err)
-			}
-		}
 
 		_, err = tx.ExecContext(ctx,
 			"INSERT INTO role_high_water(repository_id, role_name, version, sha256, expires_at) "+
@@ -253,6 +240,24 @@ func (store *Store) CommitGeneration(
 		)
 		if err != nil {
 			return Generation{}, fmt.Errorf("%w: actualizar high-water de %q: %v", ErrInvalidTrustStore, role.Role, err)
+		}
+	}
+
+	// Insert delegation edges only after every role row exists. This keeps the
+	// foreign-key contract independent of lexical ordering of child/parent names.
+	for _, role := range normalized {
+		for _, parent := range role.Parents {
+			_, err = tx.ExecContext(ctx,
+				"INSERT INTO generation_role_parents(repository_id, generation_id, child_role, parent_role) "+
+					"VALUES(?, ?, ?, ?)",
+				repositoryID,
+				generationID,
+				role.Role,
+				parent,
+			)
+			if err != nil {
+				return Generation{}, fmt.Errorf("%w: insertar delegación %q -> %q: %v", ErrInvalidTrustStore, parent, role.Role, err)
+			}
 		}
 	}
 
