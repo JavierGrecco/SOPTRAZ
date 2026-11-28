@@ -1,6 +1,6 @@
 # ADR-0017: Almacén durable de confianza TUF en SQLite
 
-- Estado: Aceptada. La capa SQLite de root-chain está integrada en `main` (PR #22). La conexión con `TUFClient` y el replay autenticado entre reinicios está implementada en PR #23 y en revisión; las generaciones completas, high-water por rol y el modo offline siguen pendientes.
+- Estado: Aceptada. La capa SQLite de root-chain y su integración con `NewPersistentTUFClient` están integradas en `main` (PR #22 y #23). El replay autenticado entre reinicios y la persistencia de roots aceptadas están cubiertos por CI; las generaciones completas, high-water por rol y el modo offline siguen pendientes.
 - Fecha: 2026-11-28
 - Relacionada: ADR-0011, ADR-0015, Issue #5 (M1.4), Issue #4 (M1.5).
 - Alcance: estado de confianza, metadata TUF autenticada, high-water marks y generaciones del catálogo. No incluye targets ejecutables.
@@ -9,7 +9,7 @@
 
 La primera capa online TUF ya utiliza el `updater.Updater` oficial de go-tuf v2.5.0 y resuelve roles delegados. PR #20 corrigió la recreación del updater para que un root que ya fue verificado se conserve entre refrescos dentro del mismo proceso, incluso si después falla timestamp/snapshot/targets.
 
-Ese arreglo no era persistencia durable: `TUFClient.config.LocalTrustedRoot` vivía en memoria. PR #23 añade un constructor persistente que conserva la cadena de roots en SQLite y la reproduce desde el pin bootstrap antes de inicializar el updater. El updater oficial todavía conserva metadata de los roles no-root en su caché individual; no existe un commit atómico de timestamp/snapshot/targets/delegaciones junto con high-water marks y puntero de generación activa.
+Ese arreglo no era persistencia durable: `TUFClient.config.LocalTrustedRoot` vivía en memoria. PR #23 añade `NewPersistentTUFClient`, que conserva la cadena de roots en SQLite y la reproduce desde el pin bootstrap antes de inicializar el updater. El updater oficial todavía conserva metadata de los roles no-root en su caché individual; no existe un commit atómico de timestamp/snapshot/targets/delegaciones junto con high-water marks y puntero de generación activa.
 
 SOPTRAZ ya usa `modernc.org/sqlite` sin CGO en Field. El adaptador de auditoría aporta convenciones que podemos reutilizar: una conexión, transacciones inmediatas, `busy_timeout`, `foreign_keys`, `synchronous=FULL`, migraciones versionadas y tests de recuperación. El estado del catálogo debe permanecer separado de `audit.sqlite`: sus ciclos de vida, políticas de backup y superficies de acceso no son los mismos.
 
@@ -156,5 +156,26 @@ El commit de código `c785aebe9190eac870cd3081689f4f794e50f93d` pasó los cinco 
 - Las pruebas actuales incluyen cierre/reapertura ordenados y rollback transaccional ante candidatos inválidos; todavía faltan terminación abrupta real, recuperación crash/restart, dos procesos concurrentes y fallos de disco/permisos en la matriz.
 - No habilita catálogo offline ni demuestra anti-rollback frente a restauración integral del mismo disco.
 
-El siguiente paso es integrar el replay de roots desde el anchor fijado y conectar los roots verificados por go-tuf al commit durable. Después se implementará staging por generación y metadata por rol. M1.4 continúa abierto.
-\n## Integración de root-chain con TUFClient (PR #23, en revisión)\n\nLa implementación de `NewPersistentTUFClient` conecta el almacén anterior con el updater oficial sin sustituir su verificación:\n\n- `TrustAnchor` conserva por separado el root bootstrap original y el root vigente en memoria. El replay siempre comienza desde el bytes exactos y el pin inicial, no desde el último root mutable.\n- Al construir el cliente, registra el ID/origen/pin del repositorio, carga la cadena SQLite y reproduce cada root consecutiva con `trustedmetadata.UpdateRoot`. El high-water y el último hash deben coincidir antes de hacer cualquier solicitud de red.\n- Un transporte acotado observa solo respuestas `N.root.json` exitosas del mismo origen de metadata y devuelve exactamente los mismos bytes al fetcher oficial de go-tuf.\n- Después del refresh, la capa catalog reproduce los candidatos con go-tuf. Antes del commit durable comprueba que la versión final coincide con la versión efectivamente aceptada por el updater oficial. Solo entonces realiza el commit CAS de los roots válidos.\n- Si timestamp/snapshot/targets falla después de una rotación root válida, la rotación ya aceptada se conserva en SQLite; la instancia del updater se invalida y el siguiente proceso revalida la cadena desde el pin bootstrap.\n- La prueba de reinicio utiliza una segunda instancia, el anchor original y una caché metadata vacía: comprueba que no vuelve a descargar root v2 y continúa desde v2.\n\nCI del código de PR #23 en [run 46093144315](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46093144315) pasó los cinco jobs en Windows, macOS, Ubuntu, Race Detector y fuzzing para el commit `cba47e44cd5380ebcab3569e20f897f4cce5a7d5`. PR #23 aún está en revisión y no forma parte de `main`.\n\n### Límites que permanecen\n\n- Solo se persiste root-chain. Timestamp, snapshot, targets y roles delegados no tienen todavía almacenamiento transaccional por generación ni high-water durable por rol.\n- La prueba demuestra recuperación con una nueva instancia y una caché vacía después de un refresh que falla en timestamp; todavía faltan pruebas de terminación abrupta del proceso, disco lleno, dos procesos escritores y recuperación de commits interrumpidos.\n- `NewPersistentTUFClient` recibe un `*sqlitetuf.Store` ya abierto; el propietario debe mantenerlo abierto durante toda la vida del cliente.\n- No se habilita `UnsafeLocalMode`, catálogo offline ni anti-rollback fuerte frente a restauración integral del disco. El bootstrap de producción y la custodia/rotación real de claves siguen abiertos.\n\nEl siguiente hito es staging y commit atómico de generaciones completas con metadata por rol, high-water persistentes y `active_generation`. M1.4 no se cierra hasta completar recuperación, políticas de bootstrap y validación offline.
+El siguiente paso es implementar staging y commits atómicos de generaciones completas, metadata por rol y high-water persistentes. M1.4 continúa abierto.
+
+## Integración de root-chain con TUFClient (PR #23, integrado)
+
+La implementación de `NewPersistentTUFClient` conecta el almacén anterior con el updater oficial sin sustituir su verificación:
+
+- `TrustAnchor` conserva por separado el root bootstrap original y el root vigente en memoria. El replay siempre comienza desde el bytes exactos y el pin inicial, no desde el último root mutable.
+- Al construir el cliente, registra el ID/origen/pin del repositorio, carga la cadena SQLite y reproduce cada root consecutiva con `trustedmetadata.UpdateRoot`. El high-water y el último hash deben coincidir antes de hacer cualquier solicitud de red.
+- Un transporte acotado observa solo respuestas `N.root.json` exitosas del mismo origen de metadata y devuelve exactamente los mismos bytes al fetcher oficial de go-tuf.
+- Después del refresh, la capa catalog reproduce los candidatos con go-tuf. Antes del commit durable comprueba que la versión final coincide con la versión efectivamente aceptada por el updater oficial. Solo entonces realiza el commit CAS de los roots válidos.
+- Si timestamp/snapshot/targets falla después de una rotación root válida, la rotación ya aceptada se conserva en SQLite; la instancia del updater se invalida y el siguiente proceso revalida la cadena desde el pin bootstrap.
+- La prueba de reinicio utiliza una segunda instancia, el anchor original y una caché metadata vacía: comprueba que no vuelve a descargar root v2 y continúa desde v2.
+
+PR #23 se integró en `main` como `1988db9`. La matriz definitiva previa al merge pasó 5/5 en [run 46093570302](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46093570302) para el commit `c75ec36e8891bec608d276883c70b04b4c321229`: Windows, macOS, Ubuntu, Race Detector y fuzzing. El CI post-merge se ejecuta sobre el commit de `main`.
+
+### Límites que permanecen
+
+- Solo se persiste root-chain. Timestamp, snapshot, targets y roles delegados no tienen todavía almacenamiento transaccional por generación ni high-water durable por rol.
+- La prueba demuestra recuperación con una nueva instancia y una caché vacía después de un refresh que falla en timestamp; todavía faltan pruebas de terminación abrupta del proceso, disco lleno, dos procesos escritores y recuperación de commits interrumpidos.
+- `NewPersistentTUFClient` recibe un `*sqlitetuf.Store` ya abierto; el propietario debe mantenerlo abierto durante toda la vida del cliente.
+- No se habilita `UnsafeLocalMode`, catálogo offline ni anti-rollback fuerte frente a restauración integral del disco. El bootstrap de producción y la custodia/rotación real de claves siguen abiertos.
+
+El siguiente hito es staging y commit atómico de generaciones completas con metadata por rol, high-water persistentes y `active_generation`. M1.4 no se cierra hasta completar recuperación, políticas de bootstrap y validación offline.
