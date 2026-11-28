@@ -205,3 +205,17 @@ El VFS está registrado solo por tests; el `Open` de producción continúa usand
 | [#243](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46110980146) | `ee0084b` | **6/6 jobs aprobados** | La corrección de formato permitió ejecutar las pruebas ampliadas: `CommitGeneration` revierte ante `vfs.ErrFull` en la escritura de journal y ante un fallo de `File.Sync`; no quedan generaciones, metadata, role high-water ni `active_generations`. Windows, macOS, Ubuntu, Race Detector, fuzzing y branch hygiene pasaron. |
 
 Esta segunda capa cubre los dos límites transaccionales más importantes del catálogo local: persistencia de roots y activación atómica de generaciones. La prueba VFS sigue siendo una inyección determinista a nivel del driver, no una prueba de ENOSPC físico o corte de energía.
+
+## Actualización de PR #31 — redacción de secretos y terminación externa — 2026-11-28
+
+La revisión amplió la redacción de campos de diagnóstico para valores JSON/entrecomillados y credenciales frecuentes, y agregó un test que termina el proceso hijo con `Process.Kill()`. El siguiente arranque debe recuperar el informe, anotar `runtime.unexpected_shutdown` exactamente una vez y no inferir la causa real.
+
+| Run | Commit | Resultado | Causa o cobertura |
+|---|---|---|---|
+| [#298](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46157286094) | `bd062dc` | Falló formato en Ubuntu/macOS | El test nuevo de redacción no estaba alineado con `gofmt`; los tests de esos jobs no comenzaron. |
+| [#299](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46157486675) | `f2d947c` | **6/6 aprobados** | Formato corregido; Windows, macOS, Ubuntu, race detector, fuzzing y branch hygiene. |
+| [#301](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46157675724) | `f5e5148` | **6/6 aprobados** | Añade inputs explícitos de Bearer/access token a las pruebas de redacción. |
+| [#303](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46157828107) | `5c5f3f0` | **6/6 aprobados** | Alineación de estados documentales de ADR-0020/0021 y del contrato de diagnóstico temporal. |
+| [#304](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46158152696) | `9936206` | **6/6 aprobados** | Terminación real del proceso hijo desde el padre; recuperación del informe, lock liberado por el SO y notificación idempotente. Incluye Windows, macOS, Ubuntu, race detector, fuzzing y branch hygiene. |
+
+El test de terminación externa espera a que el hijo escriba y sincronice el evento crítico antes de llamar a `Process.Kill()`. Comprueba que la reapertura puede recuperar el informe y que una segunda apertura no vuelve a notificar el mismo incidente. No simula corte eléctrico ni corrupción física del disco: esos límites continúan expresamente pendientes.
