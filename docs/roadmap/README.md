@@ -9,6 +9,7 @@ El roadmap prioriza una vertical funcional confiable antes de ampliar herramient
 - [x] Definir estrategia tecnológica por dominio.
 - [x] Definir política Free-first de IA.
 - [x] Crear CLI Go de solo lectura.
+- [x] Incorporar informes técnicos locales para errores importantes, panics y recuperación ante cierres inesperados (PR #31).
 - [x] Agregar pruebas iniciales y CI multiplataforma.
 - [x] Definir esquemas JSON para módulos, acciones, intervenciones y eventos.
 - [x] Añadir validador Go de contratos.
@@ -40,7 +41,7 @@ El roadmap prioriza una vertical funcional confiable antes de ampliar herramient
 
 ## Fase 1 — Core y auditoría
 
-Runtime Go, registro local, IDs, acciones tipadas, permisos/riesgo, cancelación, timeout, SQLite y migraciones. La validación de contratos se utiliza como puerta de entrada. Completar checkpoints externos, recuperación ante corrupción, exportación verificable y retención.
+Runtime Go, registro local, IDs, acciones tipadas, permisos/riesgo, cancelación, timeout, SQLite y migraciones. El paquete transversal de diagnósticos escribe informes locales por incidente, excluye INFO/WARN, captura salida fatal del runtime y detecta cierres inesperados en el siguiente arranque. La validación de contratos se utiliza como puerta de entrada. Completar checkpoints externos, recuperación ante corrupción y exportación verificable.
 
 ## M1.4 — Catálogo autenticado de artefactos
 
@@ -57,7 +58,8 @@ Runtime Go, registro local, IDs, acciones tipadas, permisos/riesgo, cancelación
 - [x] Implementar `CommitGeneration`/`LoadActiveGeneration`: root binding, CAS, commit atómico de blobs/relaciones/high-water/puntero y readback con verificación de hashes y manifiesto (PR #25; CI 5/5 en run 46095086164).
 - [x] Conectar `TUFClient` con `CommitGeneration`: capturar los bytes exactos cacheados por go-tuf, contrastarlos con el estado confiable en memoria, reproducir timestamp/snapshot/targets y las delegaciones recorridas con `trustedmetadata`, y activar mediante CAS transaccional (PR #27 integrado como `4983f7d`; CI pre-merge y post-merge 5/5).
 - [x] Aislar cada refresh persistente en un workspace privado y rehidratarlo desde la generación SQLite activa cuando coincide con la root vigente; el updater online oficial revalida la metadata y un fallo descarta el stage sin cambiar la generación confirmada. `TUFClient.Close()` elimina el workspace (PR #29). Esto no habilita offline.
-- [ ] Completar resiliencia: terminación abrupta real y limpieza segura de stages huérfanos, recuperación tras caída en cada etapa, disco lleno, lock y escritores multi-proceso, y política de actualización de metadata no-root cacheada.
+- [x] Serializar clientes persistentes TUF por repositorio con lock de sistema operativo; recuperar stages huérfanos solo bajo exclusividad y limitar limpieza a la identidad del repositorio (PR #31; test de proceso hijo terminado por fuerza).
+- [ ] Completar resiliencia física: disco lleno, fallos de escritura/sync y recuperación en cada límite de transacción; mantener pruebas de lock/crash en Windows, macOS y Linux.
 - [ ] Definir modo offline que revalide metadata cacheada, vigente y anti-rollback; no usar TOFU ni UnsafeLocalMode como bypass.
 - [ ] Probar rotación root, thresholds, firma inválida, expiración, rollback/freeze, consistent snapshots, delegaciones y cache corrupta.
 - [x] Configurar el fetcher inicial con timeout HTTP, límites de metadata, redirects desactivados, reintentos acotados y sincronización del Updater.
