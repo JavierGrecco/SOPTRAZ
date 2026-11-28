@@ -4,6 +4,7 @@ package catalog
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 
 	"golang.org/x/sys/windows"
@@ -63,7 +64,7 @@ func acquireTUFOSLock(path string) (tufRepositoryLock, bool, error) {
 		0, // deny read/write/delete sharing while this process owns the lock
 		nil,
 		windows.OPEN_EXISTING,
-		windows.FILE_ATTRIBUTE_NORMAL,
+		windows.FILE_ATTRIBUTE_NORMAL|windows.FILE_FLAG_OPEN_REPARSE_POINT,
 		0,
 	)
 	if err != nil {
@@ -71,6 +72,20 @@ func acquireTUFOSLock(path string) (tufRepositoryLock, bool, error) {
 			return nil, false, nil
 		}
 		return nil, false, err
+	}
+
+	// OPEN_REPARSE_POINT makes CreateFile return a handle to the reparse point
+	// itself instead of following it. Inspect the opened handle, not only the
+	// path observed by Lstat, to close the final-component substitution race.
+	var info windows.ByHandleFileInformation
+	if err := windows.GetFileInformationByHandle(handle, &info); err != nil {
+		_ = windows.CloseHandle(handle)
+		return nil, false, fmt.Errorf("inspeccionar archivo de lock TUF en Windows: %w", err)
+	}
+	if info.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 ||
+		info.FileAttributes&windows.FILE_ATTRIBUTE_DIRECTORY != 0 {
+		_ = windows.CloseHandle(handle)
+		return nil, false, fmt.Errorf("el lock TUF abierto no puede ser un reparse point ni un directorio")
 	}
 	return &windowsTUFRepositoryLock{
 		handle: handle,
