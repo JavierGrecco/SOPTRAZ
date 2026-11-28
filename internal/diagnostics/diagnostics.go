@@ -34,7 +34,7 @@ var (
 	ErrLoggerClosed = errors.New("logger de diagnósticos cerrado")
 	ErrInvalidEvent = errors.New("evento de diagnóstico inválido")
 
-	secretAssignmentPattern = regexp.MustCompile(`(?i)\b(password|passwd|token|access[_-]?key|api[_-]?key|secret|authorization)\b(\s*[:=]\s*)[^\s,;]+`)
+	secretAssignmentPattern = regexp.MustCompile(`(?i)\b(password|passwd|token|access[_-]?token|refresh[_-]?token|access[_-]?key|api[_-]?key|client[_-]?secret|private[_-]?key|secret|authorization)\b(\s*[:=]\s*)[^\s,;]+`)
 	urlCredentialsPattern   = regexp.MustCompile(`(?i)(https?://)[^/\s@]+@`)
 	authorizationPattern    = regexp.MustCompile(`(?i)(authorization\s*[:=]\s*)(?:bearer|basic)\s+[^\s,;]+`)
 	bearerPattern           = regexp.MustCompile(`(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+`)
@@ -109,7 +109,7 @@ func Open(directory, version string) (*Logger, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := pruneOldRunReports(absolute, maxRunReports-1); err != nil {
+	if err := pruneOldRunReports(absolute, maxRunReports-1, recovered); err != nil {
 		return nil, err
 	}
 
@@ -204,10 +204,10 @@ func (logger *Logger) Record(event Event) error {
 	if logger.closed {
 		return ErrLoggerClosed
 	}
+	logger.hasEvents = true
 	if err := logger.appendEventLocked(event, nil); err != nil {
 		return err
 	}
-	logger.hasEvents = true
 	return nil
 }
 
@@ -230,10 +230,10 @@ func (logger *Logger) RecordPanic(component string, recovered any, stack []byte)
 		Message:   "Se recuperó un panic no esperado en el límite de ejecución.",
 		Cause:     fmt.Sprint(recovered),
 	}
+	logger.hasEvents = true
 	if err := logger.appendEventLocked(event, stack); err != nil {
 		return err
 	}
-	logger.hasEvents = true
 	return nil
 }
 
@@ -540,7 +540,15 @@ func hasCleanShutdownMarker(path string) (bool, error) {
 	return bytes.Contains(data, []byte("CIERRE NORMAL:")), nil
 }
 
-func pruneOldRunReports(directory string, keep int) error {
+func pruneOldRunReports(directory string, keep int, protectedPaths []string) error {
+	protected := make(map[string]struct{}, len(protectedPaths))
+	for _, path := range protectedPaths {
+		absolute, err := filepath.Abs(path)
+		if err != nil {
+			return fmt.Errorf("resolver informe recuperado para retención: %w", err)
+		}
+		protected[filepath.Clean(absolute)] = struct{}{}
+	}
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		return fmt.Errorf("listar informes para retención: %w", err)
@@ -578,6 +586,9 @@ func pruneOldRunReports(directory string, keep int) error {
 	for _, report := range reports {
 		if remaining <= keep {
 			break
+		}
+		if _, keepForRecovery := protected[filepath.Clean(report.path)]; keepForRecovery {
+			continue
 		}
 		lock, err := openLockFile(report.path)
 		if err != nil {
