@@ -24,41 +24,35 @@ const (
 
 var (
 	ErrInvalidProcessProfile = errors.New("perfil de ejecución de proceso inválido")
-	profileIDPattern         = regexp.MustCompile(`^soptraz\.process\.[a-z0-9]+([.-][a-z0-9]+)*$`)
-	actionIDPattern          = regexp.MustCompile(`^soptraz\.[a-z0-9]+([.-][a-z0-9]+)*$`)
-	artifactIDPattern        = regexp.MustCompile(`^[a-z][a-z0-9]*([.-][a-z0-9]+)*$`)
-	semverPattern            = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$`)
+	profileIDPattern         = regexp.MustCompile("^soptraz\\.process\\.[a-z0-9]+([.-][a-z0-9]+)*$")
+	actionIDPattern          = regexp.MustCompile("^soptraz\\.[a-z0-9]+([.-][a-z0-9]+)*$")
+	artifactIDPattern        = regexp.MustCompile("^[a-z][a-z0-9]*([.-][a-z0-9]+)*$")
+	semverPattern            = regexp.MustCompile("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\\.(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$")
 )
 
-// ProcessProfile is a fixed, reviewable argv profile for one read-only action.
-// It intentionally has no executable path, shell, environment or working-directory
-// field. The artifact is selected separately by artifactId/version and must be
-// authenticated by the TUF catalog before any future process runner may use it.
 type ProcessProfile struct {
-	SchemaVersion     string   `json:"schemaVersion"`
-	ProfileID         string   `json:"profileId"`
-	ProfileVersion    string   `json:"profileVersion"`
-	ActionID          string   `json:"actionId"`
-	ActionVersion     string   `json:"actionVersion"`
-	ArtifactID        string   `json:"artifactId"`
-	ArtifactVersion   string   `json:"artifactVersion"`
-	Purpose           string   `json:"purpose"`
-	Risk              string   `json:"risk"`
-	RequiresAdmin     bool     `json:"requiresAdmin"`
-	RequiresApproval  bool     `json:"requiresApproval"`
-	Idempotent        bool     `json:"idempotent"`
-	ExecutionMode     string   `json:"executionMode"`
-	NetworkAccess     string   `json:"networkAccess"`
-	TimeoutSeconds    int      `json:"timeoutSeconds"`
-	FixedArguments    []string `json:"fixedArguments"`
-	OutputFormat      string   `json:"outputFormat"`
-	MaxStdoutBytes    int64    `json:"maxStdoutBytes"`
-	MaxStderrBytes    int64    `json:"maxStderrBytes"`
-	AcceptedExitCodes []int    `json:"acceptedExitCodes"`
+	SchemaVersion     string   "json:\"schemaVersion\""
+	ProfileID         string   "json:\"profileId\""
+	ProfileVersion    string   "json:\"profileVersion\""
+	ActionID          string   "json:\"actionId\""
+	ActionVersion     string   "json:\"actionVersion\""
+	ArtifactID        string   "json:\"artifactId\""
+	ArtifactVersion   string   "json:\"artifactVersion\""
+	Purpose           string   "json:\"purpose\""
+	Risk              string   "json:\"risk\""
+	RequiresAdmin     bool     "json:\"requiresAdmin\""
+	RequiresApproval  bool     "json:\"requiresApproval\""
+	Idempotent        bool     "json:\"idempotent\""
+	ExecutionMode     string   "json:\"executionMode\""
+	NetworkAccess     string   "json:\"networkAccess\""
+	TimeoutSeconds    int      "json:\"timeoutSeconds\""
+	FixedArguments    []string "json:\"fixedArguments\""
+	OutputFormat      string   "json:\"outputFormat\""
+	MaxStdoutBytes    int64    "json:\"maxStdoutBytes\""
+	MaxStderrBytes    int64    "json:\"maxStderrBytes\""
+	AcceptedExitCodes []int    "json:\"acceptedExitCodes\""
 }
 
-// Validate applies semantic limits in addition to the embedded JSON Schema.
-// It is deliberately limited to local, read-only, direct-argv profiles.
 func (profile ProcessProfile) Validate() error {
 	invalid := func(reason string) error {
 		return fmt.Errorf("%w: %s", ErrInvalidProcessProfile, reason)
@@ -75,7 +69,7 @@ func (profile ProcessProfile) Validate() error {
 		"artifactVersion": profile.ArtifactVersion,
 	} {
 		if !semverPattern.MatchString(version) || len(version) > 80 {
-			return invalid(name + " debe usar SemVer")
+			return invalid(name + " debe usar SemVer 2.0.0")
 		}
 	}
 	if !actionIDPattern.MatchString(profile.ActionID) || len(profile.ActionID) > 160 {

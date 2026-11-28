@@ -64,6 +64,45 @@ func TestProcessProfileRejectsUnsafeExecutionModes(t *testing.T) {
 	}
 }
 
+func TestProcessProfileAcceptsStrictSemVerPreReleaseAndBuild(t *testing.T) {
+	profile := validProcessProfile()
+	profile.ProfileVersion = "1.2.3-rc.1+build.7"
+	profile.ActionVersion = "2.0.0-beta.2"
+	profile.ArtifactVersion = "5.24.1+vendor.4"
+	if err := profile.Validate(); err != nil {
+		t.Fatalf("Validate() rejected valid SemVer 2.0.0 versions: %v", err)
+	}
+}
+
+func TestProcessProfileRejectsMalformedSemVerIdentifiers(t *testing.T) {
+	fields := []struct {
+		name string
+		set  func(*ProcessProfile, string)
+	}{
+		{"profileVersion", func(p *ProcessProfile, value string) { p.ProfileVersion = value }},
+		{"actionVersion", func(p *ProcessProfile, value string) { p.ActionVersion = value }},
+		{"artifactVersion", func(p *ProcessProfile, value string) { p.ArtifactVersion = value }},
+	}
+	invalidVersions := []string{
+		"1.0.0-",
+		"1.0.0+",
+		"1.0.0-01",
+		"1.0.0-alpha..1",
+		"1.0.0+build..5",
+	}
+	for _, field := range fields {
+		for _, version := range invalidVersions {
+			t.Run(field.name+"/"+version, func(t *testing.T) {
+				profile := validProcessProfile()
+				field.set(&profile, version)
+				if err := profile.Validate(); !errors.Is(err, ErrInvalidProcessProfile) {
+					t.Fatalf("Validate() accepted malformed %s %q: %v", field.name, version, err)
+				}
+			})
+		}
+	}
+}
+
 func TestProcessProfileRejectsOutOfRangeResourceLimits(t *testing.T) {
 	tests := []struct {
 		name   string
