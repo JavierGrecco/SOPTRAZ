@@ -87,11 +87,11 @@ func TestImportantEventRedactsCommonSecretForms(t *testing.T) {
 	defer logger.Close()
 
 	if err := logger.Record(Event{
-		Severity: SeverityError,
+		Severity:  SeverityError,
 		Component: "integration.http",
-		Code: "http.request.failed",
-		Message: "token=abc123 password:supersecret",
-		Cause: "https://user:password@example.test/path?api_key=private",
+		Code:      "http.request.failed",
+		Message:   "token=abc123 password:supersecret",
+		Cause:     "https://user:password@example.test/path?api_key=private",
 	}); err != nil {
 		t.Fatalf("Record() error = %v", err)
 	}
@@ -123,10 +123,10 @@ func TestDiagnosticsAbruptExitHelper(t *testing.T) {
 		os.Exit(91)
 	}
 	if err := logger.Record(Event{
-		Severity: SeverityCritical,
+		Severity:  SeverityCritical,
 		Component: "test.helper",
-		Code: "test.abrupt_exit",
-		Message: "El proceso de prueba terminará sin cierre normal.",
+		Code:      "test.abrupt_exit",
+		Message:   "El proceso de prueba terminará sin cierre normal.",
 	}); err != nil {
 		os.Exit(92)
 	}
@@ -329,10 +329,10 @@ func TestReportRetentionKeepsOnlyMostRecentThirtyRuns(t *testing.T) {
 			t.Fatalf("Open() run %d: %v", index, err)
 		}
 		if err := logger.Record(Event{
-			Severity: SeverityError,
+			Severity:  SeverityError,
 			Component: "test.retention",
-			Code: "test.retention",
-			Message: "retention fixture",
+			Code:      "test.retention",
+			Message:   "retention fixture",
 		}); err != nil {
 			t.Fatalf("Record() run %d: %v", index, err)
 		}

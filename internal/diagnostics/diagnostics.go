@@ -22,12 +22,12 @@ import (
 )
 
 const (
-	runLogPrefix       = "soptraz-run-"
-	startupLockName    = ".diagnostics-startup.lock"
-	maxLogBytes        = 4 << 20
-	maxRecordBytes     = 64 << 10
-	maxCrashTailBytes  = 64 << 10
-	maxRunReports      = 30
+	runLogPrefix      = "soptraz-run-"
+	startupLockName   = ".diagnostics-startup.lock"
+	maxLogBytes       = 4 << 20
+	maxRecordBytes    = 64 << 10
+	maxCrashTailBytes = 64 << 10
+	maxRunReports     = 30
 )
 
 var (
