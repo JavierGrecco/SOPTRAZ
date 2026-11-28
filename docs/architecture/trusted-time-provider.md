@@ -1,6 +1,6 @@
 # Contrato de evidencia de tiempo confiable
 
-Estado: contrato puro implementado; proveedores e integración TUF pendientes.  
+Estado: contratos puros de evidencia y diagnóstico del SO implementados; adaptadores nativos e integración TUF pendientes.  
 Relacionado: [ADR-0020](../decisions/ADR-0020-trusted-time-and-clock-recovery.md).
 
 ## Alcance de esta primera entrega
@@ -46,6 +46,14 @@ Los errores del proveedor no deben filtrar respuestas crudas, secretos, tokens n
 ## Diagnóstico nativo del sistema operativo (ADR-0021)
 
 El diagnóstico del reloj del SO será una capa separada de Evidence: no convertirá time.Now() en un intervalo de incertidumbre cero ni elevará el estado de un servicio a authenticated/attested. Distinguirá estado del servicio y estado de sincronización, y permitirá unknown cuando la plataforma no exponga datos suficientes sin privilegios. Los adaptadores no modificarán el reloj ni la configuración y no habilitarán TUF. La política por plataforma y sus límites están en [ADR-0021](../decisions/ADR-0021-os-time-diagnostics.md).
+
+## Contrato SystemTimeDiagnostics (ADR-0021)
+
+El tipo `SystemTimeDiagnostics` está implementado como DTO puro y separado de `Evidence`. Contiene `WallClockObservedAt`, `ServiceState`, `SynchronizationState`, `Mechanism` y un `LastSyncAt` opcional. No contiene una fuente de autenticación, un intervalo de incertidumbre ni un nivel de assurance.
+
+`Validate()` comprueba estados y mecanismo conocidos; `Canonical()` normaliza timestamps a UTC y elimina datos monotónicos locales. No compara `LastSyncAt` con `WallClockObservedAt`, porque una discrepancia puede ser precisamente el diagnóstico que se necesita preservar. Los estados de servicio y sincronización son independientes: no se deduce uno del otro.
+
+El DTO no consulta el sistema operativo, no modifica el reloj y no puede actualizar `LastAcceptedTrustedTime`, validar expiración TUF ni habilitar el catálogo offline. Los adaptadores read-only por plataforma siguen pendientes.
 
 ## Lo que todavía no está implementado
 

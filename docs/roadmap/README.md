@@ -61,7 +61,7 @@ Runtime Go, registro local, IDs, acciones tipadas, permisos/riesgo, cancelación
 - [x] Aislar cada refresh persistente en un workspace privado y rehidratarlo desde la generación SQLite activa cuando coincide con la root vigente; el updater online oficial revalida la metadata y un fallo descarta el stage sin cambiar la generación confirmada. `TUFClient.Close()` elimina el workspace (PR #29). Esto no habilita offline.
 - [ ] Completar resiliencia: terminación abrupta real y limpieza segura de stages huérfanos, recuperación tras caída en cada etapa, disco lleno, lock y escritores multi-proceso, y política de actualización de metadata no-root cacheada.
 - [x] Definir el contrato puro `internal/platform/trustedtime`: intervalo de incertidumbre, procedencia, ancla, identidad de clave y SHA-256 de la atestación, sin I/O ni dependencias externas.
-- [ ] Implementar SystemTimeDiagnostics separado de Evidence según ADR-0021: estados independientes de servicio/sincronización, unknown sin inferencias, sin elevación ni cambios del reloj.
+- [x] Definir el DTO puro `SystemTimeDiagnostics` separado de `Evidence`, con estados independientes de servicio/sincronización, unknown explícito y timestamps UTC canónicos.
 - [ ] Implementar y probar el lector read-only Linux adjtimex y el estado del kernel; systemd D-Bus será una capacidad opcional, no requisito.
 - [ ] Implementar diagnóstico Windows W32Time sin elevar privilegios; hasta contar con una señal no privilegiada y fiable, sincronización unknown.
 - [ ] Implementar diagnóstico macOS timed sin leer estado cacheado privado; sincronización unknown hasta disponer de API pública verificable.
