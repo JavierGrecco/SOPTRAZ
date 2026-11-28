@@ -16,7 +16,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"slices"
 	"sort"
 
 	"github.com/JavierGrecco/SOPTRAZ/internal/storage/sqlitetuf"
@@ -28,12 +27,6 @@ var (
 	ErrGenerationPersistenceUnavailable = errors.New("persistencia de generaciones TUF no disponible")
 	ErrGenerationCapture                = errors.New("no se pudo capturar una generación TUF verificada")
 )
-
-type generationDelegationVisit struct {
-	role   string
-	parent string
-	path   []string
-}
 
 // CommitVerifiedGeneration persists the exact metadata bytes authenticated by
 // the current official go-tuf Updater. Call it after resolving every target
@@ -359,62 +352,33 @@ func collectResolvedDelegations(
 	parentSets := make(map[string]map[string]bool)
 	selected := map[string]bool{metadata.TARGETS: true}
 	for _, targetPath := range targetPaths {
-		stack := []generationDelegationVisit{{
-			role:   metadata.TARGETS,
-			parent: metadata.ROOT,
-		}}
-		visitedRoles := 0
-		found := false
-
-		for visitedRoles <= maxDelegations && len(stack) > 0 {
-			visit := stack[len(stack)-1]
-			stack = stack[:len(stack)-1]
-			if slices.Contains(visit.path, visit.role) {
-				continue
-			}
-
-			role, ok := trusted.Targets[visit.role]
-			if !ok || role == nil {
-				return nil, nil, fmt.Errorf("%w: go-tuf no conserva el rol recorrido %q", ErrGenerationCapture, visit.role)
-			}
-			selected[visit.role] = true
-			if visit.role != metadata.TARGETS {
-				if visit.parent == "" || visit.parent == metadata.ROOT {
-					return nil, nil, fmt.Errorf("%w: rol delegado %q sin padre targets", ErrGenerationCapture, visit.role)
+		resolution, err := resolveTargetPath(
+			targetPath,
+			maxDelegations,
+			func(roleName, parentRole string) (*metadata.Metadata[metadata.TargetsType], error) {
+				role, ok := trusted.Targets[roleName]
+				if !ok || role == nil {
+					return nil, fmt.Errorf("go-tuf no conserva el rol recorrido %q desde %q", roleName, parentRole)
 				}
-				if parentSets[visit.role] == nil {
-					parentSets[visit.role] = make(map[string]bool)
-				}
-				parentSets[visit.role][visit.parent] = true
-			}
-
-			if target, ok := role.Signed.Targets[targetPath]; ok && target != nil {
-				found = true
-				break
-			}
-			visitedRoles++
-
-			if role.Signed.Delegations == nil {
-				continue
-			}
-			childRoles := make([]generationDelegationVisit, 0)
-			childPath := append(append([]string(nil), visit.path...), visit.role)
-			for _, delegated := range role.Signed.Delegations.GetRolesForTarget(targetPath) {
-				childRoles = append(childRoles, generationDelegationVisit{
-					role:   delegated.Name,
-					parent: visit.role,
-					path:   childPath,
-				})
-				if delegated.Terminating {
-					stack = stack[:0]
-					break
-				}
-			}
-			slices.Reverse(childRoles)
-			stack = append(stack, childRoles...)
+				return role, nil
+			},
+		)
+		if err != nil {
+			return nil, nil, fmt.Errorf("%w: no se pudo reproducir la ruta %q: %w", ErrGenerationCapture, targetPath, err)
 		}
-		if !found {
-			return nil, nil, fmt.Errorf("%w: no se pudo reproducir el recorrido delegado del target %q", ErrGenerationCapture, targetPath)
+
+		for _, visit := range resolution.visited {
+			selected[visit.role] = true
+			if visit.role == metadata.TARGETS {
+				continue
+			}
+			if visit.parent == "" || visit.parent == metadata.ROOT {
+				return nil, nil, fmt.Errorf("%w: rol delegado %q sin padre targets", ErrGenerationCapture, visit.role)
+			}
+			if parentSets[visit.role] == nil {
+				parentSets[visit.role] = make(map[string]bool)
+			}
+			parentSets[visit.role][visit.parent] = true
 		}
 	}
 
