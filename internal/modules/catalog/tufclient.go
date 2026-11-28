@@ -56,10 +56,11 @@ type persistentTUFTrust struct {
 // TUFClient wraps the official go-tuf Updater. The Updater is not safe for
 // concurrent use, so all refresh/lookup operations are serialized here.
 type TUFClient struct {
-	mu          sync.Mutex
-	config      *tufconfig.UpdaterConfig
-	updater     *tufupdater.Updater
-	persistence *persistentTUFTrust
+	mu              sync.Mutex
+	config          *tufconfig.UpdaterConfig
+	updater         *tufupdater.Updater
+	persistence     *persistentTUFTrust
+	resolvedTargets map[string]struct{}
 }
 
 // NewTUFClient builds a bounded production-mode TUF client from a previously
@@ -240,7 +241,11 @@ func newTUFClientFromRoot(
 		return nil, fmt.Errorf("%w: configurar reintentos TUF: %v", ErrInvalidTUFClientConfig, err)
 	}
 
-	client := &TUFClient{config: cfg, persistence: persistence}
+	client := &TUFClient{
+		config:          cfg,
+		persistence:     persistence,
+		resolvedTargets: make(map[string]struct{}),
+	}
 	if err := client.refreshLocked(); err != nil {
 		return nil, err
 	}
@@ -269,7 +274,25 @@ func (client *TUFClient) ResolveDescriptor(descriptor artifact.Descriptor) (Veri
 	if err != nil {
 		return VerifiedTarget{}, fmt.Errorf("resolver de metadata TUF para %q: %w", descriptor.RelativePath, err)
 	}
-	return verifySignedArtifactTarget(descriptor.RelativePath, target, descriptor)
+	verified, err := verifySignedArtifactTarget(descriptor.RelativePath, target, descriptor)
+	if err != nil {
+		return VerifiedTarget{}, err
+	}
+	if client.resolvedTargets == nil {
+		client.resolvedTargets = make(map[string]struct{})
+	}
+	client.resolvedTargets[descriptor.RelativePath] = struct{}{}
+	if client.persistence != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		_, persistErr := client.commitVerifiedGenerationLocked(ctx)
+		cancel()
+		if persistErr != nil {
+			delete(client.resolvedTargets, descriptor.RelativePath)
+			client.updater = nil
+			return VerifiedTarget{}, fmt.Errorf("persistir generación autenticada para %q: %w", descriptor.RelativePath, persistErr)
+		}
+	}
+	return verified, nil
 }
 
 // Refresh creates a new official Updater from the same pinned root and
@@ -289,6 +312,8 @@ func (client *TUFClient) Refresh() error {
 // Refresh only once per instance, so each refresh creates a new instance and
 // lets go-tuf revalidate the persisted metadata cache against the trusted root.
 func (client *TUFClient) refreshLocked() error {
+	client.updater = nil
+	client.resolvedTargets = make(map[string]struct{})
 	if client.config == nil {
 		client.updater = nil
 		return ErrTUFClientUnavailable
