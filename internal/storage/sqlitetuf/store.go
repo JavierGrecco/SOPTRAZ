@@ -12,8 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"os"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
