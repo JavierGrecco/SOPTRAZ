@@ -12,8 +12,7 @@ import (
 	"time"
 
 	"github.com/JavierGrecco/SOPTRAZ/internal/storage/sqlitetuf"
-	"github.com/theupdateframework/go-tuf/v2/metadata"
-)
+	")
 
 type persistedDelegatedFixture struct {
 	repository delegatedRepositoryFixture
@@ -215,7 +214,7 @@ func TestReplayOfflineTargetMetadataRejectsDatabasePinAsBootstrap(t *testing.T) 
 	}
 }
 
-func TestReplayOfflineTargetMetadataRejectsReservedDelegatedRoleName(t *testing.T) {
+func TestReplayOfflineTargetMetadataRejectsDuplicateRoleName(t *testing.T) {
 	fixture := createPersistedDelegatedFixture(t)
 	defer fixture.server.Close()
 	snapshot, rootJSON, rootState := loadPersistedFixtureSnapshot(t, fixture)
@@ -225,7 +224,7 @@ func TestReplayOfflineTargetMetadataRejectsReservedDelegatedRoleName(t *testing.
 	// this namespace collision before it can overwrite trusted top-level state.
 	for index := range snapshot.Generation.Roles {
 		if snapshot.Generation.Roles[index].Role == "osquery" {
-			snapshot.Generation.Roles[index].Role = metadata.TIMESTAMP
+			snapshot.Generation.Roles[index].Role = "timestamp"
 		}
 	}
 	_, err := replayOfflineTargetMetadata(
