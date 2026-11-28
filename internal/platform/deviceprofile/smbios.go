@@ -43,6 +43,7 @@ func ParseSMBIOSChassisTypes(raw []byte) ([]uint16, error) {
 	table := raw[rawSMBIOSHeaderSize : rawSMBIOSHeaderSize+int(tableLength)]
 	seen := make(map[uint16]struct{})
 	chassisTypes := make([]uint16, 0, 2)
+	endOfTableFound := false
 
 	for offset := 0; offset < len(table); {
 		remaining := len(table) - offset
@@ -77,6 +78,7 @@ func ParseSMBIOSChassisTypes(raw []byte) ([]uint16, error) {
 
 		offset = stringTerminator + 2
 		if structureType == smbiosEndOfTableType {
+			endOfTableFound = true
 			for _, trailing := range table[offset:] {
 				if trailing != 0 {
 					return nil, fmt.Errorf("%w: datos no nulos después de End-of-Table", ErrInvalidRawSMBIOS)
@@ -84,6 +86,9 @@ func ParseSMBIOSChassisTypes(raw []byte) ([]uint16, error) {
 			}
 			break
 		}
+	}
+	if !endOfTableFound {
+		return nil, fmt.Errorf("%w: marcador End-of-Table ausente", ErrInvalidRawSMBIOS)
 	}
 
 	sort.Slice(chassisTypes, func(i, j int) bool { return chassisTypes[i] < chassisTypes[j] })
