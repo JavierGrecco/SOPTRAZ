@@ -20,7 +20,9 @@ func validEvidence() Evidence {
 			Kind:          SourceRoughtime,
 			Assurance:     AssuranceAttested,
 			TrustAnchorID: "lab-roughtime-root-a",
+			KeyID:         "lab-roughtime-key-2026",
 		},
+		EvidenceSHA256: strings.Repeat("a", 64),
 	}
 }
 
@@ -84,6 +86,36 @@ func TestEvidenceValidateRejectsMalformedValues(t *testing.T) {
 			name: "attested evidence without trust anchor",
 			edit: func(e *Evidence) { e.Source.TrustAnchorID = "" },
 		},
+		{
+			name: "attested evidence without key identity",
+			edit: func(e *Evidence) { e.Source.KeyID = "" },
+		},
+		{
+			name: "attested evidence without response digest",
+			edit: func(e *Evidence) { e.EvidenceSHA256 = "" },
+		},
+		{
+			name: "malformed response digest",
+			edit: func(e *Evidence) { e.EvidenceSHA256 = "not-a-digest" },
+		},
+		{
+			name: "uppercase response digest",
+			edit: func(e *Evidence) { e.EvidenceSHA256 = strings.Repeat("A", 64) },
+		},
+		{
+			name: "system source cannot claim attested assurance",
+			edit: func(e *Evidence) {
+				e.Source.Kind = SourceSystem
+				e.Source.Assurance = AssuranceAttested
+				e.Source.TrustAnchorID = "system-anchor"
+			},
+		},
+		{
+			name: "NTS source cannot claim attested assurance",
+			edit: func(e *Evidence) {
+				e.Source.Kind = SourceNTS
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -93,6 +125,33 @@ func TestEvidenceValidateRejectsMalformedValues(t *testing.T) {
 				t.Fatalf("Validate() error = %v, want ErrInvalidEvidence", err)
 			}
 		})
+	}
+}
+
+func TestNTSAuthenticatedEvidenceDoesNotRequireAttestationDigest(t *testing.T) {
+	evidence := validEvidence()
+	evidence.Source.Kind = SourceNTS
+	evidence.Source.Assurance = AssuranceAuthenticated
+	evidence.Source.KeyID = ""
+	evidence.EvidenceSHA256 = ""
+
+	if err := evidence.Validate(); err != nil {
+		t.Fatalf("valid NTS evidence without an attestation digest rejected: %v", err)
+	}
+}
+
+func TestSystemEvidenceDoesNotRequireCryptographicDigest(t *testing.T) {
+	start := time.Date(2026, time.November, 28, 12, 0, 0, 0, time.UTC)
+	evidence := Evidence{
+		Interval: Interval{Earliest: start, Latest: start},
+		Source: Source{
+			ID:        "system-clock",
+			Kind:      SourceSystem,
+			Assurance: AssuranceSystem,
+		},
+	}
+	if err := evidence.Validate(); err != nil {
+		t.Fatalf("system evidence without a cryptographic digest rejected: %v", err)
 	}
 }
 

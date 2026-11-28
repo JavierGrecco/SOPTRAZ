@@ -26,7 +26,7 @@ Clases de garantía:
 - authenticated: intercambio autenticado por el protocolo, por ejemplo una asociación NTS válida.
 - attested: afirmación temporal firmada y verificada con una clave anclada por configuración independiente.
 
-Tipos de fuente admitidos: system, nts, roughtime y custom. Estos valores describen el mecanismo; no determinan por sí solos que una fuente sea aceptable.
+Tipos de fuente admitidos: system, nts, roughtime y custom. Los tipos integrados tienen una clase estructural fija: system/system, nts/authenticated y roughtime/attested. Cualquier combinación incoherente se rechaza; custom permite adaptadores propios que deben documentar su semántica y seguir las mismas obligaciones de confianza.
 
 Source.ID es un identificador local estable, no un valor copiado de la respuesta remota. OperatorID identifica quién administra realmente la fuente. Si está vacío, la independencia del operador es desconocida: dos hosts o nombres DNS diferentes no prueban que existan operadores independientes. TrustAnchorID identifica el ancla configurada fuera de la respuesta de tiempo y es obligatorio para las clases authenticated y attested.
 

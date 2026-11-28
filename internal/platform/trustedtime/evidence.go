@@ -4,6 +4,8 @@ package trustedtime
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -57,6 +59,7 @@ type Source struct {
 	Kind          SourceKind
 	Assurance     Assurance
 	TrustAnchorID string
+	KeyID         string
 }
 
 // Interval bounds two instants on the UTC timeline as asserted by a provider.
@@ -75,6 +78,10 @@ type Interval struct {
 type Evidence struct {
 	Interval Interval
 	Source   Source
+	// EvidenceSHA256 fingerprints the exact signed response/attestation bytes.
+	// It is not a substitute for verifying the signature and is required for
+	// attested evidence. System-clock and NTS observations may omit it.
+	EvidenceSHA256 string
 }
 
 // TrustedTimeProvider reports time evidence. Implementations must honor the
@@ -97,6 +104,14 @@ func (e Evidence) Validate() error {
 	}
 	if err := e.Source.Validate(); err != nil {
 		return err
+	}
+	if e.EvidenceSHA256 != "" {
+		if err := validateSHA256("EvidenceSHA256", e.EvidenceSHA256); err != nil {
+			return err
+		}
+	}
+	if e.Source.Assurance == AssuranceAttested && e.EvidenceSHA256 == "" {
+		return fmt.Errorf("%w: falta el digest de la atestación", ErrInvalidEvidence)
 	}
 	return nil
 }
@@ -133,6 +148,9 @@ func (s Source) Validate() error {
 	if err := validateIdentifier("TrustAnchorID", s.TrustAnchorID, false); err != nil {
 		return err
 	}
+	if err := validateIdentifier("KeyID", s.KeyID, false); err != nil {
+		return err
+	}
 
 	switch s.Kind {
 	case SourceSystem, SourceNTS, SourceRoughtime, SourceCustom:
@@ -142,12 +160,37 @@ func (s Source) Validate() error {
 
 	switch s.Assurance {
 	case AssuranceSystem:
-	case AssuranceAuthenticated, AssuranceAttested:
+		if s.TrustAnchorID != "" || s.KeyID != "" {
+			return fmt.Errorf("%w: una fuente system no puede declarar anclas criptográficas", ErrInvalidEvidence)
+		}
+	case AssuranceAuthenticated:
 		if s.TrustAnchorID == "" {
 			return fmt.Errorf("%w: falta el ancla de una evidencia autenticada", ErrInvalidEvidence)
 		}
+	case AssuranceAttested:
+		if s.TrustAnchorID == "" {
+			return fmt.Errorf("%w: falta el ancla de una evidencia autenticada", ErrInvalidEvidence)
+		}
+		if s.KeyID == "" {
+			return fmt.Errorf("%w: falta la identidad de la clave de atestación", ErrInvalidEvidence)
+		}
 	default:
 		return fmt.Errorf("%w: clase de garantía desconocida", ErrInvalidEvidence)
+	}
+
+	switch s.Kind {
+	case SourceSystem:
+		if s.Assurance != AssuranceSystem {
+			return fmt.Errorf("%w: SourceSystem requiere assurance system", ErrInvalidEvidence)
+		}
+	case SourceNTS:
+		if s.Assurance != AssuranceAuthenticated {
+			return fmt.Errorf("%w: SourceNTS requiere assurance authenticated", ErrInvalidEvidence)
+		}
+	case SourceRoughtime:
+		if s.Assurance != AssuranceAttested {
+			return fmt.Errorf("%w: SourceRoughtime requiere assurance attested", ErrInvalidEvidence)
+		}
 	}
 	return nil
 }
@@ -161,6 +204,17 @@ func (e Evidence) Canonical() (Evidence, error) {
 	e.Interval.Earliest = e.Interval.Earliest.UTC().Round(0)
 	e.Interval.Latest = e.Interval.Latest.UTC().Round(0)
 	return e, nil
+}
+
+func validateSHA256(field, value string) error {
+	if len(value) != sha256.Size*2 {
+		return fmt.Errorf("%w: %s debe contener 64 caracteres hexadecimales", ErrInvalidEvidence, field)
+	}
+	decoded, err := hex.DecodeString(value)
+	if err != nil || hex.EncodeToString(decoded) != value {
+		return fmt.Errorf("%w: %s debe ser hexadecimal SHA-256 en minúsculas", ErrInvalidEvidence, field)
+	}
+	return nil
 }
 
 func validateIdentifier(field, value string, required bool) error {
