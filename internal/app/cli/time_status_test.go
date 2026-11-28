@@ -102,13 +102,13 @@ func TestTimeStatusUnavailableIsNonFatalAndReportsUnknown(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("unavailable diagnostics must not be fatal: code=%d stderr=%q", code, stderr.String())
 	}
-	var report timeStatusReport
+	var report map[string]any
 	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}
-	if report.Status != "unavailable" ||
-		report.ServiceState != trustedtime.ServiceStateUnknown ||
-		report.SynchronizationState != trustedtime.SynchronizationUnknown {
+	if report["status"] != "unavailable" ||
+		report["service_state"] != string(trustedtime.ServiceStateUnknown) ||
+		report["synchronization_state"] != string(trustedtime.SynchronizationUnknown) {
 		t.Fatalf("unexpected unavailable report: %#v", report)
 	}
 }
