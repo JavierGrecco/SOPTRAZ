@@ -280,3 +280,56 @@ func TestReportRetentionKeepsOnlyMostRecentThirtyRuns(t *testing.T) {
 		t.Fatalf("retained reports = %d, want %d", count, maxRunReports)
 	}
 }
+
+func TestDiagnosticsFatalCrashHelper(t *testing.T) {
+	if os.Getenv("SOPTRAZ_DIAGNOSTICS_FATAL_HELPER") != "1" {
+		return
+	}
+	directory := os.Getenv("SOPTRAZ_DIAGNOSTICS_DIR")
+	logger, err := Open(directory, "fatal-helper-version")
+	if err != nil {
+		os.Exit(91)
+	}
+	if err := logger.ConfigureCrashOutput(); err != nil {
+		os.Exit(92)
+	}
+	go func() {
+		panic("soptraz-runtime-crash-output-probe")
+	}()
+	select {}
+}
+
+func TestGoRuntimeFatalPanicIsCopiedToTextReport(t *testing.T) {
+	directory := t.TempDir()
+	command := exec.Command(os.Args[0], "-test.run=^TestDiagnosticsFatalCrashHelper$")
+	command.Env = append(os.Environ(),
+		"SOPTRAZ_DIAGNOSTICS_FATAL_HELPER=1",
+		"SOPTRAZ_DIAGNOSTICS_DIR="+directory,
+	)
+	output, err := command.CombinedOutput()
+	if err == nil {
+		t.Fatal("fatal helper process exited successfully; expected an unhandled goroutine panic")
+	}
+
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		t.Fatalf("ReadDir() error = %v", err)
+	}
+	found := false
+	for _, entry := range entries {
+		if !strings.HasPrefix(entry.Name(), runLogPrefix) || !strings.HasSuffix(entry.Name(), ".txt") {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(directory, entry.Name()))
+		if err != nil {
+			t.Fatalf("read runtime crash report: %v", err)
+		}
+		if strings.Contains(string(raw), "soptraz-runtime-crash-output-probe") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("Go runtime crash message was not copied to a TXT report; stderr=%s", output)
+	}
+}
