@@ -227,3 +227,12 @@ El test de terminación externa espera a que el hijo escriba y sincronice el eve
 | [#309](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46158425815) | `96f8d4e` | **6/6 aprobados** | La prueba mata desde el proceso padre al hijo que posee el lock TUF, verifica que el kernel libera el lock, que el siguiente propietario puede adquirirlo y que elimina solo el stage huérfano de su propio `repositoryID`. Windows, macOS, Ubuntu, Race Detector, fuzzing y branch hygiene. |
 
 Esta prueba complementa el test externo de recuperación de informes de diagnóstico. No sustituye ensayos de corte de energía, corrupción de filesystem ni ENOSPC físico.
+
+### Integración del logger real con Artifact Resolver y TUF — 2026-11-28
+
+| Run | Commit | Resultado | Cobertura |
+|---|---|---|---|
+| [#312](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46158971673) | `da1a0d6` | Cancelado al actualizar el head de la rama | Ejecución reemplazada por la validación consolidada siguiente; no se cuenta como fallo ni aprobación. |
+| [#313](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46159045739) | `8a10670` | **6/6 aprobados** | Integra el logger TXT real con Artifact Resolver y TUF. Verifica incidente de integridad, conflicto de binding del repositorio, ausencia de URLs/rutas sensibles y que el constructor libera el lock si falla. Windows, macOS, Ubuntu, Race Detector, fuzzing y branch hygiene. |
+
+Estas pruebas validan el recorrido módulo→logger cuando el consumidor inyecta explícitamente `diagnostics.Logger`. No prueban wiring automático desde un composition root: todavía no existe un composition root de producción que construya estos módulos e inyecte el logger.
