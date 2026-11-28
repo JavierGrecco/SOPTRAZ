@@ -85,6 +85,12 @@ type Store struct {
 // single connection and rollback journaling so the trust-store transaction
 // semantics stay simple and portable across Windows, macOS and Linux.
 func Open(ctx context.Context, path string) (*Store, error) {
+	return openWithVFS(ctx, path, "")
+}
+
+// openWithVFS is a package-private seam used by deterministic storage-fault tests.
+// Production always uses SQLite's default OS VFS through Open.
+func openWithVFS(ctx context.Context, path, vfsName string) (*Store, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("%w: el contexto no puede ser nil", ErrInvalidTrustStore)
 	}
@@ -97,7 +103,7 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		return nil, err
 	}
 
-	db, err := sql.Open("sqlite", sqliteDSN(absolutePath))
+	db, err := sql.Open("sqlite", sqliteDSNWithVFS(absolutePath, vfsName))
 	if err != nil {
 		return nil, fmt.Errorf("%w: abrir SQLite: %v", ErrInvalidTrustStore, err)
 	}
@@ -121,6 +127,10 @@ func Open(ctx context.Context, path string) (*Store, error) {
 }
 
 func sqliteDSN(path string) string {
+	return sqliteDSNWithVFS(path, "")
+}
+
+func sqliteDSNWithVFS(path, vfsName string) string {
 	if runtime.GOOS == "windows" {
 		path = strings.ReplaceAll(path, "\\", "/")
 		if hasDriveLetter(path) {
@@ -130,6 +140,9 @@ func sqliteDSN(path string) string {
 	fileURL := url.URL{Scheme: "file", Path: path}
 	query := fileURL.Query()
 	query.Set("_txlock", "immediate")
+	if vfsName != "" {
+		query.Set("vfs", vfsName)
+	}
 	fileURL.RawQuery = query.Encode()
 	return fileURL.String()
 }
