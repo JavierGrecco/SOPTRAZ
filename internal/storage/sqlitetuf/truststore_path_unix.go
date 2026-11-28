@@ -24,7 +24,7 @@ func validateTrustStoreParent(path string) error {
 	if err != nil {
 		return fmt.Errorf("abrir raíz del sistema de archivos: %w", err)
 	}
-	defer unix.Close(currentFD)
+	defer func() { _ = unix.Close(currentFD) }()
 
 	relative := strings.TrimPrefix(clean, string(filepath.Separator))
 	for _, component := range strings.Split(relative, string(filepath.Separator)) {

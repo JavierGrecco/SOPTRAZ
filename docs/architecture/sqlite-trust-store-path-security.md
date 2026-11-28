@@ -25,4 +25,4 @@ La comprobación de Windows cubre SIDs amplios conocidos; una instalación con g
 
 ## Pruebas
 
-Se añadieron pruebas para rechazar un archivo DB symlink y una carpeta en la ruta de DB, resolver alias del directorio padre y comprobar identidad del archivo sin depender de la forma textual de la ruta. En Unix se prueban directorios escribibles no protegidos y sticky-bit. En Windows se fuerza una DACL que concede escritura a Everyone y se verifica que el trust store falla cerrado.
+Se añadieron pruebas para rechazar un archivo DB symlink y una carpeta en la ruta de DB, resolver alias del directorio padre y comprobar identidad del archivo sin depender de la forma textual de la ruta. En Unix se prueban directorios escribibles no protegidos y sticky-bit. En Windows se fuerza una DACL que concede escritura a Everyone en el directorio inmediato y en un ancestro de un directorio privado; ambas rutas deben fallar cerradas.
