@@ -505,9 +505,6 @@ func recoverPreviousRuns(directory string) ([]string, error) {
 			return recovered, fmt.Errorf("consultar ejecución previa %q: %w", name, err)
 		}
 		if !locked {
-			if unlockErr := lock.Unlock(); unlockErr != nil {
-				return recovered, fmt.Errorf("cerrar handle de informe activo %q: %w", name, unlockErr)
-			}
 			continue // A different SOPTRAZ process still owns this execution log.
 		}
 
@@ -642,9 +639,6 @@ func pruneOldRunReports(directory string, keep int, protectedPaths []string) err
 			return fmt.Errorf("bloquear informe antiguo para retención: %w", err)
 		}
 		if !locked {
-			if unlockErr := lock.Unlock(); unlockErr != nil {
-				return fmt.Errorf("cerrar handle del informe en uso para retención: %w", unlockErr)
-			}
 			continue // Never remove a report owned by a running process.
 		}
 		if err := lock.Unlock(); err != nil {
