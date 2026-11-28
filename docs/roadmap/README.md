@@ -61,7 +61,10 @@ Runtime Go, registro local, IDs, acciones tipadas, permisos/riesgo, cancelación
 - [x] Aislar cada refresh persistente en un workspace privado y rehidratarlo desde la generación SQLite activa cuando coincide con la root vigente; el updater online oficial revalida la metadata y un fallo descarta el stage sin cambiar la generación confirmada. `TUFClient.Close()` elimina el workspace (PR #29). Esto no habilita offline.
 - [ ] Completar resiliencia: terminación abrupta real y limpieza segura de stages huérfanos, recuperación tras caída en cada etapa, disco lleno, lock y escritores multi-proceso, y política de actualización de metadata no-root cacheada.
 - [x] Definir el contrato puro `internal/platform/trustedtime`: intervalo de incertidumbre, procedencia, ancla, identidad de clave y SHA-256 de la atestación, sin I/O ni dependencias externas.
-- [ ] Implementar proveedores nativos de solo lectura y diagnóstico separado del reloj del sistema para Windows, macOS y Linux.
+- [ ] Implementar SystemTimeDiagnostics separado de Evidence según ADR-0021: estados independientes de servicio/sincronización, unknown sin inferencias, sin elevación ni cambios del reloj.
+- [ ] Implementar y probar el lector read-only Linux adjtimex y el estado del kernel; systemd D-Bus será una capacidad opcional, no requisito.
+- [ ] Implementar diagnóstico Windows W32Time sin elevar privilegios; hasta contar con una señal no privilegiada y fiable, sincronización unknown.
+- [ ] Implementar diagnóstico macOS timed sin leer estado cacheado privado; sincronización unknown hasta disponer de API pública verificable.
 - [ ] Auditar POC aisladas de NTS/Roughtime, política de operadores independientes, anclas y rotación antes de seleccionar dependencias.
 - [ ] Integrar evidencia aceptada con la política de recuperación online, persistencia SQLite v3 y un mecanismo de referencia temporal compatible con go-tuf.
 - [ ] Implementar modo offline estricto que revalide metadata cacheada, vigente y anti-rollback con evidencia temporal suficiente. Si offline falla y hay red, descartar la sesión y repetir online desde cero; nunca aceptar metadata expirada ni mezclar resultados.
