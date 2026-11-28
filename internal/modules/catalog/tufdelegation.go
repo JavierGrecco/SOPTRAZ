@@ -9,10 +9,10 @@ import (
 )
 
 var (
-	ErrTargetPathInvalid                 = errors.New("ruta de target inválida")
-	ErrTargetDelegationUnavailable       = errors.New("metadata de delegación requerida no disponible")
-	ErrTargetDelegationLimitExceeded     = errors.New("límite de delegaciones TUF alcanzado")
-	ErrTargetPathNotFound                = errors.New("target no encontrado en metadata TUF")
+	ErrTargetPathInvalid             = errors.New("ruta de target inválida")
+	ErrTargetDelegationUnavailable   = errors.New("metadata de delegación requerida no disponible")
+	ErrTargetDelegationLimitExceeded = errors.New("límite de delegaciones TUF alcanzado")
+	ErrTargetPathNotFound            = errors.New("target no encontrado en metadata TUF")
 )
 
 type targetRoleLoader func(roleName, parentRole string) (*metadata.Metadata[metadata.TargetsType], error)
