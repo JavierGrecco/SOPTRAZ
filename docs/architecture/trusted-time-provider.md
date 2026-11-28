@@ -1,6 +1,6 @@
 # Contrato de evidencia de tiempo confiable
 
-Estado: contratos puros de evidencia y diagnóstico del SO implementados; adaptadores nativos e integración TUF pendientes.  
+Estado: contrato puro de evidencia y DTO de diagnóstico implementados; adaptadores read-only Linux y Windows integrados; macOS, fuentes temporales autenticadas e integración TUF pendientes.  
 Relacionado: [ADR-0020](../decisions/ADR-0020-trusted-time-and-clock-recovery.md).
 
 ## Alcance de esta primera entrega
@@ -61,7 +61,7 @@ El adaptador Windows está implementado en modo read-only. Usa SCM local con `SC
 
 ## Lo que todavía no está implementado
 
-- Adaptadores nativos de solo lectura para Windows, macOS y Linux y el contrato SystemTimeDiagnostics de ADR-0021; la sincronización puede permanecer unknown si la plataforma no la expone con seguridad.
+- Adaptador nativo de diagnóstico read-only para macOS timed; los adaptadores Linux (adjtimex) y Windows (W32Time vía SCM) y el DTO SystemTimeDiagnostics ya están implementados. Las señales de estos sistemas siguen clasificadas como system y no aportan autenticación criptográfica.
 - Pruebas de NTS y Roughtime en laboratorio, incluidas claves/raíces, nonce, replay, incertidumbre, fuentes contradictorias y rotación.
 - Política de selección y combinación de varias fuentes independientes.
 - Persistencia SQLite v3 de LastAcceptedTrustedTime y migración v2 → v3 sin convertir fechas locales antiguas en evidencia.
