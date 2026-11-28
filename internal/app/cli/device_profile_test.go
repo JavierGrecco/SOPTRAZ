@@ -47,7 +47,6 @@ func TestRunDeviceProfileJSONProducesReadOnlyReport(t *testing.T) {
 	}
 }
 
-
 func TestDeviceCollectionStatusTreatsZeroValueEnumsAsUnknown(t *testing.T) {
 	result := platformprofile.Result{
 		SourceErrors: []platformprofile.SourceError{{Source: "windows.smbios", Message: "unavailable"}},
