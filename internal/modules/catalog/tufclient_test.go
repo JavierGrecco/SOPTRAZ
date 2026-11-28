@@ -574,6 +574,20 @@ func TestTUFClientPreservesVerifiedRootWhenLaterMetadataRefreshFails(t *testing.
 		t.Fatalf("trusted root version after later metadata failure = %d, want 2", root.Signed.Version)
 	}
 
+	requestsMu.Lock()
+	foundRootV2DuringFailedRefresh := false
+	for _, requestPath := range *requests {
+		if requestPath == "/metadata/2.root.json" {
+			foundRootV2DuringFailedRefresh = true
+			break
+		}
+	}
+	*requests = nil
+	requestsMu.Unlock()
+	if !foundRootV2DuringFailedRefresh {
+		t.Fatal("failed refresh did not fetch the v2 root before timestamp failed")
+	}
+
 	// Restore timestamp and retry. The new Updater must now start from v2,
 	// not from the original v1 pin, and still resolve delegated metadata.
 	fixture.metadata["timestamp.json"] = fixture.timestampJSON
