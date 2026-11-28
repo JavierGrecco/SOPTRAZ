@@ -59,11 +59,11 @@ func TestAcceptancePolicyCombinesOnlyAllowlistedIndependentOperators(t *testing.
 	if !got.Interval.Earliest.Equal(want.Earliest) || !got.Interval.Latest.Equal(want.Latest) {
 		t.Fatalf("accepted interval = %#v, want %#v", got.Interval, want)
 	}
-	if len(got.Sources) != 3 || got.RollbackFloorApplied {
+	if len(got.Evidence) != 3 || got.RollbackFloorApplied {
 		t.Fatalf("unexpected accepted provenance: %#v", got)
 	}
-	if got.Sources[0].ID != "source-a" || got.Sources[1].ID != "source-b" || got.Sources[2].ID != "source-c" {
-		t.Fatalf("sources are not returned in stable ID order: %#v", got.Sources)
+	if got.Evidence[0].Source.ID != "source-a" || got.Evidence[1].Source.ID != "source-b" || got.Evidence[2].Source.ID != "source-c" {
+		t.Fatalf("evidence is not returned in stable ID order: %#v", got.Evidence)
 	}
 }
 
@@ -407,8 +407,8 @@ func TestAcceptancePolicyDoesNotReadWallClockOrMutateEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Accept() error = %v", err)
 	}
-	if len(accepted.Sources) == 0 {
-		t.Fatal("expected accepted source provenance")
+	if len(accepted.Evidence) == 0 {
+		t.Fatal("expected accepted evidence provenance")
 	}
 	for index := range input {
 		if input[index] != original[index] {
