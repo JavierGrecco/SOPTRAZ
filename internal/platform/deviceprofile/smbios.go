@@ -9,11 +9,11 @@ import (
 )
 
 const (
-	rawSMBIOSHeaderSize = 8
+	rawSMBIOSHeaderSize       = 8
 	smbiosStructureHeaderSize = 4
 	smbiosSystemEnclosureType = 3
-	smbiosEndOfTableType = 127
-	maxRawSMBIOSBytes = 16 << 20
+	smbiosEndOfTableType      = 127
+	maxRawSMBIOSBytes         = 16 << 20
 )
 
 var (
