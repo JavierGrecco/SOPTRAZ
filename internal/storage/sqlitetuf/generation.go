@@ -339,6 +339,7 @@ func (store *Store) LoadActiveGeneration(ctx context.Context, repositoryID strin
 }
 
 func loadActiveGenerationFromTx(ctx context.Context, tx *sql.Tx, repositoryID string) (Generation, error) {
+	var err error
 	var latestRoot RootState
 	err = tx.QueryRowContext(ctx,
 		"SELECT latest_root_version, latest_root_sha256 FROM repositories WHERE id = ?",
