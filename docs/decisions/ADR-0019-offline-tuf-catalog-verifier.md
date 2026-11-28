@@ -34,7 +34,7 @@ La API recibirá, como mínimo:
 - el almacén de confianza SQLite y el ID del repositorio TUF configurado;
 - un descriptor artifact v1 que se desea validar;
 - límites de delegación definidos por configuración confiable de SOPTRAZ;
-- un reloj de referencia inyectable solo para pruebas deterministas; producción usa UTC del sistema y aplica la política de reloj local definida abajo.
+- evidencia temporal obtenida mediante el `TrustedTimeProvider`, con procedencia, incertidumbre y nivel de assurance según ADR-0020. El reloj de pared del sistema sigue siendo una fuente operativa, pero no se confunde con tiempo autenticado.
 
 El resultado será un `VerifiedTarget` junto con evidencia de la validación: repositorio, generación, root version/hash, roles realmente recorridos, fecha/hora de referencia, expiración más próxima y nivel de assurance local.
 
@@ -49,7 +49,7 @@ El almacén agregará una operación de lectura consistente (por ejemplo, `LoadO
 - configuración y pin bootstrap registrados para el repositorio;
 - cadena root completa y latest-root version/hash;
 - generación activa, todos sus blobs, relaciones, high-water y manifiesto;
-- marca local de última hora confiable observada.
+- estado estructurado de evidencia temporal confiable y último instante atestiguado aceptado, cuando exista.
 
 La lectura valida integridad estructural, tamaños, digests, manifiesto, referencias y high-water. Ningún resultado de SQLite se considera autenticado criptográficamente hasta que el catalog replay complete.
 
@@ -110,42 +110,18 @@ El verificador no convierte un descriptor provisto por la UI o por IA en una fue
 
 ### 7. Expiración, reloj y nivel de assurance
 
-Cada rol utilizado en el camino de resolución, incluida la raíz, debe estar vigente en la misma `RefTime`. El resultado informa la expiración más próxima de ese camino. Cuando un rol está vencido o falta, el catálogo offline no está disponible; no se extiende la expiración ni se sirve una generación vieja como fallback.
+La política temporal de esta arquitectura se define y queda supersedida por [ADR-0020 — Fuente de tiempo confiable y recuperación ante relojes incorrectos](ADR-0020-trusted-time-and-clock-recovery.md).
 
-Se agregará una marca local `last_observed_utc` por repositorio al trust store. Tras una validación online u offline exitosa, se avanzará transaccionalmente sin permitir que retroceda. Si el reloj del sistema está por detrás de esa marca más allá de una tolerancia documentada, se rechaza la validación offline y se informa posible retroceso del reloj. Para verificar offline se utiliza como mínimo la marca persistida, nunca una hora anterior.
+Se mantienen estas invariantes del verificador offline:
 
-Esta marca reside en el mismo almacén local: detecta retrocesos del reloj respecto del estado que aún se conserva, pero **no** es un reloj seguro ni un contador hardware. Restaurar una imagen completa antigua que incluya base, marca horaria y software puede retroceder todos esos datos juntos. El nivel inicial se denomina `local` y debe declarar esa limitación.
+- Todos los roles requeridos deben estar vigentes en una misma referencia temporal por operación.
+- La referencia debe proceder de evidencia temporal admitida por la política de assurance; un timestamp SQLite generado con el reloj local no constituye por sí solo un reloj seguro.
+- Una expiración nunca se extiende para compensar un reloj incorrecto. Cuando exista incertidumbre temporal, la comprobación usa el extremo superior conservador del intervalo.
+- Una anomalía del reloj local no invalida automáticamente el repositorio ni bloquea globalmente SOPTRAZ. La recuperación online intenta restablecer hora confiable; offline falla con `TrustedTimeUnavailable` cuando no puede demostrar vigencia.
+- La migración SQLite v2→v3 no debe convertir `created_at`, `committed_at` ni `activated_at` históricos en un piso temporal confiable. El estado temporal se guarda con procedencia, y puede quedar vacío hasta obtener la primera evidencia aceptada.
+- No se usa `UnsafeSetRefTime` de go-tuf en producción. Hasta disponer de una API soportada para inyectar hora, el updater oficial requiere que el reloj efectivo del sistema haya sido corregido por el mecanismo temporal configurado.
 
-### Contrato de implementación de la marca temporal (normativo)
-
-**Persistencia y migración**
-
-- El esquema SQLite pasa de v2 a v3 y agrega `repositories.last_observed_utc`, una marca UTC canónica en formato RFC3339Nano por repositorio. Después de la migración, el campo ausente o inválido es corrupción del trust store y bloquea la validación; no se reemplaza silenciosamente por la hora actual.
-- La migración v2→v3 se ejecuta en una transacción. Para cada repositorio calcula el máximo cronológico entre `repositories.created_at`, los `root_chain.committed_at` y `active_generations.activated_at` disponibles. Esas fechas ya son UTC RFC3339Nano, registradas por operaciones locales anteriores. Deben parsearse como instantes en Go: no usar `MAX(TEXT)` de SQLite, porque RFC3339Nano omite ceros fraccionarios y el orden lexicográfico no siempre coincide con el cronológico.
-- Si alguna fecha necesaria está ausente o no se puede parsear, la migración falla y revierte el cambio de esquema. No se utiliza `time.Now()` para inventar una observación histórica. Una instalación nueva inicializa la marca al registrar el repositorio.
-- La marca solo avanza con una validación completa satisfactoria. En el flujo online, el commit de la generación y la activación actualizan la marca en la misma transacción. Un commit aislado de root-chain no la avanza. La operación debe recibir el instante de referencia capturado al inicio del flujo, no tomar una hora distinta al final.
-
-**Política de reloj**
-
-- Capturar una sola hora de referencia UTC al inicio de cada operación y usarla en todas las comprobaciones de expiración de esa operación. El flujo online debe comparar la hora de referencia que realmente utiliza el `updater.Updater` con la marca persistida antes de llamar a `Refresh()` o `GetTargetInfo()`.
-- Si la hora de referencia es anterior a `last_observed_utc`, aunque sea por una fracción de segundo, la operación falla con una causa tipada de retroceso del reloj. No hay tolerancia de aceptación: permitir una hora anterior podría validar metadata que ya estaba vencida respecto de una observación previa.
-- No utilizar `updater.Updater.UnsafeSetRefTime` en producción: go-tuf lo documenta para pruebas. La aplicación debe rechazar el reloj atrasado, no alterar por una API de prueba el reloj interno del updater. Referencias: [API de go-tuf v2.5.0](https://pkg.go.dev/github.com/theupdateframework/go-tuf/v2/metadata/updater@v2.5.0#Updater.UnsafeSetRefTime) y [hora fija de inicio del workflow TUF](https://theupdateframework.github.io/specification/latest/#fix-time).
-- En el flujo offline se pasa la hora capturada a la instancia aislada de `trustedmetadata` y se usa durante todo el replay. Si la validación tiene éxito, la marca se avanza en una transacción posterior; si esa persistencia falla, no se devuelve `VerifiedTarget`.
-- La operación offline mantiene el lock exclusivo del repositorio desde la lectura snapshot hasta la actualización de la marca. La transacción final verifica mediante compare-and-swap que la generación activa, la raíz y la marca esperada no cambiaron. Si hay conflicto, se descarta el resultado y se falla cerrado.
-- La consulta offline no modifica metadata TUF, root-chain, generaciones ni high-water marks. Su único efecto persistente permitido es avanzar `last_observed_utc` después de completar correctamente la verificación.
-
-**Pruebas obligatorias de la marca**
-
-1. Migrar stores v2 con solo repositorio, con root-chain y con generación activa; comprobar el máximo cronológico correcto y que el valor no se obtiene del reloj de la máquina durante la migración.
-2. Rechazar fechas históricas inválidas y comprobar rollback completo de la migración: `user_version` permanece en v2 y no queda una columna parcialmente migrada.
-3. Comprobar alta nueva, avance monotónico, idempotencia y que un commit de root sin generación no avanza la marca.
-4. Comprobar retroceso de reloj antes del updater, antes del replay offline y durante el commit final; ningún caso debe devolver un target ni rebajar la marca.
-5. Comprobar que una verificación offline fallida no cambia la marca y que una exitosa la avanza sin alterar root-chain, generaciones o high-water marks.
-6. Probar conflictos CAS y dos procesos concurrentes manteniendo el lock del repositorio; ningún target se devuelve con snapshot obsoleto.
-7. Mantener el test explícito de restauración integral de una copia antigua: debe demostrar el límite conocido del nivel `local`, no presentar una detección inexistente.
-
-
-No se afirmará anti-rollback fuerte frente a restauración integral del disco. TPM/contador monotónico o witness externo se evaluarán como niveles de assurance futuros, con enrolamiento y recuperación propios.
+El nivel de assurance y las condiciones de disponibilidad offline se informan por separado del resultado criptográfico TUF. La restauración integral de una imagen antigua del mismo disco sigue siendo una limitación cuando no existe contador hardware monotónico o witness externo.
 
 ### 8. Límites operativos
 
@@ -171,18 +147,18 @@ No se afirmará anti-rollback fuerte frente a restauración integral del disco. 
 **Costos**
 
 - Hay que refactorizar el replay existente para reutilizarlo sin duplicar la autoridad de validación.
-- SQLite necesitará migración compatible para `last_observed_utc` y una lectura snapshot que combine root-chain, high-water y generación.
+- SQLite necesitará un estado temporal v3 con procedencia/evidencia y una lectura snapshot que combine root-chain, high-water, generación y estado temporal; el backfill de fechas locales antiguas no será un ancla confiable.
 - Offline no puede validar un target cuyo recorrido delegado no esté incluido en la generación actual.
 - El estado de reloj local puede requerir una recuperación explícita tras una corrección manual importante del reloj.
 
 ## Plan de implementación y aceptación
 
-1. Añadir tests de contrato/migración para la lectura snapshot y `last_observed_utc`; verificar la lectura atómica con writers concurrentes.
+1. Definir e implementar `TrustedTimeProvider`, el estado persistente de evidencia temporal y tests de contrato/migración v2→v3 sin convertir fechas locales antiguas en anclas confiables.
 2. Extraer un único replay reusable que valide root-chain y una generación desde bytes exactos con hora de referencia explícita.
 3. Implementar el resolver offline de delegaciones, reusando el orden y límites del recorrido online.
 4. Vincular descriptor artifact v1 con la misma función canónica de validación; no duplicar reglas JSON ni hashes.
 5. Probar offline exitoso para un target top-level y uno delegado después de cerrar el cliente online y bloquear toda red.
-6. Probar fallos por root pin incorrecto, cadena no consecutiva, high-water, generación/root mismatch, rollback/equivocation, timestamp/snapshot/targets/delegación alterados, descriptor discrepante, expiración límite, reloj atrasado, rol ausente, ciclo y exceso de delegaciones.
+6. Probar fallos por root pin incorrecto, cadena no consecutiva, high-water, generación/root mismatch, rollback/equivocation, timestamp/snapshot/targets/delegación alterados, descriptor discrepante, expiración límite, evidencia temporal atrasada/contradictoria/ausente, rol ausente, ciclo y exceso de delegaciones.
 7. Probar que un delegado candidato ausente no se salta en favor de una delegación posterior.
 8. Demostrar con un test explícito que restaurar una copia antigua integral del mismo SQLite no se detecta sin ancla independiente; documentarlo como limitación, no como éxito de seguridad.
 9. Ejecutar Windows, macOS y Ubuntu, Race Detector, fuzzing acotado, fallos SQLite e integración sin red.

@@ -62,7 +62,8 @@ Runtime Go, registro local, IDs, acciones tipadas, permisos/riesgo, cancelación
 - [x] Aislar cada refresh persistente en un workspace privado y rehidratarlo desde la generación SQLite activa cuando coincide con la root vigente; el updater online oficial revalida la metadata y un fallo descarta el stage sin cambiar la generación confirmada. `TUFClient.Close()` elimina el workspace (PR #29). Esto no habilita offline.
 - [ ] Integrar y aceptar la coordinación de clientes TUF y la recuperación de stages huérfanos propuesta en PR #31, tras revisar locks/crash en Windows, macOS y Linux.
 - [ ] Completar resiliencia física: ENOSPC real, fallos de escritura/sync y recuperación en cada límite de transacción; mantener pruebas multi-proceso y de disco lleno.
-- [ ] Definir modo offline que revalide metadata cacheada, vigente y anti-rollback; no usar TOFU ni UnsafeLocalMode como bypass.
+- [ ] Implementar `TrustedTimeProvider` y evidencia temporal con procedencia/incertidumbre según ADR-0020; resolver recuperación online ante reloj adelantado/atrasado sin desactivar expiraciones.
+- [ ] Definir modo offline que revalide metadata cacheada, vigente y anti-rollback con evidencia temporal suficiente; tras reiniciar sin RTC/contador confiable ni atestación reciente, devolver `TrustedTimeUnavailable`. No usar TOFU ni UnsafeLocalMode.
 - [ ] Probar rotación root, thresholds, firma inválida, expiración, rollback/freeze, consistent snapshots, delegaciones y cache corrupta.
 - [x] Configurar el fetcher inicial con timeout HTTP, límites de metadata, redirects desactivados, reintentos acotados y sincronización del Updater.
 - [ ] Probar expiración/rollback/rotación y persistencia cacheada en escenarios de reinicio, caída de red y recuperación.

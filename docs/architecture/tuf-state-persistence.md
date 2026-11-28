@@ -1,6 +1,6 @@
 # Modelo de persistencia, anti-rollback y recuperación del catálogo TUF
 
-- Estado: root-chain SQLite, replay persistente, store de generaciones y captura/revalidación online integrados en `main` (PR #22, #23, #25, #27 y #29). PR #31 propone coordinar clientes persistentes mediante locks OS, recuperar stages huérfanos, endurecer rutas/permisos del trust store e incorporar informes locales de fallos; permanece en draft mientras se completan las revisiones manuales. ADR-0019 acepta la arquitectura del verificador offline explícito; su implementación aún está pendiente.
+- Estado: root-chain SQLite, replay persistente, store de generaciones y captura/revalidación online integrados en `main` (PR #22, #23, #25, #27 y #29). PR #31 propone coordinar clientes persistentes mediante locks OS, recuperar stages huérfanos, endurecer rutas/permisos del trust store e incorporar informes locales de fallos; permanece en draft mientras se completan las revisiones manuales. ADR-0019 acepta la arquitectura del verificador offline y ADR-0020 define la política de tiempo confiable; ambas implementaciones siguen pendientes.
 - Fecha: 2026-11-28
 - Relacionado: ADR-0015, ADR-0017, Issue #5 (M1.4), Issue #4 (M1.5).
 - Alcance: metadata de confianza y caché del catálogo; no targets ejecutables.
@@ -155,8 +155,8 @@ No configurar `UpdaterConfig.UnsafeLocalMode` como solución productiva. La docu
 
 SOPTRAZ mantendrá dos operaciones diferentes:
 
-- **Refresh online:** busca metadata nueva y ejecuta el workflow completo root → timestamp → snapshot → targets; carga delegaciones bajo demanda. Solo una generación totalmente aceptada se compromete.
-- **Consulta offline:** lee exclusivamente una generación previamente comprometida y ejecuta un validador local explícito que vuelve a comprobar root chain, thresholds, expiración, versiones monotónicas, hashes, delegaciones y high-water marks. No descarga ni modifica metadata TUF, root-chain, generaciones ni high-water marks. Solo después de una verificación completa puede avanzar `last_observed_utc` mediante una transacción SQLite con compare-and-swap, manteniendo el lock exclusivo del repositorio; si la marca no se puede persistir o el snapshot cambió, no se devuelve `VerifiedTarget`. Una hora anterior a la marca persistida falla cerrada.
+- **Refresh online:** antes del updater obtiene la hora efectiva mediante la política de `TrustedTimeProvider` de ADR-0020. Si detecta una anomalía, intenta recuperar hora a través de una fuente autenticada y la sincronización del sistema operativo; no desactiva expiraciones. Una vez que el reloj del proceso está corregido, fija una sola hora al comienzo del workflow y ejecuta root → timestamp → snapshot → targets, cargando delegaciones bajo demanda. Solo una generación totalmente aceptada se compromete.
+- **Consulta offline:** requiere evidencia temporal reciente o continuidad desde una atestación válida mediante un reloj monotónico/RTC confiable. Revalida la generación previamente comprometida con `trustedmetadata`, delegaciones, hashes, high-water y expiración, sin red. No cambia metadata TUF, root-chain, generaciones ni high-water. Tras verificación completa puede guardar la evidencia temporal derivada con CAS bajo el lock del repositorio. Si no puede demostrar vigencia (por ejemplo, tras reiniciar sin RTC/contador seguro ni nueva atestación), devuelve `TrustedTimeUnavailable` y no entrega `VerifiedTarget`.
 
 El verificador offline se implementará con las primitivas oficiales de go-tuf (`trustedmetadata`), no con un parser criptográfico propio. Tendrá que validar root rotations consecutivas almacenadas, timestamp, snapshot, targets y delegaciones solicitadas. La sesión actual `MetadataSession` solo cubre metadata top-level y no basta todavía para una consulta offline con delegaciones.
 
@@ -166,11 +166,11 @@ El verificador offline se implementará con las primitivas oficiales de go-tuf (
 - La cadena de root llega a un trust anchor fijado/enrolado.
 - Cada metadata requerida está presente, íntegra, enlazada por hash/length y no expirada.
 - Los high-water marks coinciden o avanzan; no hay regresión ni versión repetida con bytes diferentes.
-- La hora de referencia es razonable y no hay indicios de retroceso del reloj no resueltos.
+- La hora de referencia procede de evidencia admitida por ADR-0020; una marca SQLite generada desde el reloj local no basta por sí sola. La expiración se evalúa conservadoramente con el extremo superior del intervalo de incertidumbre.
 - Se puede validar el target mediante su delegación firmada; metadata ausente o delegación no resoluble bloquea ese target.
 - El informe muestra la hora de última actualización, expiración, generación y nivel de assurance anti-rollback.
 
-Un resultado offline significa “metadata previamente autenticada y todavía dentro de su período de validez”, no “el servidor no publicó algo nuevo” ni “se sabe que esta es la versión más reciente”. Al terminar la expiración, no se acepta por conveniencia: el catálogo queda no disponible hasta refresh online.
+Un resultado offline significa “metadata previamente autenticada y todavía dentro de su período de validez”, no “el servidor no publicó algo nuevo” ni “se sabe que esta es la versión más reciente”. Al terminar la expiración, no se acepta por conveniencia. Si no hay evidencia temporal suficiente, el catálogo queda no disponible hasta obtener una atestación nueva o recuperar el tiempo online; el resto de SOPTRAZ continúa operativo.
 
 ## 7. Root bootstrap, custodia y rotación
 
@@ -202,7 +202,7 @@ No se generan claves privadas de producción en tests, issues, conversaciones, r
 | Root con firma/threshold inválido | Rechazar; preservar trust state previo |
 | Falta de red | Consultar solo generación offline validable y no expirada; no ejecutar UnsafeLocalMode |
 | Fallo del refresh más nuevo | No hacer downgrade de la confianza ni servir metadata expirada; mantener el estado anterior solo si la política vigente aún lo permite |
-| Corrupción del reloj | Bloquear catálogo offline cuando no puede establecerse vigencia |
+| Corrupción del reloj | Intentar recuperación temporal online; bloquear solo la validación con expiración cuando no pueda establecerse vigencia |
 
 No se restaurará automáticamente una generación vieja para “hacer que el programa arranque”. La recuperación debe preservar integridad antes que disponibilidad.
 
@@ -241,7 +241,7 @@ No se restaurará automáticamente una generación vieja para “hacer que el pr
 4. [x] Implementar store de root-chain (PR #22), replay/commit persistente de `TUFClient` (PR #23), store de generaciones/high-water (PR #25) y captura/revalidación online desde `TUFClient` (PR #27).
 5. [x] Implementar staging aislado por generación antes del refresh y restauración validada desde SQLite (PR #29); coordinar procesos por repositorio y limpiar stages huérfanos bajo lock exclusivo está propuesto en PR #31.
 6. [x] Cubrir `SQLITE_FULL` mediante `max_page_count`, terminación de proceso hijo con lock y rollback transaccional inyectado de roots/generaciones. [ ] Completar ensayos de fallos físicos: ENOSPC real, errores de sync/journal y recuperación ante interrupción en límites físicos del commit.
-7. [ ] Implementar el verificador offline local según [ADR-0019](../decisions/ADR-0019-offline-tuf-catalog-verifier.md), usando `trustedmetadata`, snapshot SQLite consistente, marca local de hora y validación de delegaciones; no usar `UnsafeLocalMode`.
+7. [ ] Implementar el verificador offline según [ADR-0019](../decisions/ADR-0019-offline-tuf-catalog-verifier.md) y la política temporal de [ADR-0020](../decisions/ADR-0020-trusted-time-and-clock-recovery.md): snapshot SQLite consistente, replay `trustedmetadata`, delegaciones y evidencia temporal válida; no usar `UnsafeLocalMode` ni convertir timestamps locales antiguos en anclas confiables.
 8. [ ] Añadir ancla monotónica por plataforma o witness externo cuando esté disponible, manteniendo un nivel local explícito cuando no lo esté.
 9. [ ] Completar SBOM, avisos/licencias y política de actualización de go-tuf/Sigstore.
 10. [ ] Recién entonces revisar M1.4 como candidato a aceptación.
@@ -273,12 +273,14 @@ Este documento registra el diseño de seguridad y las decisiones que faltan. La 
 - No existe protección fuerte frente a restauración de una imagen antigua completa del mismo disco sin TPM/contador monotónico o witness externo. Bootstrap y custodia de claves de producción siguen pendientes.
 
 
-## 13. Decisión de arquitectura offline (ADR-0019, 2026-11-28)
+## 13. Decisiones de arquitectura offline y tiempo confiable (ADR-0019 y ADR-0020)
 
-La arquitectura quedó aceptada en [ADR-0019 — Verificación offline explícita del catálogo TUF](../decisions/ADR-0019-offline-tuf-catalog-verifier.md). Esta decisión todavía no habilita el modo offline.
+La arquitectura del verificador offline quedó definida en [ADR-0019](../decisions/ADR-0019-offline-tuf-catalog-verifier.md), y la política temporal quedó supersedida y ampliada por [ADR-0020](../decisions/ADR-0020-trusted-time-and-clock-recovery.md). Ninguna de las dos ADR habilita todavía el modo offline de producción.
 
-El verificador deberá reproducir la raíz desde el pin bootstrap, leer root-chain/generación/high-water en un único snapshot SQLite, y revalidar timestamp → snapshot → targets → delegaciones con `trustedmetadata` y una única hora de referencia. Debe respetar el orden firmado y los roles terminating; si un rol candidato necesario no está incluido en la generación, el target no está disponible offline. El descriptor artifact v1 se compara con el target firmado y el resolver local verifica después el archivo instalado. No hay fallback a una generación antigua, a red ni a `UnsafeLocalMode`.
+El verificador deberá reproducir la raíz desde el pin bootstrap, leer root-chain/generación/high-water en un único snapshot SQLite y revalidar timestamp → snapshot → targets → delegaciones con `trustedmetadata`. Debe respetar el orden firmado y roles terminating; si un rol candidato necesario no está incluido en la generación, el target no está disponible offline. El descriptor artifact v1 se compara con el target firmado y el resolver local verifica después el archivo instalado. No hay fallback a una generación antigua, a red ni a `UnsafeLocalMode`.
 
-Se decidió guardar `last_observed_utc` por repositorio y avanzar esa marca de manera monotónica en el trust store. Esto detecta algunos retrocesos del reloj mientras se conserva la base, pero no es un reloj seguro: restaurar una imagen completa antigua del mismo disco también puede restaurar esa marca. El resultado inicial debe informar assurance `local`; la protección con TPM/contador monotónico o witness externo queda como capacidad futura.
+ADR-0020 sustituye el piso rígido `last_observed_utc` basado en el reloj local por evidencia temporal estructurada: clase de fuente, identidad/procedencia, intervalo de incertidumbre y último instante aceptado. NTP con NTS puede mantener sincronización autenticada, pero requiere bootstrap de tiempo para validar certificados TLS; Roughtime con claves fijadas se evaluará como mecanismo experimental de recuperación, no como dependencia obligatoria. La anomalía del reloj local no invalida el repositorio ni bloquea globalmente SOPTRAZ: el flujo online intenta recuperar hora; offline devuelve `TrustedTimeUnavailable` si no puede demostrar que metadata sigue vigente.
+
+La migración SQLite v2→v3 no usará `created_at`, `committed_at` ni `activated_at` históricos como ancla temporal confiable: fueron generados por el reloj local. La política no introduce tolerancias arbitrarias ni extiende `expires`; se usa el límite superior conservador de la incertidumbre. Tampoco se usará `Updater.UnsafeSetRefTime` en producción. Sin RTC/contador seguro, continuidad monotónica comprobable o nueva atestación, no se prometerá verificación offline después de reiniciar.
 
 El replay actual de `captureAndVerifyGenerationMetadata` será refactorizado para que el flujo online y el verificador offline compartan una sola implementación de autenticación de roles. No se mantendrán dos algoritmos equivalentes independientes.

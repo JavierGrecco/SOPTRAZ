@@ -23,5 +23,6 @@ Las decisiones aceptadas se mantienen aquí. Una ADR registra contexto, alternat
 | ADR-0017 | Almacén durable de confianza TUF en SQLite | Aceptada como decisión de almacenamiento; implementación pendiente |
 | ADR-0018 | Informes locales de diagnóstico y recuperación de ejecución | Aceptada; implementación propuesta en PR #31, aún en revisión |
 | ADR-0019 | Verificación offline explícita del catálogo TUF | Aceptada como arquitectura; implementación pendiente |
+| ADR-0020 | Fuente de tiempo confiable y recuperación ante relojes incorrectos | Aceptada como política de arquitectura; implementación pendiente |
 
 Pendiente: licencia de distribución, cifrado local, firmas de releases, packaging Python, sincronización e identidad antes de implementar esas funciones.
