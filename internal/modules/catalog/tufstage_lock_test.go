@@ -168,6 +168,7 @@ func TestTUFRepositoryLockHelperProcess(t *testing.T) {
 	// this process to model kill/fatal shutdown without Close or Unlock.
 	runtime.KeepAlive(repositoryLock)
 	select {}
+	runtime.KeepAlive(repositoryLock)
 }
 
 func TestTUFRepositoryLockAndOrphanCleanupAfterAbruptProcessExit(t *testing.T) {
