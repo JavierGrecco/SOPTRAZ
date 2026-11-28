@@ -196,3 +196,12 @@ La cobertura VFS nueva:
 - verifica que `CommitVerifiedRoots` falla y que `RootState` y `LoadRootChain` permanecen en el ancla inicial, sin una rotación parcial.
 
 El VFS está registrado solo por tests; el `Open` de producción continúa usando el VFS OS normal. El error de espacio se inyecta en el punto de escritura del journal y el error de sync en la frontera VFS: **no se afirma que se haya llenado físicamente el disco ni que se haya probado un corte eléctrico**. El VFS del driver mantiene ciertos archivos temporales en memoria; el ENOSPC físico en unidades reales, la durabilidad del sync de directorio por filesystem y ensayos hardware siguen pendientes.
+
+### Extensión de VFS a commits de generación
+
+| Run | Commit | Resultado | Causa o cobertura |
+|---|---|---|---|
+| [#242](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46110831847) | `f9f1fd4` | Falló formato en los tres runners de Go | Una línea vacía redundante antes de `assertNoGenerationState` y otra al final del archivo VFS. Los tests no comenzaron. |
+| [#243](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46110980146) | `ee0084b` | **6/6 jobs aprobados** | La corrección de formato permitió ejecutar las pruebas ampliadas: `CommitGeneration` revierte ante `vfs.ErrFull` en la escritura de journal y ante un fallo de `File.Sync`; no quedan generaciones, metadata, role high-water ni `active_generations`. Windows, macOS, Ubuntu, Race Detector, fuzzing y branch hygiene pasaron. |
+
+Esta segunda capa cubre los dos límites transaccionales más importantes del catálogo local: persistencia de roots y activación atómica de generaciones. La prueba VFS sigue siendo una inyección determinista a nivel del driver, no una prueba de ENOSPC físico o corte de energía.
