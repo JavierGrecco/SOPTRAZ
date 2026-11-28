@@ -65,7 +65,6 @@ func TestReplayVerifiedGenerationUsesOneExplicitReferenceTime(t *testing.T) {
 	}
 }
 
-
 func TestRejectMetadataExpiryAtOrBefore(t *testing.T) {
 	referenceTime := time.Date(2026, time.November, 28, 20, 0, 0, 0, time.UTC)
 	tests := []struct {
