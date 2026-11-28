@@ -22,7 +22,7 @@ func collectDarwin(readSysctl func(string) (string, error)) Result {
 		result.addSourceError("macos.sysctl.hw.model", err)
 		return result
 	}
-	formFactor, _ := classifyDarwinHardwareModel(model)
+	formFactor := classifyDarwinHardwareModel(model)
 	if formFactor == moduleprofile.FormFactorUnknown {
 		return result
 	}
@@ -31,21 +31,21 @@ func collectDarwin(readSysctl func(string) (string, error)) Result {
 	return result
 }
 
-func classifyDarwinHardwareModel(model string) (moduleprofile.FormFactor, string) {
+func classifyDarwinHardwareModel(model string) moduleprofile.FormFactor {
 	value := strings.TrimSpace(model)
 	switch {
 	case strings.HasPrefix(value, "MacBookPro"),
 		strings.HasPrefix(value, "MacBookAir"),
 		strings.HasPrefix(value, "MacBook"):
-		return moduleprofile.FormFactorNotebook, "MacBook"
+		return moduleprofile.FormFactorNotebook
 	case strings.HasPrefix(value, "iMac"):
-		return moduleprofile.FormFactorAllInOne, "iMac"
+		return moduleprofile.FormFactorAllInOne
 	case strings.HasPrefix(value, "Macmini"):
-		return moduleprofile.FormFactorDesktop, "Mac mini"
+		return moduleprofile.FormFactorDesktop
 	case strings.HasPrefix(value, "MacPro"),
 		strings.HasPrefix(value, "MacStudio"):
-		return moduleprofile.FormFactorWorkstation, "Mac workstation"
+		return moduleprofile.FormFactorWorkstation
 	default:
-		return moduleprofile.FormFactorUnknown, ""
+		return moduleprofile.FormFactorUnknown
 	}
 }

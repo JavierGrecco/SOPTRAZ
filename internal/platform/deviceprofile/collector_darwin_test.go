@@ -24,7 +24,7 @@ func TestClassifyDarwinHardwareModel(t *testing.T) {
 		{model: "", want: moduleprofile.FormFactorUnknown},
 	} {
 		t.Run(test.model, func(t *testing.T) {
-			got, _ := classifyDarwinHardwareModel(test.model)
+			got := classifyDarwinHardwareModel(test.model)
 			if got != test.want {
 				t.Fatalf("classifyDarwinHardwareModel(%q) = %q, want %q", test.model, got, test.want)
 			}
