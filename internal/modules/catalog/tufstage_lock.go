@@ -10,13 +10,18 @@ import (
 	"strings"
 
 	"github.com/JavierGrecco/SOPTRAZ/internal/storage/sqlitetuf"
-	"github.com/gofrs/flock"
 )
 
 const (
 	tufMetadataStagePrefix = ".soptraz-tuf-stage-"
 	tufRepositoryLockDir   = ".soptraz-locks"
 )
+
+type tufRepositoryLock interface {
+	Locked() bool
+	Path() string
+	Unlock() error
+}
 
 func tufMetadataStagePrefixForRepository(repositoryID string) string {
 	digest := sha256.Sum256([]byte(repositoryID))
@@ -27,7 +32,7 @@ func tufMetadataStagePrefixForRepository(repositoryID string) string {
 // processes and across different metadata-cache paths that share one SQLite
 // trust store. The lock file is stable: it is deliberately never unlinked,
 // because unlinking a locked file could let a second process lock a new inode.
-func acquirePersistentTUFRepositoryLock(store *sqlitetuf.Store, repositoryID string) (*flock.Flock, error) {
+func acquirePersistentTUFRepositoryLock(store *sqlitetuf.Store, repositoryID string) (tufRepositoryLock, error) {
 	if store == nil || store.DatabasePath() == "" {
 		return nil, fmt.Errorf("%w: la ruta de SQLite no está disponible", ErrInvalidTUFClientConfig)
 	}
@@ -58,7 +63,7 @@ func acquirePersistentTUFRepositoryLock(store *sqlitetuf.Store, repositoryID str
 // acquireTUFFileLock takes a non-blocking OS lock on a regular file. The lock
 // is released by the operating system when the owning process exits, including
 // after an abrupt termination. The lock file itself remains on disk.
-func acquireTUFFileLock(lockPath string) (*flock.Flock, error) {
+func acquireTUFFileLock(lockPath string) (tufRepositoryLock, error) {
 	info, err := os.Lstat(lockPath)
 	if errors.Is(err, os.ErrNotExist) {
 		file, createErr := os.OpenFile(lockPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
@@ -79,10 +84,8 @@ func acquireTUFFileLock(lockPath string) (*flock.Flock, error) {
 		return nil, fmt.Errorf("el archivo de lock TUF debe ser un archivo regular, no un symlink ni un archivo especial")
 	}
 
-	lock := flock.New(lockPath, flock.SetFlag(os.O_CREATE|os.O_RDWR), flock.SetPermissions(0o600))
-	locked, err := lock.TryLock()
+	lock, locked, err := acquireTUFOSLock(lockPath)
 	if err != nil {
-		_ = lock.Close()
 		return nil, fmt.Errorf("adquirir lock TUF: %w", err)
 	}
 	if !locked {
