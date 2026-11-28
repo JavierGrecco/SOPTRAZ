@@ -76,6 +76,9 @@ func rejectBroadWritableDACL(handle windows.Handle, objectPath string) error {
 	if err != nil {
 		return fmt.Errorf("leer DACL de %q: %w", objectPath, err)
 	}
+	if descriptor == nil {
+		return fmt.Errorf("DACL no disponible para %q", objectPath)
+	}
 	dacl, _, err := descriptor.DACL()
 	if err != nil || dacl == nil {
 		if err == nil {
@@ -119,9 +122,17 @@ func rejectBroadWritableDACL(handle windows.Handle, objectPath string) error {
 		if err := windows.GetAce(dacl, index, &ace); err != nil {
 			return fmt.Errorf("leer ACE %d de %q: %w", index, objectPath, err)
 		}
-		if ace.Header.AceType != windows.ACCESS_ALLOWED_ACE_TYPE ||
-			ace.Header.AceFlags&windows.INHERIT_ONLY_ACE != 0 ||
-			ace.Mask&writeMask == 0 {
+		switch ace.Header.AceType {
+		case windows.ACCESS_DENIED_ACE_TYPE:
+			continue
+		case windows.ACCESS_ALLOWED_ACE_TYPE:
+			// The basic allow ACE has the SID at a fixed offset. Extended/object/
+			// callback ACE layouts are deliberately rejected below rather than
+			// skipped without evaluating their conditional or object-specific grants.
+		default:
+			return fmt.Errorf("ACE de DACL tipo %d no compatible con la validación estricta de %q", ace.Header.AceType, objectPath)
+		}
+		if ace.Header.AceFlags&windows.INHERIT_ONLY_ACE != 0 || ace.Mask&writeMask == 0 {
 			continue
 		}
 		aceSID := (*windows.SID)(unsafe.Pointer(&ace.SidStart))

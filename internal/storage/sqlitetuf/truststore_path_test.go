@@ -55,7 +55,11 @@ func TestOpenResolvesParentDirectoryAlias(t *testing.T) {
 		t.Fatalf("Open() through directory alias: %v", err)
 	}
 	defer store.Close()
-	want := filepath.Join(realParent, "catalog-trust.sqlite")
+	canonicalParent, err := filepath.EvalSymlinks(realParent)
+	if err != nil {
+		t.Fatalf("resolve real parent path: %v", err)
+	}
+	want := filepath.Join(canonicalParent, "catalog-trust.sqlite")
 	if store.DatabasePath() != want {
 		t.Fatalf("DatabasePath() = %q, want canonical path %q", store.DatabasePath(), want)
 	}

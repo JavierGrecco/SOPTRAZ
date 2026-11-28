@@ -277,10 +277,11 @@ func TestDatabasePathReturnsAbsoluteResolvedPath(t *testing.T) {
 	defer store.Close()
 
 	got := store.DatabasePath()
-	want, err := filepath.Abs(path)
+	canonicalParent, err := filepath.EvalSymlinks(filepath.Dir(path))
 	if err != nil {
-		t.Fatalf("Abs() error = %v", err)
+		t.Fatalf("EvalSymlinks() parent error = %v", err)
 	}
+	want := filepath.Join(canonicalParent, filepath.Base(path))
 	if got != want {
 		t.Fatalf("DatabasePath() = %q, want %q", got, want)
 	}

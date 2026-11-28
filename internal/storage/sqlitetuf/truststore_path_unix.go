@@ -18,10 +18,15 @@ func validateTrustStoreParent(path string) error {
 	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 		return fmt.Errorf("la ruta padre debe ser un directorio real")
 	}
+	var stat unix.Stat_t
+	if err := unix.Stat(path, &stat); err != nil {
+		return err
+	}
+	mode := uint32(stat.Mode)
 	// A sticky shared directory such as /tmp is acceptable: the sticky bit
 	// prevents another user from removing/replacing entries owned by this user.
 	// A non-sticky group/other-writable parent can replace the DB and its journals.
-	if info.Mode().Perm()&0o022 != 0 && info.Mode()&os.ModeSticky == 0 {
+	if mode&0o022 != 0 && mode&uint32(unix.S_ISVTX) == 0 {
 		return fmt.Errorf("el directorio padre permite escritura a grupo/otros sin sticky-bit")
 	}
 	return nil
