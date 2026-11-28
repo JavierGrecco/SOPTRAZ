@@ -157,8 +157,8 @@ func makeDelegatedRepositoryFixture(t *testing.T) delegatedRepositoryFixture {
 	timestampJSON := signedMetadataBytes(t, timestamp, timestampKey)
 
 	return delegatedRepositoryFixture{
-		rootJSON:       rootJSON,
-		rootSigner:     rootKey,
+		rootJSON:      rootJSON,
+		rootSigner:    rootKey,
 		timestampJSON: timestampJSON,
 		metadata: map[string][]byte{
 			"timestamp.json": timestampJSON,
