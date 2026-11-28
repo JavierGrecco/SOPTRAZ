@@ -74,9 +74,5 @@ func (store *Store) LoadOfflineSnapshot(ctx context.Context, repositoryID string
 	if err := tx.Commit(); err != nil {
 		return OfflineSnapshot{}, fmt.Errorf("%w: confirmar snapshot offline: %v", ErrInvalidTrustStore, err)
 	}
-	snapshot.Generation.Roles = cloneGenerationRoles(snapshot.Generation.Roles)
-	for index := range snapshot.RootChain {
-		snapshot.RootChain[index].Metadata = append([]byte(nil), snapshot.RootChain[index].Metadata...)
-	}
 	return snapshot, nil
 }

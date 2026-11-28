@@ -562,10 +562,9 @@ func (store *Store) CommitVerifiedRoots(
 	return nextState, nil
 }
 
-// LoadRootChain returns every root after the independently pinned anchor. It
-// verifies exact-byte hashes, consecutive versions and previous-root links;
+// LoadRootChain returns every root after the independently pinned anchor.
+// It verifies exact-byte hashes, consecutive versions and previous-root links;
 // callers must still replay the chain through go-tuf before trusting it.
-// LoadRootChain reads the independently pinned root history in one SQLite snapshot.
 func (store *Store) LoadRootChain(ctx context.Context, repositoryID string) ([]RootRecord, RootState, error) {
 	if store == nil || store.db == nil {
 		return nil, RootState{}, ErrInvalidTrustStore

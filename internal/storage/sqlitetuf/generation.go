@@ -310,11 +310,9 @@ func (store *Store) CommitGeneration(
 	}, nil
 }
 
-// LoadActiveGeneration reads the active generation from one SQLite snapshot.
-// It checks all blob digests, the manifest, role high-water values, required
-// roles, and the current root. Cryptographic authentication of TUF signatures
-// remains the caller's responsibility.
-// LoadActiveGeneration reads and validates the active generation in one SQLite snapshot.
+// LoadActiveGeneration checks blob digests, the manifest, role high-water
+// values, required roles and the current root in one SQLite snapshot.
+// Cryptographic authentication of TUF signatures remains the caller's responsibility.
 func (store *Store) LoadActiveGeneration(ctx context.Context, repositoryID string) (Generation, error) {
 	if store == nil || store.db == nil {
 		return Generation{}, ErrInvalidTrustStore
