@@ -27,7 +27,7 @@ Para M1.4, las decisiones que no deben reinterpretarse en código están en [ADR
 
 | Línea | Estado comprobado | Próxima acción |
 |---|---|---|
-| [PR #50 — replay TUF compartido](https://github.com/JavierGrecco/SOPTRAZ/pull/50) | Abierto, draft; 10 commits delante de main, 0 detrás antes de este documento. Head previo 3fc4a3ee21792275cc760888c94bffb0f979f65e. CI #366 terminó 6/6 en ese SHA. La documentación añadida aquí genera un nuevo SHA y requiere validar el CI de ese SHA exacto. | Revisar la primitiva, ejecutar la matriz en la nueva cabeza y mantener el PR en draft hasta completar los límites documentados. |
+| [PR #50 — replay TUF compartido](https://github.com/JavierGrecco/SOPTRAZ/pull/50) | Abierto, draft; 10 commits delante de main, 0 detrás antes de este documento. Head actual b57b8f1b3bd9178fee6e0eaccc77b83b217f1a53; 17 commits y 8 archivos cambiados. CI #371 está en curso sobre ese SHA exacto. La rama incluye ahora la guía de continuidad y el resolver TUF de rutas delegadas con pruebas diferenciales; no se cierra la tarea hasta CI, revisión y merge. | Revisar la primitiva, ejecutar la matriz en la nueva cabeza y mantener el PR en draft hasta completar los límites documentados. |
 | [PR #31 — recuperación de stages y diagnósticos](https://github.com/JavierGrecco/SOPTRAZ/pull/31) | Abierto, draft, mergeable=false. Head 90028e81a6a392d8285f3218ce0854cb9370cfbf; comparación con main: 185 commits adelante y 24 atrás, 51 archivos cambiados. CI #343 terminó exitoso en ese head exacto. | No fusionar en bloque. Auditar y rescatar sus capacidades en PRs pequeños, rebasados sobre main, con tests e integración independientes. |
 | **main** | Rama estable de integración. | Es la base de cada nueva rama corta. |
 
@@ -38,6 +38,8 @@ Inventario observado: main, feat/tuf-shared-generation-replay y fix/tuf-crash-st
 ## 3. Objetivo inmediato: terminar M1.4 sin debilitar TUF
 
 M1.4 entrega un catálogo de artefactos autenticado; no un instalador ni un supervisor de procesos. La implementación debe usar go-tuf v2.5.0 como autoridad criptográfica, mantener el modo estricto y no introducir un verificador de firmas propio.
+
+**Avance en PR #50 (todavía pendiente de aceptación):** además del replay compartido se añadió `resolveTargetPath`, una función sin I/O cuyo loader recibe el par (rol, padre). Se apoya en `Delegations.GetRolesForTarget` de go-tuf para no reimplementar patrones `paths`, `path_hash_prefixes` o succinct roles, y conserva DFS pre-order, prioridad, terminating, ciclos por ruta y límites. La captura online ya usa este recorrido; hay una prueba diferencial contra `Updater.GetTargetInfo` y pruebas de hash-prefix, terminating, metadata ausente, ciclos y límite. CI #371 sobre el head `b57b8f1b3bd9178fee6e0eaccc77b83b217f1a53` está pendiente. Esto aún no implementa el loader offline autenticado ni `OfflineCatalogVerifier`.
 
 ### Cola activa, en este orden
 
