@@ -9,12 +9,12 @@ import (
 )
 
 type deviceProfileReport struct {
-	CollectionStatus string                       `json:"collection_status"`
-	Observations     moduleprofile.Observations   `json:"observations"`
-	Profile          moduleprofile.Profile        `json:"profile"`
-	SourceErrors     []platformprofile.SourceError `json:"source_errors,omitempty"`
-	MutationsApplied bool                         `json:"mutations_applied"`
-	ScopeNote        string                       `json:"scope_note"`
+	CollectionStatus string                         `json:"collection_status"`
+	Observations     moduleprofile.Observations     `json:"observations"`
+	Profile          moduleprofile.Profile          `json:"profile"`
+	SourceErrors     []platformprofile.SourceError   `json:"source_errors,omitempty"`
+	MutationsApplied bool                           `json:"mutations_applied"`
+	ScopeNote        string                         `json:"scope_note"`
 }
 
 const deviceProfileScopeNote = "Inventario inicial de solo lectura: chasis SMBIOS, alimentación/batería, dispositivos touch/pen y estado de convertible/dock cuando está disponible. Las capacidades no recolectadas permanecen como unknown; no se aplican optimizaciones."
