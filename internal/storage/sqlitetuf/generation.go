@@ -557,7 +557,6 @@ func loadActiveGenerationFromTx(ctx context.Context, tx *sql.Tx, repositoryID st
 	}
 	generation.Roles = normalized
 
-
 	return generation, nil
 }
 
