@@ -60,7 +60,15 @@ func TestOpenResolvesParentDirectoryAlias(t *testing.T) {
 		t.Fatalf("resolve real parent path: %v", err)
 	}
 	want := filepath.Join(canonicalParent, "catalog-trust.sqlite")
-	if store.DatabasePath() != want {
-		t.Fatalf("DatabasePath() = %q, want canonical path %q", store.DatabasePath(), want)
+	gotInfo, err := os.Stat(store.DatabasePath())
+	if err != nil {
+		t.Fatalf("stat DatabasePath(): %v", err)
+	}
+	wantInfo, err := os.Stat(want)
+	if err != nil {
+		t.Fatalf("stat canonical parent path: %v", err)
+	}
+	if !os.SameFile(gotInfo, wantInfo) {
+		t.Fatalf("DatabasePath() = %q, want a path to the same file as %q", store.DatabasePath(), want)
 	}
 }

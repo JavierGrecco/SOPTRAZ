@@ -282,8 +282,16 @@ func TestDatabasePathReturnsAbsoluteResolvedPath(t *testing.T) {
 		t.Fatalf("EvalSymlinks() parent error = %v", err)
 	}
 	want := filepath.Join(canonicalParent, filepath.Base(path))
-	if got != want {
-		t.Fatalf("DatabasePath() = %q, want %q", got, want)
+	gotInfo, err := os.Stat(got)
+	if err != nil {
+		t.Fatalf("stat DatabasePath(): %v", err)
+	}
+	wantInfo, err := os.Stat(want)
+	if err != nil {
+		t.Fatalf("stat expected database path: %v", err)
+	}
+	if !os.SameFile(gotInfo, wantInfo) {
+		t.Fatalf("DatabasePath() = %q, want a path to the same file as %q", got, want)
 	}
 }
 

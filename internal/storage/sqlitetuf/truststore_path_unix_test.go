@@ -27,7 +27,7 @@ func TestOpenAllowsStickySharedParentAndProtectsDatabaseFile(t *testing.T) {
 	if err := os.Mkdir(parent, 0o700); err != nil {
 		t.Fatalf("create parent: %v", err)
 	}
-	if err := os.Chmod(parent, 0o1777); err != nil {
+	if err := os.Chmod(parent, os.ModeSticky|0o777); err != nil {
 		t.Fatalf("chmod sticky parent: %v", err)
 	}
 	path := filepath.Join(parent, "catalog-trust.sqlite")
