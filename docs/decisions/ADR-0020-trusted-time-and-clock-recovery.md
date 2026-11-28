@@ -67,6 +67,21 @@ Referencias y límites:
 
 La política concreta de fuentes, independencia, cantidad mínima de respuestas coincidentes, dispersión geográfica, incertidumbre máxima y rotación de claves debe quedar definida y probada antes de calificar una muestra como `authenticated`. No se fijará un quorum numérico sin especificar esas condiciones.
 
+### Bootstrap temporal: resolver la dependencia circular de NTS
+
+NTS-KE autentica su servidor con TLS y certificados X.509. La validación normal de `notBefore` y `notAfter` necesita una hora aproximadamente correcta; por eso NTS por sí solo no resuelve de forma limpia el primer contacto cuando el reloj carece de referencia. El RFC 8915 reconoce expresamente este problema y propone mitigaciones, sin afirmar que exista una solución perfecta.
+
+SOPTRAZ adoptará una secuencia escalonada:
+
+1. **Primera opción: hora segura ya disponible.** Usar RTC funcional y estado de sincronización del sistema operativo. Si el sistema informa que una fuente confiable ya disciplinó el reloj, validar certificados NTS normalmente.
+2. **Recuperación cuando no hay hora correcta: fuente de bootstrap con claves fijadas.** Evaluar Roughtime con un conjunto de claves públicas provisionadas por un canal independiente de la conexión consultada. Verificar nonce, firma, delegación/certificado del servidor, intervalo de incertidumbre y respuestas inconsistentes entre servidores. La hora obtenida se usa primero como evidencia aproximada para recuperar el reloj del sistema; no se convierte automáticamente en una autorización para aceptar metadata TUF.
+3. **Sincronización sostenida: NTS.** Una vez que la hora del sistema permite validar el certificado TLS del servidor NTS, usar NTS para la disciplina continua del reloj. SOPTRAZ verifica que la respuesta obtenida sea consistente con la validez del certificado NTS y con la última evidencia temporal aceptada.
+4. **Sin internet o sin fuentes autenticadas:** no inventar una hora ni aceptar certificados por una excepción genérica. Se permite un procedimiento administrativo explícito para corregir aproximadamente el reloj, pero el estado de assurance será `system` hasta que exista evidencia autenticada. Para operaciones que requieran assurance más alto, se mantiene el bloqueo específico de la validación.
+
+RFC 10049 describe Roughtime precisamente para dispositivos sin una idea inicial de la hora y explica que sus claves públicas de largo plazo funcionan como raíces de confianza. Sin embargo, es una RFC Experimental y no define por sí sola el ecosistema de publicación, gobernanza y rotación de listas de servidores. Por eso SOPTRAZ lo considera una opción de recuperación piloto detrás de una interfaz, no un requisito obligatorio ni una dependencia de producción inicial. La lista de servidores y claves deberá venir fijada en una versión firmada de SOPTRAZ o actualizarse mediante un canal independiente autenticado; nunca se aceptará una clave entregada por el mismo servidor cuya hora se está verificando.
+
+Si el administrador decide corregir manualmente el reloj, la acción debe mostrar la diferencia detectada, fuente usada, incertidumbre y consecuencia. No se cambia el reloj global automáticamente sin permiso del usuario/sistema operativo.
+
 ### 4. Recuperación online ante una anomalía
 
 Cuando SOPTRAZ detecte que el reloj local está atrasado, demasiado adelantado o presenta una discontinuidad frente a la última evidencia aceptada:
@@ -116,13 +131,15 @@ La migración no debe convertir fechas de pared antiguas en evidencia temporal c
 2. Reloj local adelantado: no envenenar el estado persistido con esa hora; corregir mediante fuente confiable y repetir verificación.
 3. Fuente temporal con firma inválida, clave desconocida, respuesta repetida, nonce incorrecto, incertidumbre excesiva o tiempo anterior al último aceptado: rechazar evidencia y conservar el estado previo.
 4. Dos o más fuentes que no concuerdan: no elegir silenciosamente una; producir error tipado y diagnóstico sin filtrar secretos.
-5. Metadata cuya expiración cae dentro del intervalo de incertidumbre: rechazarla.
-6. Sin red y mismo arranque: probar cálculo desde tiempo autenticado más reloj monotónico, límite de deriva y límite máximo de antigüedad.
-7. Sin red después de reiniciar, sin RTC/contador confiable: devolver `TrustedTimeUnavailable`, nunca un target.
-8. Rotación y compromiso de la clave temporal, recuperación del piso y replay de atestaciones antiguas.
-9. Migración v2→v3: demostrar que timestamps locales antiguos no se convierten en anclas confiables.
-10. Windows, macOS y Ubuntu; Race Detector, fuzzing de parser/atestaciones y tests de concurrencia.
-11. Confirmar que el updater usa una sola referencia temporal por ciclo y que SOPTRAZ nunca llama a `UnsafeSetRefTime` en producción.
+5. Bootstrap sin hora válida: comprobar recuperación con claves Roughtime fijadas para luego validar TLS/NTS, sin desactivar globalmente la validación X.509.
+6. NTS-KE con reloj incorrecto: probar certificados `notBefore`/`notAfter` fuera del reloj local, con y sin evidencia previa de sincronización; conservar validación estricta cuando ya existe estado temporal confiable.
+7. Metadata cuya expiración cae dentro del intervalo de incertidumbre: rechazarla.
+8. Sin red y mismo arranque: probar cálculo desde tiempo autenticado más reloj monotónico, límite de deriva y límite máximo de antigüedad.
+9. Sin red después de reiniciar, sin RTC/contador confiable: devolver `TrustedTimeUnavailable`, nunca un target.
+10. Rotación y compromiso de la clave temporal, recuperación del piso y replay de atestaciones antiguas.
+11. Migración v2→v3: demostrar que timestamps locales antiguos no se convierten en anclas confiables.
+12. Windows, macOS y Ubuntu; Race Detector, fuzzing de parser/atestaciones y tests de concurrencia.
+13. Confirmar que el updater usa una sola referencia temporal por ciclo y que SOPTRAZ nunca llama a `UnsafeSetRefTime` en producción.
 
 ## Alternativas consideradas
 
@@ -153,6 +170,7 @@ La migración no debe convertir fechas de pared antiguas en evidencia temporal c
 - [Uptane Standard 2.1.0](https://uptane.org/docs/latest/standard/uptane-standard).
 - [Uptane Deployment Best Practices 2.0.0 — sección 3.1 Secure source of time y sección 4.2 Metadata expiration](https://uptane.org/docs/2.0.0/deployment/best-practices).
 - [RFC 8915 — Network Time Security for NTP (Standards Track)](https://www.rfc-editor.org/rfc/rfc8915.html).
+- [RFC 8915, sección 8.5 — Initial Verification of Server Certificates](https://www.rfc-editor.org/rfc/rfc8915.html#section-8.5): problema de bootstrap TLS con reloj incorrecto y mitigaciones.
 - [RFC 10049 — Roughtime (Experimental, octubre de 2026)](https://www.rfc-editor.org/rfc/rfc10049.html).
 - [RFC 9523 — Khronos (Informational, febrero de 2024)](https://www.rfc-editor.org/rfc/rfc9523.html).
 - [APT apt.conf(5) — Check-Date y Check-Valid-Until](https://manpages.debian.org/unstable/apt/apt.conf.5.en.html).
