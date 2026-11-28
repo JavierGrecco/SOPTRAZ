@@ -100,7 +100,7 @@ func TestResolveTargetPathUsesGoTUFPathHashPrefixesAndSignedOrder(t *testing.T) 
 			{Name: "hash-bin", Terminating: true, PathHashPrefixes: []string{prefix}},
 			{Name: "later-glob", Terminating: true, Paths: []string{"tools/*/*/*"}},
 		}),
-		"hash-bin": syntheticTargetsRole([]string{targetPath}, nil),
+		"hash-bin":   syntheticTargetsRole([]string{targetPath}, nil),
 		"later-glob": syntheticTargetsRole([]string{targetPath}, nil),
 	}
 
