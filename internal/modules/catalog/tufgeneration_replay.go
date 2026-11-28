@@ -19,6 +19,24 @@ import (
 
 var ErrGenerationReplay = errors.New("replay criptográfico de generación TUF rechazado")
 
+// rejectMetadataExpiryAtOrBefore applies SOPTRAZ's conservative expiry rule.
+// go-tuf v2.5.0 treats equality as not expired (referenceTime.After(expires));
+// ADR-0020 requires expires <= the upper bound of the accepted time interval
+// to be rejected. Keep this guard immediately before each go-tuf Update call.
+func rejectMetadataExpiryAtOrBefore(role string, expiresAt, referenceTime time.Time) error {
+	reference := referenceTime.UTC().Round(0)
+	expiry := expiresAt.UTC().Round(0)
+	if expiresAt.IsZero() || !expiry.After(reference) {
+		return fmt.Errorf(
+			"metadata %q vencida o en el límite: expires=%s reference=%s",
+			role,
+			expiry.Format(time.RFC3339Nano),
+			reference.Format(time.RFC3339Nano),
+		)
+	}
+	return nil
+}
+
 // replayVerifiedGeneration authenticates one immutable metadata generation
 // using go-tuf's supported trustedmetadata API. rootJSON must already be an
 // independently authenticated current root (for example after replaying the
@@ -48,6 +66,7 @@ func replayVerifiedGeneration(
 	if maxDelegationDepth < 1 || maxDelegationDepth > sqlitetuf.MaxGenerationRoles {
 		return nil, fmt.Errorf("%w: límite de delegación inválido", ErrGenerationReplay)
 	}
+	referenceTime = referenceTime.UTC().Round(0)
 	rootDigest := sha256.Sum256(rootJSON)
 	if hex.EncodeToString(rootDigest[:]) != rootState.SHA256 {
 		return nil, fmt.Errorf("%w: root JSON no coincide con el estado fijado", ErrGenerationReplay)
@@ -59,6 +78,9 @@ func replayVerifiedGeneration(
 	if int64(root.Signed.Version) != rootState.Version {
 		return nil, fmt.Errorf("%w: root version %d, esperada %d", ErrGenerationReplay, root.Signed.Version, rootState.Version)
 	}
+	if err := rejectMetadataExpiryAtOrBefore(metadata.ROOT, root.Signed.Expires, referenceTime); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrGenerationReplay, err)
+	}
 
 	replayed, err := trustedmetadata.New(rootJSON)
 	if err != nil {
@@ -67,7 +89,7 @@ func replayVerifiedGeneration(
 	if replayed.Root == nil || !reflect.DeepEqual(replayed.Root, root) {
 		return nil, fmt.Errorf("%w: go-tuf no conservó la root exacta", ErrGenerationReplay)
 	}
-	replayed.RefTime = referenceTime.UTC().Round(0)
+	replayed.RefTime = referenceTime
 
 	if len(roles) < 3 || len(roles) > sqlitetuf.MaxGenerationRoles {
 		return nil, fmt.Errorf("%w: cantidad de roles fuera de límite", ErrGenerationReplay)
@@ -124,6 +146,9 @@ func replayVerifiedGeneration(
 			if parsed.Signed.Version != role.Version || !parsed.Signed.Expires.Equal(role.ExpiresAt) {
 				return nil, fmt.Errorf("%w: versión/expiración almacenada de timestamp no coincide", ErrGenerationReplay)
 			}
+			if err := rejectMetadataExpiryAtOrBefore(role.Role, parsed.Signed.Expires, referenceTime); err != nil {
+				return nil, fmt.Errorf("%w: %w", ErrGenerationReplay, err)
+			}
 			timestampValue = parsed
 
 		case metadata.SNAPSHOT:
@@ -136,6 +161,9 @@ func replayVerifiedGeneration(
 			}
 			if parsed.Signed.Version != role.Version || !parsed.Signed.Expires.Equal(role.ExpiresAt) {
 				return nil, fmt.Errorf("%w: versión/expiración almacenada de snapshot no coincide", ErrGenerationReplay)
+			}
+			if err := rejectMetadataExpiryAtOrBefore(role.Role, parsed.Signed.Expires, referenceTime); err != nil {
+				return nil, fmt.Errorf("%w: %w", ErrGenerationReplay, err)
 			}
 			snapshotValue = parsed
 
@@ -156,6 +184,9 @@ func replayVerifiedGeneration(
 			}
 			if parsed.Signed.Version != role.Version || !parsed.Signed.Expires.Equal(role.ExpiresAt) {
 				return nil, fmt.Errorf("%w: versión/expiración almacenada de %q no coincide", ErrGenerationReplay, role.Role)
+			}
+			if err := rejectMetadataExpiryAtOrBefore(role.Role, parsed.Signed.Expires, referenceTime); err != nil {
+				return nil, fmt.Errorf("%w: %w", ErrGenerationReplay, err)
 			}
 			targetValues[role.Role] = parsed
 		}
