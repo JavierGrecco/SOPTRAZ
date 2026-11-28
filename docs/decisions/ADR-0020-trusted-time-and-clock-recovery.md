@@ -61,6 +61,7 @@ La interfaz interna futura será un `TrustedTimeProvider` que entregue una muest
 Referencias y límites:
 
 - **NTS, RFC 8915 (Standards Track):** autentica NTP mediante TLS y AEAD. Protege el canal frente a alteraciones de terceros, pero la autenticidad de una respuesta no demuestra que un único servidor esté libre de compromiso.
+- **NTP BCP 223, RFC 8633:** recomienda al menos cuatro fuentes independientes y diversas cuando se busca conservar precisión, y advierte que varias fuentes pueden compartir causas de error o verse afectadas por una red comprometida. Este número es una recomendación operativa para NTP, no un quorum criptográfico universal para SOPTRAZ; la independencia real de las fuentes debe comprobarse.
 - **Roughtime, RFC 10049 (Experimental, octubre de 2026):** usa claves de largo plazo fijadas, un nonce fresco y una respuesta firmada con un intervalo de incertidumbre. El modo multi-servidor permite detectar inconsistencias entre fuentes; su ecosistema continúa siendo experimental y no se asumirá disponible en todos los sistemas.
 - **Khronos, RFC 9523 (Informational, febrero de 2024):** propone selección y filtrado distribuido de muestras de muchos servidores NTP para resistir ataques de desplazamiento temporal. Es una referencia de investigación/industria, no una dependencia inicial de SOPTRAZ.
 - **NTP sin autenticación** puede servir a la sincronización ordinaria del sistema, pero no se tratará como atestación criptográfica propia de SOPTRAZ.
@@ -170,6 +171,7 @@ La migración no debe convertir fechas de pared antiguas en evidencia temporal c
 - [Uptane Standard 2.1.0](https://uptane.org/docs/latest/standard/uptane-standard).
 - [Uptane Deployment Best Practices 2.0.0 — sección 3.1 Secure source of time y sección 4.2 Metadata expiration](https://uptane.org/docs/2.0.0/deployment/best-practices).
 - [RFC 8915 — Network Time Security for NTP (Standards Track)](https://www.rfc-editor.org/rfc/rfc8915.html).
+- [RFC 8633 — Network Time Protocol Best Current Practices (BCP 223)](https://datatracker.ietf.org/doc/html/rfc8633): diversidad de fuentes, umbrales de sincronización y actuación manual ante saltos grandes.
 - [RFC 8915, sección 8.5 — Initial Verification of Server Certificates](https://www.rfc-editor.org/rfc/rfc8915.html#section-8.5): problema de bootstrap TLS con reloj incorrecto y mitigaciones.
 - [RFC 10049 — Roughtime (Experimental, octubre de 2026)](https://www.rfc-editor.org/rfc/rfc10049.html).
 - [RFC 9523 — Khronos (Informational, febrero de 2024)](https://www.rfc-editor.org/rfc/rfc9523.html).
