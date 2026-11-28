@@ -6,12 +6,12 @@ El inicializador del trust store resuelve los alias del directorio padre una sol
 
 - El archivo final se abre con `O_NOFOLLOW` y `O_NONBLOCK`; el descriptor se inspecciona con `fstat` y solo se acepta un archivo regular.
 - El archivo queda protegido con modo `0600`, incluso cuando ya existía.
-- Se rechaza un directorio padre con escritura para grupo u otros, excepto cuando tiene sticky-bit, como ocurre en un directorio compartido protegido tipo `/tmp`.
+- Se recorren todos los ancestros desde `/` mediante descriptores `openat` con `O_NOFOLLOW`; cada uno debe ser un directorio real y se rechaza escritura de grupo/otros salvo sticky-bit en directorios compartidos protegidos como `/tmp`.
 - No se cambian permisos de directorios padres existentes.
 
 ## Windows
 
-- El directorio padre y el archivo final se abren con `FILE_FLAG_OPEN_REPARSE_POINT`; se rechazan reparse points y directorios en el lugar del archivo.
+- Se recorren todos los directorios desde la raíz del volumen y cada uno se abre con `FILE_FLAG_OPEN_REPARSE_POINT`; se rechazan reparse points, componentes que no sean directorios y DACLs que otorguen escritura a grupos amplios conocidos.
 - La DACL se consulta desde el handle abierto, no mediante una inspección textual del path.
 - Se rechazan ACEs de escritura para Everyone, Authenticated Users, Builtin Users/Guests, Interactive, Network y Anonymous.
 - Los ACEs extendidos/objeto/callback no soportados se rechazan de forma cerrada, en lugar de ignorarlos.

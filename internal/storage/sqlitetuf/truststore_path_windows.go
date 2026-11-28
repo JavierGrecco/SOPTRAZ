@@ -4,12 +4,41 @@ package sqlitetuf
 
 import (
 	"fmt"
+	"path/filepath"
+	"strings"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
 
 func validateTrustStoreParent(path string) error {
+	volume := filepath.VolumeName(path)
+	if volume == "" {
+		return fmt.Errorf("no se pudo resolver el volumen del directorio padre")
+	}
+	root := volume + string(filepath.Separator)
+	current := root
+	if err := validateWindowsTrustDirectory(current); err != nil {
+		return fmt.Errorf("validar raíz %q: %w", current, err)
+	}
+
+	relative := strings.TrimPrefix(filepath.Clean(path), root)
+	for _, component := range strings.Split(relative, string(filepath.Separator)) {
+		if component == "" || component == "." {
+			continue
+		}
+		if component == ".." {
+			return fmt.Errorf("la ruta de directorio contiene un componente padre")
+		}
+		current = filepath.Join(current, component)
+		if err := validateWindowsTrustDirectory(current); err != nil {
+			return fmt.Errorf("validar directorio ancestro %q: %w", current, err)
+		}
+	}
+	return nil
+}
+
+func validateWindowsTrustDirectory(path string) error {
 	name, err := windows.UTF16PtrFromString(path)
 	if err != nil {
 		return err
@@ -34,7 +63,7 @@ func validateTrustStoreParent(path string) error {
 	}
 	if info.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 ||
 		info.FileAttributes&windows.FILE_ATTRIBUTE_DIRECTORY == 0 {
-		return fmt.Errorf("el directorio padre debe ser un directorio real, no un reparse point")
+		return fmt.Errorf("debe ser un directorio real, no un reparse point")
 	}
 	return rejectBroadWritableDACL(handle, path)
 }
@@ -127,8 +156,7 @@ func rejectBroadWritableDACL(handle windows.Handle, objectPath string) error {
 			continue
 		case windows.ACCESS_ALLOWED_ACE_TYPE:
 			// The basic allow ACE has the SID at a fixed offset. Extended/object/
-			// callback ACE layouts are deliberately rejected below rather than
-			// skipped without evaluating their conditional or object-specific grants.
+			// callback ACE layouts are deliberately rejected rather than skipped.
 		default:
 			return fmt.Errorf("ACE de DACL tipo %d no compatible con la validación estricta de %q", ace.Header.AceType, objectPath)
 		}
