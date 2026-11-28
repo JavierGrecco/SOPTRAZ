@@ -281,18 +281,11 @@ func TestPersistentTUFClientCommitsVerifiedGenerationAndDelegationMetadata(t *te
 	fixture := makeDelegatedRepositoryFixture(t)
 	server, _, _ := startDelegatedMetadataServer(t, fixture)
 	cacheRoot := t.TempDir()
-	storePath := filepath.Join(t.TempDir(), "catalog-trust.sqlite")
-	store, err := sqlitetuf.Open(context.Background(), storePath)
+	store, err := sqlitetuf.Open(context.Background(), filepath.Join(t.TempDir(), "catalog-trust.sqlite"))
 	if err != nil {
 		t.Fatalf("open persistent TUF store: %v", err)
 	}
-	t.Cleanup(func() {
-		if store != nil {
-			if err := store.Close(); err != nil {
-				t.Errorf("close persistent TUF store: %v", err)
-			}
-		}
-	})
+	defer store.Close()
 
 	anchor, err := NewPinnedTrustAnchor(fixture.rootJSON, rootPin(fixture.rootJSON))
 	if err != nil {
@@ -378,11 +371,18 @@ func TestPersistentTUFClientRehydratesCommittedGenerationIntoNewStageAfterRestar
 	fixture := makeDelegatedRepositoryFixture(t)
 	server, requests, requestsMu := startDelegatedMetadataServer(t, fixture)
 	cacheRoot := t.TempDir()
-	store, err := sqlitetuf.Open(context.Background(), filepath.Join(t.TempDir(), "catalog-trust.sqlite"))
+	storePath := filepath.Join(t.TempDir(), "catalog-trust.sqlite")
+	store, err := sqlitetuf.Open(context.Background(), storePath)
 	if err != nil {
 		t.Fatalf("open persistent TUF store: %v", err)
 	}
-	defer store.Close()
+	t.Cleanup(func() {
+		if store != nil {
+			if err := store.Close(); err != nil {
+				t.Errorf("close persistent TUF store: %v", err)
+			}
+		}
+	})
 
 	anchor, err := NewPinnedTrustAnchor(fixture.rootJSON, rootPin(fixture.rootJSON))
 	if err != nil {
