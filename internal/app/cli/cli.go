@@ -56,10 +56,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		}
 		directory, err := diagnostics.DefaultDirectory()
 		if err != nil {
-			fmt.Fprintf(stderr, "no se pudo resolver la carpeta de diagnósticos: %v\\n", err)
+			fmt.Fprintf(stderr, "no se pudo resolver la carpeta de diagnósticos: %v\n", err)
 			return 1
 		}
-		fmt.Fprintf(stdout, "Carpeta de informes técnicos: %s\\n", directory)
+		fmt.Fprintf(stdout, "Carpeta de informes técnicos: %s\n", directory)
 		return 0
 	case "validate":
 		if len(args) != 3 {
