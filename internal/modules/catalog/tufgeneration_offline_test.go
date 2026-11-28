@@ -154,7 +154,6 @@ func TestReplayOfflineTargetMetadataMatchesGoTUFWithoutNetwork(t *testing.T) {
 	}
 }
 
-
 func TestReplayOfflineTargetMetadataReplaysRootRotationFromIndependentBootstrap(t *testing.T) {
 	fixture := createPersistedDelegatedFixtureWithRootRotation(t)
 	snapshot, bootstrapRootJSON, bootstrapState := loadPersistedFixtureSnapshot(t, fixture)
