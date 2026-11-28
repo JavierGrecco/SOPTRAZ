@@ -79,27 +79,27 @@ const (
 
 // Capabilities holds read-only, tri-state facts and dynamic operating context.
 type Capabilities struct {
-	BatteryPresent    TriState    `json:"battery_present"`
-	Touch             TriState    `json:"touch"`
-	Pen               TriState    `json:"pen"`
-	PhysicalKeyboard  TriState    `json:"physical_keyboard"`
-	KeyboardAttached  TriState    `json:"keyboard_attached"`
-	DedicatedGPU      TriState    `json:"dedicated_gpu"`
-	ThermalSensors    TriState    `json:"thermal_sensors"`
-	DockPresent       TriState    `json:"dock_present"`
-	VirtualMachine    TriState    `json:"virtual_machine"`
-	PowerSource       PowerSource `json:"power_source"`
-	ConvertibleSlate  SlateMode   `json:"convertible_slate_mode"`
+	BatteryPresent   TriState    `json:"battery_present"`
+	Touch            TriState    `json:"touch"`
+	Pen              TriState    `json:"pen"`
+	PhysicalKeyboard TriState    `json:"physical_keyboard"`
+	KeyboardAttached TriState    `json:"keyboard_attached"`
+	DedicatedGPU     TriState    `json:"dedicated_gpu"`
+	ThermalSensors   TriState    `json:"thermal_sensors"`
+	DockPresent      TriState    `json:"dock_present"`
+	VirtualMachine   TriState    `json:"virtual_machine"`
+	PowerSource      PowerSource `json:"power_source"`
+	ConvertibleSlate SlateMode   `json:"convertible_slate_mode"`
 }
 
 // Observations contains normalized, read-only results from platform adapters.
 // DeviceForm is the normalized Windows DeviceForm result when available.
 // SMBIOSChassisTypes contains raw Win32_SystemEnclosure.ChassisTypes codes.
 type Observations struct {
-	DeviceForm        FormFactor   `json:"device_form,omitempty"`
+	DeviceForm         FormFactor   `json:"device_form,omitempty"`
 	SMBIOSChassisTypes []uint16     `json:"smbios_chassis_types,omitempty"`
-	PCSystemType      PCSystemType `json:"pc_system_type,omitempty"`
-	Capabilities      Capabilities `json:"capabilities"`
+	PCSystemType       PCSystemType `json:"pc_system_type,omitempty"`
+	Capabilities       Capabilities `json:"capabilities"`
 }
 
 // Evidence records why a classification was selected or left uncertain.
@@ -112,11 +112,11 @@ type Evidence struct {
 
 // Profile is the deterministic result of classifying one observation snapshot.
 type Profile struct {
-	FormFactor FormFactor    `json:"form_factor"`
-	Confidence Confidence    `json:"classification_confidence"`
+	FormFactor   FormFactor   `json:"form_factor"`
+	Confidence   Confidence   `json:"classification_confidence"`
 	Capabilities Capabilities `json:"capabilities"`
-	Evidence   []Evidence    `json:"classification_evidence"`
-	Warnings   []string      `json:"warnings,omitempty"`
+	Evidence     []Evidence   `json:"classification_evidence"`
+	Warnings     []string     `json:"warnings,omitempty"`
 }
 
 const (
@@ -131,11 +131,11 @@ const (
 // pen, battery, keyboard or slate posture alone.
 func Classify(observations Observations) Profile {
 	profile := Profile{
-		FormFactor:  FormFactorUnknown,
-		Confidence:  ConfidenceLow,
+		FormFactor:   FormFactorUnknown,
+		Confidence:   ConfidenceLow,
 		Capabilities: normalizeCapabilities(observations.Capabilities),
-		Evidence:    make([]Evidence, 0, 4),
-		Warnings:    make([]string, 0, 4),
+		Evidence:     make([]Evidence, 0, 4),
+		Warnings:     make([]string, 0, 4),
 	}
 
 	if observations.Capabilities.VirtualMachine == Yes {
