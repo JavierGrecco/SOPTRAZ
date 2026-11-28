@@ -3,6 +3,7 @@
 package deviceprofile
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
@@ -45,6 +46,49 @@ const (
 	No
 	Yes
 )
+
+// String returns the stable, human-readable value for a capability state.
+func (state TriState) String() string {
+	switch state {
+	case No:
+		return "no"
+	case Yes:
+		return "yes"
+	default:
+		return "unknown"
+	}
+}
+
+// MarshalJSON uses explicit strings so consumers never confuse unknown with
+// false or depend on internal enum numbers.
+func (state TriState) MarshalJSON() ([]byte, error) {
+	if state > Yes {
+		return nil, fmt.Errorf("estado tri-state fuera de rango: %d", state)
+	}
+	return json.Marshal(state.String())
+}
+
+// UnmarshalJSON accepts only the documented string values.
+func (state *TriState) UnmarshalJSON(data []byte) error {
+	if state == nil {
+		return fmt.Errorf("no se puede decodificar un estado tri-state en un receptor nil")
+	}
+	var value string
+	if err := json.Unmarshal(data, &value); err != nil {
+		return fmt.Errorf("el estado tri-state debe ser una cadena: %w", err)
+	}
+	switch value {
+	case "unknown":
+		*state = Unknown
+	case "no":
+		*state = No
+	case "yes":
+		*state = Yes
+	default:
+		return fmt.Errorf("estado tri-state no reconocido: %q", value)
+	}
+	return nil
+}
 
 // PowerSource is dynamic operating context, not a form-factor classifier.
 type PowerSource string
@@ -126,14 +170,27 @@ const (
 	evidenceVirtual    = "windows.virtual_machine"
 )
 
+// NormalizeObservations fills omitted enum values with their explicit unknown
+// value. It does not infer missing capabilities or alter detected evidence.
+func NormalizeObservations(observations Observations) Observations {
+	if observations.Capabilities.PowerSource == "" {
+		observations.Capabilities.PowerSource = PowerSourceUnknown
+	}
+	if observations.Capabilities.ConvertibleSlate == "" {
+		observations.Capabilities.ConvertibleSlate = SlateModeUnknown
+	}
+	return observations
+}
+
 // Classify turns an observation snapshot into a conservative profile. It is
 // intentionally deterministic and never infers tablet/notebook from touch,
 // pen, battery, keyboard or slate posture alone.
 func Classify(observations Observations) Profile {
+	observations = NormalizeObservations(observations)
 	profile := Profile{
 		FormFactor:   FormFactorUnknown,
 		Confidence:   ConfidenceLow,
-		Capabilities: normalizeCapabilities(observations.Capabilities),
+		Capabilities: observations.Capabilities,
 		Evidence:     make([]Evidence, 0, 4),
 		Warnings:     make([]string, 0, 4),
 	}
@@ -240,16 +297,6 @@ func Classify(observations Observations) Profile {
 	}
 
 	return finalize(profile)
-}
-
-func normalizeCapabilities(capabilities Capabilities) Capabilities {
-	if capabilities.PowerSource == "" {
-		capabilities.PowerSource = PowerSourceUnknown
-	}
-	if capabilities.ConvertibleSlate == "" {
-		capabilities.ConvertibleSlate = SlateModeUnknown
-	}
-	return capabilities
 }
 
 func isSupportedFormFactor(formFactor FormFactor) bool {

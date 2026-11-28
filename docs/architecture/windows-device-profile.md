@@ -1,6 +1,6 @@
 # Perfil adaptativo de dispositivo Windows
 
-- Estado: propuesta de arquitectura para Fase 2 / M1.6; diagnóstico primero, sin acciones mutantes.
+- Estado: arquitectura aceptada; clasificador puro y primer recolector nativo Windows de solo lectura integrados. Exposición CLI en revisión por PR #18. Sin acciones mutantes.
 - Fecha: 2026-11-27
 - Relacionado: ADR-0016, Issue #9, Issue #5 (M1.4), Issue #4 (M1.5), investigación MiniOS/DELTA.
 - Principio: detectar el equipo y sus capacidades para adaptar recomendaciones; nunca inferir permiso para modificar Windows.
@@ -247,3 +247,29 @@ Matriz de hardware real/VM cuando esté disponible: desktop tower, all-in-one, n
 - Microsoft Learn, [Input devices](https://learn.microsoft.com/en-us/windows/apps/develop/input/) y [Handle pointer input](https://learn.microsoft.com/en-us/windows/apps/develop/input/handle-pointer-input) — touch, pen/stylus y otros dispositivos de entrada.
 
 La investigación distingue el contrato y las fuentes oficiales de la implementación futura. El inventario de hardware actual de SOPTRAZ no debe considerarse existente hasta que se entregue y pruebe el módulo read-only.
+
+
+## 12. Estado de implementación (2026-11-28)
+
+### Integrado en main
+
+- Clasificador puro `internal/modules/deviceprofile`: form factor, confianza, evidencia, capacidades tri-state y manejo conservador de conflictos.
+- Recolector de plataforma `internal/platform/deviceprofile`: extracción acotada del tipo de chasis SMBIOS Type 3; `GetSystemPowerStatus`; `GetPointerDevices`; `GetSystemMetrics` para slate/dock cuando corresponde.
+- El parser SMBIOS valida encabezado, longitud, estructuras, terminadores, límite de tamaño y marcador End-of-Table obligatorio.
+- La recolección tolera fallos parciales, mantiene `unknown` y no recoge seriales, UUID, MAC ni asset tags.
+- No-Windows devuelve error de capacidad no disponible y mantiene el mismo contrato de datos.
+
+### En revisión en PR #18
+
+- Comando `soptraz device-profile [--json]` para presentar el resultado como informe humano o JSON.
+- Estados tri-state explícitos como cadenas `yes | no | unknown`.
+- Reporte de errores por fuente y marca `mutations_applied: false`.
+
+### Lo que todavía falta
+
+- Recolección confiable de DeviceForm/PCSystemType, teclado físico, GPU dedicada, sensores térmicos, detalles de almacenamiento y contexto de virtualización/Remote.
+- Integración de este informe con la UI Wails/Field y Toolbox.
+- Recomendaciones de perfiles adaptativos; no se evalúan ni ejecutan acciones mutantes todavía.
+- Pruebas en hardware físico representativo: desktop, notebook, tablet y convertible. La CI de Windows verifica compilación y ABI con el runner, pero no sustituye la prueba en cada OEM/chasis real.
+
+El inventario actual es una primera base verificable, no un detector completo de capacidades ni un benchmark del equipo.

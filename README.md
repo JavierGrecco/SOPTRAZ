@@ -38,7 +38,7 @@ Ambas ediciones compartirán contratos, procedimientos, motor de ejecución, dia
 
 ## Estado del proyecto
 
-**Etapa: fundación arquitectónica y núcleo inicial.** La CLI Go permite consultar versión, información no identificable del host y validar manifiestos, acciones, intervenciones, eventos, checkpoints y descriptores de artefactos. El resolver local verifica archivos ya instalados bajo una raíz confinada. El catálogo TUF ya dispone de una primera capa online que autentica targets delegados; el bootstrap del root de producción y la persistencia/offline anti-rollback siguen pendientes. El catálogo aún no descarga ni ejecuta herramientas externas. El dominio de auditoría y su adaptador SQLite permiten anexar y verificar eventos encadenados por intervención; el decodificador JSON compartido rechaza claves duplicadas, UTF-8 inválido, escapes UTF-16 aislados, documentos concatenados y anidamiento excesivo, y el fuzzing comprueba la idempotencia del payload de auditoría. El primer bloque de checkpoint Ed25519 está implementado con resolución de claves mediante interfaz externa; la custodia real de claves y el anclaje remoto siguen pendientes. Todavía no hay reparaciones de sistemas ni UI de Field/Hub.
+**Etapa: fundación arquitectónica y núcleo inicial.** La CLI Go permite consultar versión, información no identificable del host, validar manifiestos, acciones, intervenciones, eventos, checkpoints y descriptores de artefactos, y generar un informe local de perfil del dispositivo mediante `soptraz device-profile [--json]`. Este inventario inicial es de solo lectura: consulta chasis SMBIOS, energía/batería, dispositivos touch/pen y estado convertible/dock cuando está disponible; conserva la incertidumbre como `unknown` y no aplica optimizaciones. El resolver local verifica archivos ya instalados bajo una raíz confinada. El catálogo TUF ya dispone de una primera capa online que autentica targets delegados; el bootstrap del root de producción y la persistencia/offline anti-rollback siguen pendientes. El catálogo aún no descarga ni ejecuta herramientas externas. El dominio de auditoría y su adaptador SQLite permiten anexar y verificar eventos encadenados por intervención; el decodificador JSON compartido rechaza claves duplicadas, UTF-8 inválido, escapes UTF-16 aislados, documentos concatenados y anidamiento excesivo, y el fuzzing comprueba la idempotencia del payload de auditoría. El primer bloque de checkpoint Ed25519 está implementado con resolución de claves mediante interfaz externa; la custodia real de claves y el anclaje remoto siguen pendientes. Todavía no hay reparaciones de sistemas ni UI de Field/Hub.
 
 ## Documentación
 
@@ -47,6 +47,7 @@ Ambas ediciones compartirán contratos, procedimientos, motor de ejecución, dia
 - [Selección tecnológica](docs/architecture/technology-strategy.md)
 - [Catálogo autenticado TUF (ADR-0015)](docs/decisions/ADR-0015-tuf-artifact-catalog.md)
 - [Optimización y mantenimiento modular de Windows (ADR-0016)](docs/decisions/ADR-0016-windows-optimization.md)
+- [Perfil adaptativo de dispositivo Windows](docs/architecture/windows-device-profile.md)
 - [Límites y contratos de módulos](docs/architecture/module-contracts.md)
 - [Modelo de auditoría](docs/architecture/audit-model.md)
 - [Diseño de checkpoints firmados y exportación Field → Hub](docs/architecture/audit-checkpoint-design.md)

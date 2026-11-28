@@ -46,6 +46,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintf(stdout, "Sistema: %s\nArquitectura: %s\nRuntime: %s\n", info.OS, info.Architecture, info.GoVersion)
 		return 0
+	case "device-profile":
+		return runDeviceProfile(args, stdout, stderr)
 	case "validate":
 		if len(args) != 3 {
 			fmt.Fprintln(stderr, "uso: soptraz validate <manifest|action|intervention|event|checkpoint|artifact> <archivo.json>")
@@ -114,6 +116,7 @@ func writeUsage(w io.Writer) {
 	fmt.Fprintln(w, "  soptraz help")
 	fmt.Fprintln(w, "  soptraz version [--json]")
 	fmt.Fprintln(w, "  soptraz host-info [--json]")
+	fmt.Fprintln(w, "  soptraz device-profile [--json]")
 	fmt.Fprintln(w, "  soptraz validate <manifest|action|intervention|event|checkpoint|artifact> <archivo.json>")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "La CLI inicial solo expone información de lectura y validación. No modifica el equipo.")
