@@ -1,0 +1,211 @@
+package diagnostics
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+)
+
+func TestOpenCreatesPrivatePlainTextReportAndCleanCloseMarker(t *testing.T) {
+	directory := filepath.Join(t.TempDir(), "diagnostics")
+	logger, err := Open(directory, "test-version")
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	path := logger.Path()
+	if filepath.Ext(path) != ".txt" {
+		t.Fatalf("report extension = %q, want .txt", filepath.Ext(path))
+	}
+	if err := logger.Record(Event{
+		Severity:  SeverityCritical,
+		Component: "catalog.tuf",
+		Operation: "refresh",
+		Code:      "tuf.metadata.invalid",
+		Message:   "No se pudo validar metadata firmada.",
+		Cause:     "threshold no satisfecho",
+	}); err != nil {
+		t.Fatalf("Record() error = %v", err)
+	}
+	if err := logger.Record(Event{Severity: SeverityInfo, Message: "routine info"}); err != nil {
+		t.Fatalf("Record(INFO) error = %v", err)
+	}
+	if err := logger.Record(Event{Severity: SeverityWarn, Message: "routine warning"}); err != nil {
+		t.Fatalf("Record(WARN) error = %v", err)
+	}
+	if err := logger.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if err := logger.Close(); err != nil {
+		t.Fatalf("second Close() error = %v", err)
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read report: %v", err)
+	}
+	report := string(raw)
+	for _, expected := range []string{
+		"SOPTRAZ — INFORME TÉCNICO DE EJECUCIÓN",
+		"Versión: test-version",
+		"Sistema operativo:",
+		"Arquitectura:",
+		"CRITICAL",
+		"tuf.metadata.invalid",
+		"threshold no satisfecho",
+		"CIERRE NORMAL:",
+	} {
+		if !strings.Contains(report, expected) {
+			t.Errorf("report does not contain %q:
+%s", expected, report)
+		}
+	}
+	for _, excluded := range []string{"routine info", "routine warning"} {
+		if strings.Contains(report, excluded) {
+			t.Errorf("report unexpectedly contains routine event %q", excluded)
+		}
+	}
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("stat report: %v", err)
+		}
+		if info.Mode().Perm()&0o077 != 0 {
+			t.Errorf("report permissions = %o, want no group/other access", info.Mode().Perm())
+		}
+	}
+}
+
+func TestImportantEventRedactsCommonSecretForms(t *testing.T) {
+	logger, err := Open(t.TempDir(), "test-version")
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer logger.Close()
+
+	if err := logger.Record(Event{
+		Severity: SeverityError,
+		Component: "integration.http",
+		Code: "http.request.failed",
+		Message: "token=abc123 password:supersecret",
+		Cause: "https://user:password@example.test/path?api_key=private",
+	}); err != nil {
+		t.Fatalf("Record() error = %v", err)
+	}
+	raw, err := os.ReadFile(logger.Path())
+	if err != nil {
+		t.Fatalf("read report: %v", err)
+	}
+	report := string(raw)
+	for _, secret := range []string{"abc123", "supersecret", "user:password", "api_key=private"} {
+		if strings.Contains(report, secret) {
+			t.Errorf("report leaked secret %q: %s", secret, report)
+		}
+	}
+	for _, marker := range []string{"[OCULTO]", "[CREDENCIALES-OCULTAS]"} {
+		if !strings.Contains(report, marker) {
+			t.Errorf("report lacks redaction marker %q: %s", marker, report)
+		}
+	}
+}
+
+func TestDiagnosticsAbruptExitHelper(t *testing.T) {
+	if os.Getenv("SOPTRAZ_DIAGNOSTICS_HELPER") != "1" {
+		return
+	}
+	directory := os.Getenv("SOPTRAZ_DIAGNOSTICS_DIR")
+	logger, err := Open(directory, "helper-version")
+	if err != nil {
+		os.Exit(91)
+	}
+	if err := logger.Record(Event{
+		Severity: SeverityCritical,
+		Component: "test.helper",
+		Code: "test.abrupt_exit",
+		Message: "El proceso de prueba terminará sin cierre normal.",
+	}); err != nil {
+		os.Exit(92)
+	}
+	// Deliberately bypass Close() to simulate a hard process termination.
+	os.Exit(0)
+}
+
+func TestNextStartupDetectsAbruptProcessTermination(t *testing.T) {
+	directory := t.TempDir()
+	command := exec.Command(os.Args[0], "-test.run=^TestDiagnosticsAbruptExitHelper$")
+	command.Env = append(os.Environ(),
+		"SOPTRAZ_DIAGNOSTICS_HELPER=1",
+		"SOPTRAZ_DIAGNOSTICS_DIR="+directory,
+	)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("abrupt-exit helper failed: %v; output=%s", err, output)
+	}
+
+	logger, err := Open(directory, "recovery-version")
+	if err != nil {
+		t.Fatalf("Open() after abrupt exit: %v", err)
+	}
+	defer logger.Close()
+
+	recovered := logger.RecoveredRuns()
+	if len(recovered) != 1 {
+		t.Fatalf("RecoveredRuns() = %v, want exactly one incomplete execution", recovered)
+	}
+	previous, err := os.ReadFile(recovered[0])
+	if err != nil {
+		t.Fatalf("read previous execution report: %v", err)
+	}
+	report := string(previous)
+	for _, expected := range []string{
+		"test.abrupt_exit",
+		"CRITICAL",
+		"runtime.unexpected_shutdown",
+		"terminó sin registrar un cierre normal",
+		"Causa: indeterminada",
+	} {
+		if !strings.Contains(report, expected) {
+			t.Errorf("recovered report does not contain %q:
+%s", expected, report)
+		}
+	}
+}
+
+func TestConcurrentActiveExecutionIsNotReportedAsCrash(t *testing.T) {
+	directory := t.TempDir()
+	first, err := Open(directory, "first-version")
+	if err != nil {
+		t.Fatalf("open first execution: %v", err)
+	}
+	defer first.Close()
+
+	second, err := Open(directory, "second-version")
+	if err != nil {
+		t.Fatalf("open concurrent second execution: %v", err)
+	}
+	defer second.Close()
+
+	if got := len(second.RecoveredRuns()); got != 0 {
+		t.Fatalf("second execution classified %d active report(s) as crashes", got)
+	}
+	raw, err := os.ReadFile(first.Path())
+	if err != nil {
+		t.Fatalf("read first report: %v", err)
+	}
+	if strings.Contains(string(raw), "runtime.unexpected_shutdown") {
+		t.Fatalf("active first execution was incorrectly marked as crashed: %s", raw)
+	}
+}
+
+func TestRecordRejectsUnknownSeverity(t *testing.T) {
+	logger, err := Open(t.TempDir(), "test-version")
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer logger.Close()
+	if err := logger.Record(Event{Severity: "DEBUG", Message: "not supported"}); err == nil {
+		t.Fatal("Record(DEBUG) succeeded, want invalid severity error")
+	}
+}
