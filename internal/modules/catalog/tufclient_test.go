@@ -20,14 +20,14 @@ import (
 )
 
 type delegatedRepositoryFixture struct {
-	rootJSON       []byte
-	rootSigner     testSigningKey
+	rootJSON        []byte
+	rootSigner      testSigningKey
 	timestampSigner testSigningKey
 	snapshotSigner  testSigningKey
-	timestampJSON  []byte
-	metadata       map[string][]byte
-	descriptor     artifact.Descriptor
-	targetPath     string
+	timestampJSON   []byte
+	metadata        map[string][]byte
+	descriptor      artifact.Descriptor
+	targetPath      string
 }
 
 func addFixtureRootKey(t *testing.T, root *metadata.Metadata[metadata.RootType], key testSigningKey, role string) {
@@ -160,11 +160,11 @@ func makeDelegatedRepositoryFixture(t *testing.T) delegatedRepositoryFixture {
 	timestampJSON := signedMetadataBytes(t, timestamp, timestampKey)
 
 	return delegatedRepositoryFixture{
-		rootJSON:       rootJSON,
-		rootSigner:     rootKey,
+		rootJSON:        rootJSON,
+		rootSigner:      rootKey,
 		timestampSigner: timestampKey,
-		snapshotSigner: snapshotKey,
-		timestampJSON:  timestampJSON,
+		snapshotSigner:  snapshotKey,
+		timestampJSON:   timestampJSON,
 		metadata: map[string][]byte{
 			"timestamp.json": timestampJSON,
 			"snapshot.json":  snapshotJSON,
