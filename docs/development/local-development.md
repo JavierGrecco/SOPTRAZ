@@ -11,7 +11,7 @@ Esta guía prepara el entorno para trabajar sobre el core actual de SOPTRAZ. Los
 
 Para este trabajo no hace falta instalar Node.js, pnpm, Python, Docker ni PostgreSQL. Se incorporarán cuando empecemos sus etapas (interfaz Field, motor analítico o Hub), con versiones y lockfiles propios.
 
-Descargá Go desde [la página oficial](https://go.dev/dl/) eligiendo la versión fijada en `go.mod) y la arquitectura correcta. En Apple Silicon corresponde `darwin-arm64); en una PC Windows habitual, `windows-amd64), salvo que el hardware requiera otra arquitectura.
+Descargá Go desde [la página oficial](https://go.dev/dl/) eligiendo la versión fijada en **go.mod** y la arquitectura correcta. En Apple Silicon corresponde **darwin-arm64**; en una PC Windows habitual, **windows-amd64**, salvo que el hardware requiera otra arquitectura.
 
 ## 2. Clonar el repositorio
 
@@ -24,7 +24,7 @@ git switch main
 git pull --ff-only
 ```
 
-Si ya tenés un clon con cambios locales, no ejecutes `pull`, `switch` ni limpieza antes de revisar `git status) y preservar esos cambios.
+Si ya tenés un clon con cambios locales, no ejecutes `pull`, `switch` ni limpieza antes de revisar **git status** y preservar esos cambios.
 
 ## 3. Verificar el entorno
 
@@ -41,10 +41,10 @@ bash scripts/dev/check-env.sh
 
 ```powershell
 $env:GOTOOLCHAIN = "local"
-.scriptsdevcheck-env.ps1
+./scripts/dev/check-env.ps1
 ```
 
-Una versión de Go diferente a la fijada en `go.mod) es un error. `GOTOOLCHAIN=local` evita que el comando Go descargue otra toolchain automáticamente y permite reproducir la política de CI.
+Una versión de Go diferente a la fijada en **go.mod** es un error. `GOTOOLCHAIN=local` evita que el comando Go descargue otra toolchain automáticamente y permite reproducir la política de CI.
 
 Los cambios locales se muestran como aviso, no como error: el verificador no descarta ni modifica trabajo del desarrollador.
 
@@ -103,7 +103,7 @@ La matriz CI ejecuta pruebas nativas en Windows, macOS y Ubuntu, Race Detector y
 Cuando falle un comando:
 
 1. No canceles la ejecución para lanzar otra después de introducir más cambios. Conservá la salida de la ejecución que falló.
-2. Anotá el commit exacto: `git rev-parse HEAD).
+2. Anotá el commit exacto: **git rev-parse HEAD**.
 3. Guardá el comando, sistema operativo/arquitectura, versión de Go y el primer error completo.
 4. Comprobá si el fallo es reproducible sin caché cuando corresponda: `go test -count=1 ./ruta/del/paquete`.
 5. Antes de corregir, separá fallo de código, incompatibilidad de plataforma, dependencia de entorno y problema transitorio.
