@@ -39,9 +39,10 @@ type AcceptancePolicy struct {
 // maximum-overlap group of independently configured operators. Sources are
 // sorted by stable source ID. RollbackFloorApplied indicates that the
 // interval's lower bound was raised to the previous accepted lower bound.
+// Evidence retains each contributing canonical sample and its response digest.
 type AcceptedTime struct {
 	Interval             Interval
-	Sources              []Source
+	Evidence             []Evidence
 	RollbackFloorApplied bool
 }
 
@@ -204,10 +205,10 @@ func (policy AcceptancePolicy) Accept(evidence []Evidence, lastAccepted *Interva
 
 	result := AcceptedTime{
 		Interval: bestInterval,
-		Sources:  make([]Source, 0, len(bestIndexes)),
+		Evidence: make([]Evidence, 0, len(bestIndexes)),
 	}
 	for _, index := range bestIndexes {
-		result.Sources = append(result.Sources, observations[index].Source)
+		result.Evidence = append(result.Evidence, observations[index])
 	}
 	if lastAccepted != nil {
 		floor := lastAccepted.Earliest.UTC().Round(0)
