@@ -105,6 +105,12 @@ func cleanupOrphanedTUFStages(metadataCacheRoot string, lock *flock.Flock, repos
 	if strings.TrimSpace(repositoryID) == "" || len(repositoryID) > 128 {
 		return 0, fmt.Errorf("%w: repositoryID inválido para recuperar stages", ErrInvalidTUFClientConfig)
 	}
+	repositoryDigest := sha256.Sum256([]byte(repositoryID))
+	expectedLockName := hex.EncodeToString(repositoryDigest[:]) + ".lock"
+	if filepath.Base(lock.Path()) != expectedLockName ||
+		filepath.Base(filepath.Dir(lock.Path())) != tufRepositoryLockDir {
+		return 0, fmt.Errorf("%w: el lock no corresponde al repositoryID solicitado", ErrTUFClientUnavailable)
+	}
 	stagePrefix := tufMetadataStagePrefixForRepository(repositoryID)
 
 	rootInfo, err := os.Lstat(metadataCacheRoot)
