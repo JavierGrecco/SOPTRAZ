@@ -543,7 +543,6 @@ func TestLoadActiveGenerationDetectsTamperedHighWaterEvidenceForOmittedRole(t *t
 	}
 }
 
-
 func TestGenerationCommitRollsBackAllRowsWhenActivationFails(t *testing.T) {
 	ctx := context.Background()
 	store, _, anchor := openGenerationTestStore(t)

@@ -286,7 +286,6 @@ func TestDatabasePathReturnsAbsoluteResolvedPath(t *testing.T) {
 	}
 }
 
-
 func TestTrustStoreUsesExtraSynchronousRollbackJournal(t *testing.T) {
 	store, _ := openTestStore(t)
 	ctx := context.Background()
