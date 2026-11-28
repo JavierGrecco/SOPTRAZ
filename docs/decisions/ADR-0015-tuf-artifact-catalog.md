@@ -50,3 +50,9 @@ Field es offline-first. La confianza no puede depender de descargar una clave ju
 - Reinicio, cierre abrupto y persistencia atómica probados.
 - Updater concurrente protegido o aislado; timeout, respuestas excesivas y reintentos limitados.
 - Windows, macOS, Ubuntu, Race Detector y pruebas de seguridad verdes.
+
+## Persistencia y anti-rollback
+
+El diseño detallado de generaciones de metadata, high-water marks, commit transaccional, recuperación de backups, limitaciones de rollback de disco completo y validación offline se mantiene en [docs/architecture/tuf-state-persistence.md](../architecture/tuf-state-persistence.md). El documento es una especificación de arquitectura; no implica que el store transaccional o el modo offline estén implementados.
+
+La nueva prueba de integración del updater oficial para root rotation consecutiva (PR #14) cubre N→N+1 con thresholds antiguo/nuevo y rechazo cuando falta la firma del root anterior. Sigue pendiente completar bootstrap productivo, almacenamiento durable y offline seguro.
