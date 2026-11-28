@@ -43,7 +43,7 @@ func TestHelpIsReadOnlyAndSuccessful(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("Run() code = %d, want 0; stderr=%q", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "No modifica el equipo") || !strings.Contains(stdout.String(), "checkpoint") || !strings.Contains(stdout.String(), "artifact") || !strings.Contains(stdout.String(), "device-profile") {
+	if !strings.Contains(stdout.String(), "No modifica el equipo") || !strings.Contains(stdout.String(), "checkpoint") || !strings.Contains(stdout.String(), "artifact") || !strings.Contains(stdout.String(), "device-profile") || !strings.Contains(stdout.String(), "time-status") {
 		t.Fatalf("unexpected help output: %q", stdout.String())
 	}
 }
