@@ -2,6 +2,7 @@ package trustedtime
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -292,6 +293,102 @@ func TestAcceptancePolicyRejectsInvalidConfiguration(t *testing.T) {
 				t.Fatalf("Validate() error = %v, want ErrInvalidAcceptancePolicy", err)
 			}
 		})
+	}
+}
+
+
+func TestAcceptancePolicySelectsUniqueMaximumOverlapAgainstOneOutlier(t *testing.T) {
+	start := policyTestStart()
+	a := policyTestSource("source-a", "operator-a")
+	b := policyTestSource("source-b", "operator-b")
+	c := policyTestSource("source-c", "operator-c")
+	d := policyTestSource("source-d", "operator-d")
+	policy := policyTestConfig(a, b, c, d)
+
+	got, err := policy.Accept([]Evidence{
+		policyTestEvidence(a, start, start.Add(1500*time.Millisecond)),
+		policyTestEvidence(b, start.Add(250*time.Millisecond), start.Add(1750*time.Millisecond)),
+		policyTestEvidence(c, start.Add(500*time.Millisecond), start.Add(2*time.Second)),
+		policyTestEvidence(d, start.Add(time.Minute), start.Add(time.Minute+time.Second)),
+	}, nil)
+	if err != nil {
+		t.Fatalf("Accept() error = %v", err)
+	}
+	if len(got.Evidence) != 3 {
+		t.Fatalf("selected %d sources, want the three-source overlapping group", len(got.Evidence))
+	}
+	for _, item := range got.Evidence {
+		if item.Source.ID == d.ID {
+			t.Fatal("the disjoint outlier was included in the accepted group")
+		}
+	}
+}
+
+func TestAcceptancePolicySupportsAuthenticatedNTSFromIndependentOperators(t *testing.T) {
+	start := policyTestStart()
+	a := policyTestSource("nts-a", "operator-a")
+	b := policyTestSource("nts-b", "operator-b")
+	c := policyTestSource("nts-c", "operator-c")
+	for _, source := range []*Source{&a, &b, &c} {
+		source.Kind = SourceNTS
+		source.Assurance = AssuranceAuthenticated
+		source.KeyID = ""
+	}
+	policy := policyTestConfig(a, b, c)
+	evidence := []Evidence{
+		policyTestEvidence(a, start, start.Add(time.Second)),
+		policyTestEvidence(b, start.Add(100*time.Millisecond), start.Add(1100*time.Millisecond)),
+		policyTestEvidence(c, start.Add(200*time.Millisecond), start.Add(1200*time.Millisecond)),
+	}
+	for index := range evidence {
+		evidence[index].EvidenceSHA256 = ""
+	}
+
+	got, err := policy.Accept(evidence, nil)
+	if err != nil {
+		t.Fatalf("Accept() rejected independent authenticated NTS sources: %v", err)
+	}
+	if len(got.Evidence) != 3 || !got.Interval.Earliest.Equal(start.Add(200*time.Millisecond)) ||
+		!got.Interval.Latest.Equal(start.Add(time.Second)) {
+		t.Fatalf("unexpected accepted NTS result: %#v", got)
+	}
+}
+
+func TestAcceptancePolicyRejectsInvalidPreviousInterval(t *testing.T) {
+	start := policyTestStart()
+	a := policyTestSource("source-a", "operator-a")
+	b := policyTestSource("source-b", "operator-b")
+	c := policyTestSource("source-c", "operator-c")
+	invalidPrevious := Interval{Earliest: start.Add(time.Second), Latest: start}
+
+	_, err := policyTestConfig(a, b, c).Accept([]Evidence{
+		policyTestEvidence(a, start, start.Add(time.Second)),
+		policyTestEvidence(b, start, start.Add(time.Second)),
+		policyTestEvidence(c, start, start.Add(time.Second)),
+	}, &invalidPrevious)
+	if !errors.Is(err, ErrInvalidAcceptancePolicy) {
+		t.Fatalf("Accept() error = %v, want ErrInvalidAcceptancePolicy", err)
+	}
+}
+
+func TestAcceptancePolicyRejectsOversizedEvidenceBatch(t *testing.T) {
+	sources := make([]Source, 65)
+	for index := range sources {
+		sources[index] = policyTestSource(
+			fmt.Sprintf("source-%02d", index),
+			fmt.Sprintf("operator-%02d", index),
+		)
+	}
+	policy := policyTestConfig(sources[:3]...)
+	evidence := make([]Evidence, 65)
+	start := policyTestStart()
+	for index := range evidence {
+		evidence[index] = policyTestEvidence(sources[index], start, start.Add(time.Second))
+	}
+
+	_, err := policy.Accept(evidence, nil)
+	if !errors.Is(err, ErrInsufficientTimeEvidence) {
+		t.Fatalf("Accept() error = %v, want ErrInsufficientTimeEvidence", err)
 	}
 }
 
