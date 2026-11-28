@@ -60,10 +60,12 @@ Runtime Go, registro local, IDs, acciones tipadas, permisos/riesgo, cancelación
 - [x] Conectar `TUFClient` con `CommitGeneration`: capturar los bytes exactos cacheados por go-tuf, contrastarlos con el estado confiable en memoria, reproducir timestamp/snapshot/targets y las delegaciones recorridas con `trustedmetadata`, y activar mediante CAS transaccional (PR #27 integrado como `4983f7d`; CI pre-merge y post-merge 5/5).
 - [x] Aislar cada refresh persistente en un workspace privado y rehidratarlo desde la generación SQLite activa cuando coincide con la root vigente; el updater online oficial revalida la metadata y un fallo descarta el stage sin cambiar la generación confirmada. `TUFClient.Close()` elimina el workspace (PR #29). Esto no habilita offline.
 - [ ] Completar resiliencia: terminación abrupta real y limpieza segura de stages huérfanos, recuperación tras caída en cada etapa, disco lleno, lock y escritores multi-proceso, y política de actualización de metadata no-root cacheada.
-- [ ] Definir modo offline que revalide metadata cacheada, vigente y anti-rollback; no usar TOFU ni UnsafeLocalMode como bypass.
-- [ ] Probar rotación root, thresholds, firma inválida, expiración, rollback/freeze, consistent snapshots, delegaciones y cache corrupta.
+- [ ] Implementar `TrustedTimeProvider` y evidencia temporal según ADR-0020: procedencia, incertidumbre, recuperación online y diagnóstico del estado del reloj nativo; auditar NTS/Roughtime antes de seleccionar dependencias.
+- [ ] Implementar modo offline estricto que revalide metadata cacheada, vigente y anti-rollback con evidencia temporal suficiente. Si offline falla y hay red, descartar la sesión y repetir online desde cero; nunca aceptar metadata expirada ni mezclar resultados.
+- [ ] Mantener cualquier modo histórico de metadata expirada separado, solo de auditoría y sin autorizar instalación/ejecución.
+- [ ] Probar rotación root, thresholds, firma inválida, expiración, rollback/freeze, consistent snapshots, delegaciones, cache corrupta, recuperación de reloj y fallback online completo tras un fallo offline.
 - [x] Configurar el fetcher inicial con timeout HTTP, límites de metadata, redirects desactivados, reintentos acotados y sincronización del Updater.
-- [ ] Probar expiración/rollback/rotación y persistencia cacheada en escenarios de reinicio, caída de red y recuperación.
+- [ ] Probar expiración/rollback/rotación y persistencia cacheada en reinicios, caída de red, recuperación temporal y `TrustedTimeUnavailable` cuando no haya evidencia suficiente.
 - [ ] Revisar SBOM, licencia Apache-2.0 y dependencias transitivas de go-tuf v2.5.0.
 
 ## M1.5 — Supervisor seguro de procesos y registro de módulos
