@@ -296,7 +296,6 @@ func TestNormalizeObservationsFillsOmittedEnumsAsUnknown(t *testing.T) {
 	}
 }
 
-
 func TestClassifyUsesPlatformSpecificEvidenceSources(t *testing.T) {
 	profile := Classify(Observations{
 		DeviceForm:         FormFactorNotebook,
@@ -310,7 +309,7 @@ func TestClassifyUsesPlatformSpecificEvidenceSources(t *testing.T) {
 		t.Fatalf("form factor = %q, want notebook", profile.FormFactor)
 	}
 	want := map[string]bool{
-		"macos.sysctl.hw.model":         false,
+		"macos.sysctl.hw.model":        false,
 		"linux.sysfs.dmi.chassis_type": false,
 	}
 	for _, evidence := range profile.Evidence {
