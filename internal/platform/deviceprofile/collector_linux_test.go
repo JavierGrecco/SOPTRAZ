@@ -13,11 +13,11 @@ import (
 
 func TestCollectLinuxReadsDMIAndBatteryPower(t *testing.T) {
 	files := map[string]string{
-		linuxDMIChassisTypePath:                                "10\n",
-		filepath.Join(linuxPowerSupplyPath, "BAT0", "type"):    "Battery\n",
-		filepath.Join(linuxPowerSupplyPath, "BAT0", "status"):  "Discharging\n",
-		filepath.Join(linuxPowerSupplyPath, "AC", "type"):      "Mains\n",
-		filepath.Join(linuxPowerSupplyPath, "AC", "online"):    "0\n",
+		linuxDMIChassisTypePath:                               "10\n",
+		filepath.Join(linuxPowerSupplyPath, "BAT0", "type"):   "Battery\n",
+		filepath.Join(linuxPowerSupplyPath, "BAT0", "status"): "Discharging\n",
+		filepath.Join(linuxPowerSupplyPath, "AC", "type"):     "Mains\n",
+		filepath.Join(linuxPowerSupplyPath, "AC", "online"):   "0\n",
 	}
 	readFile := func(path string) ([]byte, error) {
 		value, ok := files[path]
@@ -52,10 +52,10 @@ func TestCollectLinuxReadsDMIAndBatteryPower(t *testing.T) {
 
 func TestCollectLinuxPrefersOnlineMainsOverBatteryStatus(t *testing.T) {
 	files := map[string]string{
-		filepath.Join(linuxPowerSupplyPath, "BAT0", "type"):    "Battery",
-		filepath.Join(linuxPowerSupplyPath, "BAT0", "status"):  "Discharging",
-		filepath.Join(linuxPowerSupplyPath, "AC", "type"):      "Mains",
-		filepath.Join(linuxPowerSupplyPath, "AC", "online"):    "1",
+		filepath.Join(linuxPowerSupplyPath, "BAT0", "type"):   "Battery",
+		filepath.Join(linuxPowerSupplyPath, "BAT0", "status"): "Discharging",
+		filepath.Join(linuxPowerSupplyPath, "AC", "type"):     "Mains",
+		filepath.Join(linuxPowerSupplyPath, "AC", "online"):   "1",
 	}
 	readFile := func(path string) ([]byte, error) {
 		value, ok := files[path]
