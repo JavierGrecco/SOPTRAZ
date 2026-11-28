@@ -371,7 +371,8 @@ func TestDiagnosticsFatalCrashHelper(t *testing.T) {
 	go func() {
 		panic("soptraz-runtime-crash-output-probe")
 	}()
-	select {}
+	done := make(chan struct{})
+	<-done
 	runtime.KeepAlive(logger)
 }
 
