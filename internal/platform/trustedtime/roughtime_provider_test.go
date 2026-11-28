@@ -294,7 +294,7 @@ func TestRoughtimeProviderHonorsContextDeadline(t *testing.T) {
 			_ = l.Close()
 		}
 	}()
-	p, err := NewRoughtimeProvider(RoughtimeProviderConfig{Witnesses: ws, ExchangeTimeout: 5 * time.Second, MeasurementTimeout: 5 * time.Second, MaxRadius: 2 * time.Second})
+	p, err := NewRoughtimeProvider(RoughtimeProviderConfig{Witnesses: ws, ExchangeTimeout: 5 * time.Second, MeasurementTimeout: 6 * time.Second, MaxRadius: 2 * time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
