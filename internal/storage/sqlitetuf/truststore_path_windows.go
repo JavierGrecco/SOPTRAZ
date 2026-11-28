@@ -101,10 +101,9 @@ func prepareTrustStoreFile(path string) error {
 // built-in principals. It deliberately does not mutate inherited or user-managed
 // ACLs; the caller can choose a more restrictive data directory when this fails.
 func rejectBroadWritableDirectoryDACL(handle windows.Handle, objectPath string) error {
-	// Directories need a narrower test than regular files. FILE_WRITE_DATA and
-	// FILE_APPEND_DATA map to FILE_ADD_FILE/FILE_ADD_SUBDIRECTORY for directories:
-	// allowing creation of a new sibling does not let a principal replace an
-	// existing protected child. Deletion, delete-child and ACL/owner changes do.
+	// On directories FILE_WRITE_DATA/FILE_APPEND_DATA only grant creation of
+	// new children; those rights alone cannot replace an existing path component.
+	// Deletion, delete-child and ACL/owner changes can undermine the path chain.
 	const fileDeleteChild = 0x00000040
 	writeMask := windows.ACCESS_MASK(
 		windows.GENERIC_ALL |
@@ -117,6 +116,19 @@ func rejectBroadWritableDirectoryDACL(handle windows.Handle, objectPath string) 
 }
 
 func rejectBroadWritableDACL(handle windows.Handle, objectPath string) error {
+	const fileDeleteChild = 0x00000040
+	writeMask := windows.ACCESS_MASK(
+		windows.GENERIC_WRITE |
+			windows.GENERIC_ALL |
+			windows.DELETE |
+			windows.WRITE_DAC |
+			windows.WRITE_OWNER |
+			windows.FILE_WRITE_DATA |
+			windows.FILE_APPEND_DATA |
+			windows.FILE_WRITE_EA |
+			windows.FILE_WRITE_ATTRIBUTES |
+			fileDeleteChild,
+	)
 	return rejectBroadDACL(handle, objectPath, writeMask)
 }
 
@@ -153,19 +165,6 @@ func rejectBroadDACL(handle windows.Handle, objectPath string, writeMask windows
 		broadSIDs = append(broadSIDs, sid)
 	}
 
-	const fileDeleteChild = 0x00000040
-	writeMask := windows.ACCESS_MASK(
-		windows.GENERIC_WRITE |
-			windows.GENERIC_ALL |
-			windows.DELETE |
-			windows.WRITE_DAC |
-			windows.WRITE_OWNER |
-			windows.FILE_WRITE_DATA |
-			windows.FILE_APPEND_DATA |
-			windows.FILE_WRITE_EA |
-			windows.FILE_WRITE_ATTRIBUTES |
-			fileDeleteChild,
-	)
 	for index := uint32(0); index < uint32(dacl.AceCount); index++ {
 		var ace *windows.ACCESS_ALLOWED_ACE
 		if err := windows.GetAce(dacl, index, &ace); err != nil {
