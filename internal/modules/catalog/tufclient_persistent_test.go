@@ -269,7 +269,6 @@ func TestPersistentRefreshDoesNotCommitRootBeforeOfficialUpdaterAcceptsIt(t *tes
 	}
 }
 
-
 func TestPersistentTUFClientCommitsVerifiedGenerationAndDelegationMetadata(t *testing.T) {
 	fixture := makeDelegatedRepositoryFixture(t)
 	server, _, _ := startDelegatedMetadataServer(t, fixture)
