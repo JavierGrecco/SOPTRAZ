@@ -13,11 +13,11 @@ import (
 
 func TestCollectLinuxReadsDMIAndBatteryPower(t *testing.T) {
 	files := map[string]string{
-		linuxDMIChassisTypePath:                               "10\n",
-		filepath.Join(linuxPowerSupplyPath, "BAT0", "type"):   "Battery\n",
-		filepath.Join(linuxPowerSupplyPath, "BAT0", "status"): "Discharging\n",
-		filepath.Join(linuxPowerSupplyPath, "AC", "type"):     "Mains\n",
-		filepath.Join(linuxPowerSupplyPath, "AC", "online"):   "0\n",
+		linuxDMIChassisTypePath:                                "10\n",
+		filepath.Join(linuxPowerSupplyPath, "BAT0", "type"):    "Battery\n",
+		filepath.Join(linuxPowerSupplyPath, "BAT0", "status"):  "Discharging\n",
+		filepath.Join(linuxPowerSupplyPath, "AC", "type"):      "Mains\n",
+		filepath.Join(linuxPowerSupplyPath, "AC", "online"):    "0\n",
 	}
 	readFile := func(path string) ([]byte, error) {
 		value, ok := files[path]
@@ -52,10 +52,10 @@ func TestCollectLinuxReadsDMIAndBatteryPower(t *testing.T) {
 
 func TestCollectLinuxPrefersOnlineMainsOverBatteryStatus(t *testing.T) {
 	files := map[string]string{
-		filepath.Join(linuxPowerSupplyPath, "BAT0", "type"):   "Battery",
-		filepath.Join(linuxPowerSupplyPath, "BAT0", "status"): "Discharging",
-		filepath.Join(linuxPowerSupplyPath, "AC", "type"):     "Mains",
-		filepath.Join(linuxPowerSupplyPath, "AC", "online"):   "1",
+		filepath.Join(linuxPowerSupplyPath, "BAT0", "type"):    "Battery",
+		filepath.Join(linuxPowerSupplyPath, "BAT0", "status"):  "Discharging",
+		filepath.Join(linuxPowerSupplyPath, "AC", "type"):      "Mains",
+		filepath.Join(linuxPowerSupplyPath, "AC", "online"):    "1",
 	}
 	readFile := func(path string) ([]byte, error) {
 		value, ok := files[path]
@@ -67,6 +67,65 @@ func TestCollectLinuxPrefersOnlineMainsOverBatteryStatus(t *testing.T) {
 	result := collectLinux(readFile, func() ([]string, error) { return []string{"BAT0", "AC"}, nil })
 	if result.Observations.Capabilities.PowerSource != moduleprofile.PowerSourceAC {
 		t.Fatalf("power source = %q, want AC", result.Observations.Capabilities.PowerSource)
+	}
+}
+
+func TestCollectLinuxRecognizesProgrammableUSBPower(t *testing.T) {
+	files := map[string]string{
+		filepath.Join(linuxPowerSupplyPath, "BAT0", "type"):   "Battery",
+		filepath.Join(linuxPowerSupplyPath, "BAT0", "status"): "Discharging",
+		filepath.Join(linuxPowerSupplyPath, "USB", "type"):    "USB_PD",
+		filepath.Join(linuxPowerSupplyPath, "USB", "online"):  "2",
+	}
+	readFile := func(path string) ([]byte, error) {
+		value, ok := files[path]
+		if !ok {
+			return nil, os.ErrNotExist
+		}
+		return []byte(value), nil
+	}
+	result := collectLinux(readFile, func() ([]string, error) { return []string{"BAT0", "USB"}, nil })
+	if result.Observations.Capabilities.PowerSource != moduleprofile.PowerSourceAC {
+		t.Fatalf("power source = %q, want AC for online programmable USB power", result.Observations.Capabilities.PowerSource)
+	}
+}
+
+func TestCollectLinuxDoesNotTreatFullBatteryAsAC(t *testing.T) {
+	files := map[string]string{
+		filepath.Join(linuxPowerSupplyPath, "BAT0", "type"):   "Battery",
+		filepath.Join(linuxPowerSupplyPath, "BAT0", "status"): "Full",
+		filepath.Join(linuxPowerSupplyPath, "AC", "type"):     "Mains",
+		filepath.Join(linuxPowerSupplyPath, "AC", "online"):   "0",
+	}
+	readFile := func(path string) ([]byte, error) {
+		value, ok := files[path]
+		if !ok {
+			return nil, os.ErrNotExist
+		}
+		return []byte(value), nil
+	}
+	result := collectLinux(readFile, func() ([]string, error) { return []string{"BAT0", "AC"}, nil })
+	if result.Observations.Capabilities.PowerSource != moduleprofile.PowerSourceUnknown {
+		t.Fatalf("power source = %q, want unknown when battery is full but AC is offline", result.Observations.Capabilities.PowerSource)
+	}
+}
+
+func TestCollectLinuxKeepsPowerSourceUnknownWhenExternalStateCannotBeRead(t *testing.T) {
+	files := map[string]string{
+		filepath.Join(linuxPowerSupplyPath, "BAT0", "type"):   "Battery",
+		filepath.Join(linuxPowerSupplyPath, "BAT0", "status"): "Discharging",
+		filepath.Join(linuxPowerSupplyPath, "USB", "type"):    "USB_PD",
+	}
+	readFile := func(path string) ([]byte, error) {
+		value, ok := files[path]
+		if !ok {
+			return nil, os.ErrNotExist
+		}
+		return []byte(value), nil
+	}
+	result := collectLinux(readFile, func() ([]string, error) { return []string{"BAT0", "USB"}, nil })
+	if result.Observations.Capabilities.PowerSource != moduleprofile.PowerSourceUnknown {
+		t.Fatalf("power source = %q, want unknown when an external supply state is unavailable", result.Observations.Capabilities.PowerSource)
 	}
 }
 
@@ -111,5 +170,25 @@ func TestParseLinuxChassisType(t *testing.T) {
 				t.Fatalf("parseLinuxChassisType(%q) = %d, %v", test.in, got, err)
 			}
 		})
+	}
+}
+
+func TestParseLinuxPowerSupplyOnline(t *testing.T) {
+	for _, test := range []struct {
+		value string
+		want  bool
+		bad   bool
+	}{
+		{value: "0\n", want: false},
+		{value: "1\n", want: true},
+		{value: "2\n", want: true},
+		{value: "-1", bad: true},
+		{value: "3", bad: true},
+		{value: "online", bad: true},
+	} {
+		got, err := parseLinuxPowerSupplyOnline([]byte(test.value))
+		if (err != nil) != test.bad || (!test.bad && got != test.want) {
+			t.Errorf("parseLinuxPowerSupplyOnline(%q) = %v, %v", test.value, got, err)
+		}
 	}
 }

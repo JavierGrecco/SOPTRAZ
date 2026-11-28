@@ -21,8 +21,6 @@ const (
 type linuxReadFile func(string) ([]byte, error)
 type linuxReadSupplyNames func() ([]string, error)
 
-// Collect reads public DMI and power-supply sysfs attributes. It does not
-// invoke shell commands, read input-device event streams or modify the system.
 func Collect() Result {
 	return collectLinux(os.ReadFile, readLinuxPowerSupplyNames)
 }
@@ -80,6 +78,24 @@ func readLinuxPowerSupplyNames() ([]string, error) {
 	return names, nil
 }
 
+func isLinuxExternalPowerSupplyType(supplyType string) bool {
+	switch supplyType {
+	case "Mains", "USB", "USB_DCP", "USB_CDP", "USB_ACA", "USB_C", "USB_PD", "USB_PD_DRP", "Wireless":
+		return true
+	default:
+		return false
+	}
+}
+
+func parseLinuxPowerSupplyOnline(raw []byte) (bool, error) {
+	value := strings.TrimSpace(string(raw))
+	online, err := strconv.Atoi(value)
+	if err != nil || online < 0 || online > 2 {
+		return false, fmt.Errorf("estado online sysfs inválido: %q", value)
+	}
+	return online > 0, nil
+}
+
 func collectLinuxPower(result *Result, readFile linuxReadFile, readSupplyNames linuxReadSupplyNames) {
 	names, err := readSupplyNames()
 	if err != nil {
@@ -89,7 +105,10 @@ func collectLinuxPower(result *Result, readFile linuxReadFile, readSupplyNames l
 
 	batterySeen := false
 	typeReadFailed := false
-	mainsOnline := false
+	batteryStateReadFailed := false
+	externalStateReadFailed := false
+	unknownSupplyTypeSeen := false
+	externalPowerOnline := false
 	batteryDischarging := false
 	batteryCharging := false
 
@@ -104,29 +123,46 @@ func collectLinuxPower(result *Result, readFile linuxReadFile, readSupplyNames l
 			result.addSourceError("linux.sysfs.power_supply", fmt.Errorf("no se pudo leer el tipo de %q: %w", name, readErr))
 			continue
 		}
-		switch strings.TrimSpace(string(typeRaw)) {
-		case "Battery":
+
+		supplyType := strings.TrimSpace(string(typeRaw))
+		switch {
+		case supplyType == "Battery":
 			batterySeen = true
 			statusRaw, statusErr := readFile(filepath.Join(base, "status"))
 			if statusErr != nil {
+				batteryStateReadFailed = true
 				result.addSourceError("linux.sysfs.power_supply", fmt.Errorf("no se pudo leer el estado de batería de %q: %w", name, statusErr))
 				continue
 			}
 			switch strings.TrimSpace(string(statusRaw)) {
 			case "Discharging":
 				batteryDischarging = true
-			case "Charging", "Full":
+			case "Charging":
 				batteryCharging = true
+			case "Full", "Not charging", "Unknown":
+				// These states do not establish which source powers the system.
+			default:
+				batteryStateReadFailed = true
+				result.addSourceError("linux.sysfs.power_supply", fmt.Errorf("estado de batería no reconocido para %q", name))
 			}
-		case "Mains":
+		case isLinuxExternalPowerSupplyType(supplyType):
 			onlineRaw, onlineErr := readFile(filepath.Join(base, "online"))
 			if onlineErr != nil {
-				result.addSourceError("linux.sysfs.power_supply", fmt.Errorf("no se pudo leer la conexión de red eléctrica de %q: %w", name, onlineErr))
+				externalStateReadFailed = true
+				result.addSourceError("linux.sysfs.power_supply", fmt.Errorf("no se pudo leer la conexión de alimentación de %q: %w", name, onlineErr))
 				continue
 			}
-			if strings.TrimSpace(string(onlineRaw)) == "1" {
-				mainsOnline = true
+			online, parseErr := parseLinuxPowerSupplyOnline(onlineRaw)
+			if parseErr != nil {
+				externalStateReadFailed = true
+				result.addSourceError("linux.sysfs.power_supply", fmt.Errorf("no se pudo interpretar la conexión de alimentación de %q: %w", name, parseErr))
+				continue
 			}
+			if online {
+				externalPowerOnline = true
+			}
+		case supplyType != "":
+			unknownSupplyTypeSeen = true
 		}
 	}
 
@@ -139,9 +175,10 @@ func collectLinuxPower(result *Result, readFile linuxReadFile, readSupplyNames l
 	}
 
 	switch {
-	case mainsOnline, batteryCharging:
+	case externalPowerOnline, batteryCharging:
 		result.Observations.Capabilities.PowerSource = moduleprofile.PowerSourceAC
-	case batteryDischarging:
+	case batteryDischarging && !typeReadFailed && !batteryStateReadFailed &&
+		!externalStateReadFailed && !unknownSupplyTypeSeen:
 		result.Observations.Capabilities.PowerSource = moduleprofile.PowerSourceBattery
 	}
 }

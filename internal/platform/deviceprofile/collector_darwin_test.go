@@ -16,11 +16,20 @@ func TestClassifyDarwinHardwareModel(t *testing.T) {
 	}{
 		{model: "MacBookPro18,3", want: moduleprofile.FormFactorNotebook},
 		{model: "MacBookAir10,1", want: moduleprofile.FormFactorNotebook},
+		{model: "Mac14,2", want: moduleprofile.FormFactorNotebook},
+		{model: "Mac15,3", want: moduleprofile.FormFactorNotebook},
+		{model: "Mac16,12", want: moduleprofile.FormFactorNotebook},
+		{model: "Mac17,3", want: moduleprofile.FormFactorNotebook},
 		{model: "iMac21,2", want: moduleprofile.FormFactorAllInOne},
+		{model: "Mac16,2", want: moduleprofile.FormFactorAllInOne},
+		{model: "Mac18,2", want: moduleprofile.FormFactorAllInOne},
 		{model: "Macmini9,1", want: moduleprofile.FormFactorDesktop},
+		{model: "Mac16,10", want: moduleprofile.FormFactorDesktop},
+		{model: "Mac17,16", want: moduleprofile.FormFactorDesktop},
 		{model: "MacPro7,1", want: moduleprofile.FormFactorWorkstation},
 		{model: "MacStudio", want: moduleprofile.FormFactorWorkstation},
-		{model: "Mac15,3", want: moduleprofile.FormFactorUnknown},
+		{model: "Mac17,14", want: moduleprofile.FormFactorWorkstation},
+		{model: "Mac99,99", want: moduleprofile.FormFactorUnknown},
 		{model: "", want: moduleprofile.FormFactorUnknown},
 	} {
 		t.Run(test.model, func(t *testing.T) {
@@ -37,7 +46,7 @@ func TestCollectDarwinUsesOnlyNormalizedModelFamily(t *testing.T) {
 		if name != "hw.model" {
 			t.Fatalf("sysctl name = %q, want hw.model", name)
 		}
-		return "MacBookPro18,3", nil
+		return "Mac17,3", nil
 	})
 	if result.Observations.DeviceForm != moduleprofile.FormFactorNotebook {
 		t.Fatalf("device form = %q, want notebook", result.Observations.DeviceForm)
