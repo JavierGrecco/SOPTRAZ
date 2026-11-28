@@ -1,6 +1,6 @@
 # Modelo de persistencia, anti-rollback y recuperación del catálogo TUF
 
-- Estado: root-chain SQLite, replay persistente, store de generaciones, captura/revalidación online y staging privado rehidratado desde la generación activa integrados en `main` (PR #22, #23, #25, #27 y #29). Siguen pendientes la limpieza de stages huérfanos tras caída abrupta, coordinación multi-proceso, fallos físicos y modo offline.
+- Estado: root-chain SQLite, replay persistente, store de generaciones y captura/revalidación online integrados en `main` (PR #22, #23, #25, #27 y #29). PR #31 propone recuperación de stages/locks e informes de fallos, pero sigue en draft. ADR-0019 acepta la arquitectura del verificador offline explícito; su implementación aún está pendiente.
 - Fecha: 2026-11-28
 - Relacionado: ADR-0015, ADR-0017, Issue #5 (M1.4), Issue #4 (M1.5).
 - Alcance: metadata de confianza y caché del catálogo; no targets ejecutables.
@@ -237,7 +237,7 @@ No se restaurará automáticamente una generación vieja para “hacer que el pr
 4. [x] Implementar store de root-chain (PR #22), replay/commit persistente de `TUFClient` (PR #23), store de generaciones/high-water (PR #25) y captura/revalidación online desde `TUFClient` (PR #27).
 5. [ ] Implementar staging aislado por generación antes del refresh y restauración validada desde SQLite; la caché oficial deja de ser el único espacio de trabajo pero nunca se promueve por presencia solamente.
 6. [ ] Añadir tests de terminación abrupta real, disco lleno y dos procesos concurrentes; la reapertura ordenada, replay TUF y rollback transaccional inyectado ya están cubiertos.
-7. [ ] Implementar el verificador offline local usando `trustedmetadata` y validación de delegaciones; no usar `UnsafeLocalMode`.
+7. [ ] Implementar el verificador offline local según [ADR-0019](../decisions/ADR-0019-offline-tuf-catalog-verifier.md), usando `trustedmetadata`, snapshot SQLite consistente, marca local de hora y validación de delegaciones; no usar `UnsafeLocalMode`.
 8. [ ] Añadir ancla monotónica por plataforma o witness externo cuando esté disponible, manteniendo un nivel local explícito cuando no lo esté.
 9. [ ] Completar SBOM, avisos/licencias y política de actualización de go-tuf/Sigstore.
 10. [ ] Recién entonces revisar M1.4 como candidato a aceptación.
@@ -266,3 +266,14 @@ Este documento registra el diseño de seguridad y las decisiones que faltan. La 
 - La generación contiene metadata top-level y los roles delegados recorridos por los descriptores resueltos; no afirma que todo el grafo del repositorio esté cargado. No se crea una generación en el constructor ni por `Refresh()` sin descriptores resueltos.
 - Falta limpiar stages huérfanos tras una terminación abrupta, probar fallos de disco/espacio, proteger escritores multi-proceso y definir un validador offline explícito. `UnsafeLocalMode` sigue deshabilitado.
 - No existe protección fuerte frente a restauración de una imagen antigua completa del mismo disco sin TPM/contador monotónico o witness externo. Bootstrap y custodia de claves de producción siguen pendientes.
+
+
+## 13. Decisión de arquitectura offline (ADR-0019, 2026-11-28)
+
+La arquitectura quedó aceptada en [ADR-0019 — Verificación offline explícita del catálogo TUF](../decisions/ADR-0019-offline-tuf-catalog-verifier.md). Esta decisión todavía no habilita el modo offline.
+
+El verificador deberá reproducir la raíz desde el pin bootstrap, leer root-chain/generación/high-water en un único snapshot SQLite, y revalidar timestamp → snapshot → targets → delegaciones con `trustedmetadata` y una única hora de referencia. Debe respetar el orden firmado y los roles terminating; si un rol candidato necesario no está incluido en la generación, el target no está disponible offline. El descriptor artifact v1 se compara con el target firmado y el resolver local verifica después el archivo instalado. No hay fallback a una generación antigua, a red ni a `UnsafeLocalMode`.
+
+Se decidió guardar `last_observed_utc` por repositorio y avanzar esa marca de manera monotónica en el trust store. Esto detecta algunos retrocesos del reloj mientras se conserva la base, pero no es un reloj seguro: restaurar una imagen completa antigua del mismo disco también puede restaurar esa marca. El resultado inicial debe informar assurance `local`; la protección con TPM/contador monotónico o witness externo queda como capacidad futura.
+
+El replay actual de `captureAndVerifyGenerationMetadata` será refactorizado para que el flujo online y el verificador offline compartan una sola implementación de autenticación de roles. No se mantendrán dos algoritmos equivalentes independientes.
