@@ -46,6 +46,7 @@ Ambas ediciones compartirán contratos, procedimientos, motor de ejecución, dia
 - [Arquitectura general](docs/architecture/overview.md)
 - [Selección tecnológica](docs/architecture/technology-strategy.md)
 - [Catálogo autenticado TUF (ADR-0015)](docs/decisions/ADR-0015-tuf-artifact-catalog.md)
+- [Almacén durable de confianza TUF (ADR-0017)](docs/decisions/ADR-0017-tuf-sqlite-trust-store.md)
 - [Optimización y mantenimiento modular de Windows (ADR-0016)](docs/decisions/ADR-0016-windows-optimization.md)
 - [Perfil adaptativo de dispositivo Windows](docs/architecture/windows-device-profile.md)
 - [Límites y contratos de módulos](docs/architecture/module-contracts.md)

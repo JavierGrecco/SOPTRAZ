@@ -1,8 +1,8 @@
 # Modelo de persistencia, anti-rollback y recuperación del catálogo TUF
 
-- Estado: diseño y análisis de amenazas; implementación pendiente.
+- Estado: modelo de amenazas vigente; ADR-0017 selecciona SQLite separado como almacén durable; implementación y modo offline pendientes.
 - Fecha: 2026-11-28
-- Relacionado: ADR-0015, Issue #5 (M1.4), Issue #4 (M1.5).
+- Relacionado: ADR-0015, ADR-0017, Issue #5 (M1.4), Issue #4 (M1.5).
 - Alcance: metadata de confianza y caché del catálogo; no targets ejecutables.
 
 ## 1. Resumen
@@ -28,6 +28,7 @@ No se habilita el modo offline de producción ni se declara cerrado M1.4 con est
 - El cliente crea el `Updater` oficial, ejecuta un refresh online, usa HTTPS excepto loopback explícito de tests y desactiva redirects.
 - Las llamadas a `Updater` se serializan; la librería no es segura para concurrencia y permite un único `Refresh()` por instancia.
 - Un refresh fallido invalida la instancia del updater en memoria para que la aplicación no continúe consultando metadata vieja de esa instancia.
+- PR #20 conserva también el último root que go-tuf dejó verificado como base de los refreshes siguientes dentro del mismo proceso. Si el refresh falla después de una rotación, el updater queda invalidado para consultas, pero la raíz verificada se conserva en memoria. No sobrevive todavía a reinicios ni a la recreación de la aplicación.
 - El updater puede persistir archivos de metadata en el directorio de caché. La implementación oficial escribe cada metadata mediante archivo temporal, cierra, renombra y relee para comparar bytes. Esto protege la escritura individual frente a truncamiento lógico, pero no equivale a una transacción única de todo el conjunto root/timestamp/snapshot/targets/delegaciones ni documenta por sí solo una garantía de durabilidad frente a pérdida súbita de energía.
 - El repositorio de metadata actual es una carpeta configurada en `TUFClientConfig`; todavía no hay un almacén de generaciones y high-water marks separado.
 
@@ -97,25 +98,23 @@ Cada generación confirmada tendrá un manifiesto de estado (contrato aún no im
 
 No confiar en fechas locales como prueba de orden; usar versiones TUF firmadas. El identificador local de generación es para recuperación y concurrencia, no sustituye los contadores TUF.
 
-### 4.3 Commit atómico
+### 4.3 Commit atómico (decisión tomada por ADR-0017)
 
-Diseño a evaluar para la implementación:
+Se selecciona un SQLite separado (`catalog-trust.sqlite`), no `audit.sqlite`. El almacén utiliza BLOBs para metadata original, un manifiesto por generación, high-water marks por rol y un puntero `active_generation`. El commit de una generación completa es una sola transacción: inserta generation + role metadata, valida monotonicidad, actualiza high-water y cambia active generation. Si cualquier operación falla, todo revierte.
 
-1. Copiar/materializar la última generación confirmada en staging.
-2. Ejecutar el updater oficial contra staging.
-3. Resolver y autenticar los roles delegados necesarios para el conjunto de catálogo que se va a publicar en UI.
-4. Enumerar metadata permitida, verificar tamaño, rol, versión, hash y manifiesto.
-5. En una transacción del almacén de confianza, insertar metadata y manifiesto de la nueva generación, actualizar los high-water marks, y mover `active_generation` a la nueva generación.
-6. Confirmar la transacción y solo entonces exponer el nuevo snapshot de catálogo.
-7. Mantener al menos la generación inmediatamente anterior para diagnóstico/recuperación controlada, pero nunca seleccionarla automáticamente si sus versiones están por debajo del high-water actual.
+La cadena de root tiene un commit separado e independiente:
+- Después de un intento de refresh, la capa `catalog` recupera los roots que go-tuf efectivamente verificó y los reproduce desde el trust anchor independiente con `trustedmetadata.UpdateRoot`.
+- Una transacción agrega los roots consecutivos validados y actualiza latest-root version/hash mediante compare-and-swap.
+- Este commit se realiza aun cuando timestamp/snapshot/targets posteriores hayan fallado: una raíz ya verificada debe sobrevivir ese fallo.
+- La generación activa anterior permanece almacenada, pero no es elegible offline si su root version/hash ya no coincide con latest-root. El catálogo queda en estado `refresh_required` hasta comprometer una generación completa bajo la raíz actual.
 
-La implementación debe decidir entre:
-- un SQLite de confianza separado, con metadata blob + manifest + high-water + active generation en una única transacción; o
-- un store de generaciones en filesystem con directorios inmutables y un puntero de commit cuya actualización sea realmente atómica y durable en Windows, macOS y Linux.
+El proceso online materializa la generación activa en un staging temporal, ejecuta el updater oficial y resuelve los roles delegados requeridos. Solo después de validar tamaños, nombres de rol, versiones, hashes, expiraciones y manifiesto, se compromete la generación. El filesystem de staging no es el registro autoritativo.
 
-No combinar una transacción SQLite y un rename de filesystem suponiendo que ambos forman una transacción distribuida: no lo hacen. Si el filesystem se usa para staging, el store debe confirmar primero que todos los bytes están completos y releíbles; el puntero lógico debe ser el único marcador de commit.
+La base usa `modernc.org/sqlite` sin CGO, una conexión de escritura, transacciones `BEGIN IMMEDIATE`, foreign keys, busy timeout acotado, `synchronous=FULL`, `trusted_schema=OFF` y journaling rollback `DELETE` explícito inicialmente. El archivo queda separado de auditoría; la carpeta de datos y ACL se configuran con mínimo privilegio. No se habilita WAL hasta contar con pruebas de recovery/sidecar en Windows, macOS y Linux.
 
-La opción SQLite resulta atractiva porque SOPTRAZ ya usa SQLite y puede actualizar blobs, high-water marks y generación activa en la misma transacción. Antes de seleccionarla hay que probar configuración de journal/synchronous, recuperación de WAL, límites de blobs, concurrencia y costo de copiar/materializar metadata. El SQLite de confianza debe tener permisos restrictivos y no quedar expuesto a importaciones de datos Field ni a sincronización no confiable.
+No combinar una transacción SQLite y un rename de filesystem suponiendo que ambos forman una transacción distribuida. La actualización del root chain puede confirmarse sin avanzar la generación; la generación activa solo avanza cuando metadata completa y high-water están en la misma transacción.
+
+La base conserva todos los roots intermedios requeridos para reproducir la cadena desde el pin inicial. La integridad criptográfica se revalida al cargar; no se confía en el root final aislado. Un cambio de pin de bootstrap requiere migración explícita. El store no debe importarse ni sincronizarse como datos ordinarios de Field → Hub.
 
 ## 5. High-water marks y protección anti-rollback
 
@@ -229,9 +228,9 @@ No se restaurará automáticamente una generación vieja para “hacer que el pr
 
 1. Mantener la implementación online actual como prototipo; no marcarla como production-ready/offline.
 2. Añadir tests que caractericen exactamente cómo go-tuf v2.5.0 lee/persiste root y roles, incluidas delegaciones y recuperación tras fallo.
-3. Seleccionar almacenamiento de generaciones y contrato de high-water; comparar SQLite transactional store frente a filesystem generation pointer.
-4. Implementar el store de confianza como unidad aislada con commits atómicos y tests de crash/restart.
-5. Implementar loader online basado en directorios staging e importar al store solo después de validar completamente.
+3. [x] Seleccionar almacenamiento SQLite separado y contrato de root chain/generaciones/high-water mediante ADR-0017.
+4. Implementar el store de confianza como unidad aislada con commits separados de root chain y generación completa, transacciones atómicas y tests de crash/restart.
+5. Implementar loader online basado en staging temporal e importar al store solo después de validar completamente.
 6. Implementar el verificador offline local usando trustedmetadata y validación de delegaciones; no usar UnsafeLocalMode.
 7. Añadir ancla monotónica por plataforma o witness externo cuando esté disponible, manteniendo un nivel local explícito cuando no lo esté.
 8. Completar SBOM, avisos/licencias y política de actualización de go-tuf/Sigstore.
@@ -247,3 +246,11 @@ No se restaurará automáticamente una generación vieja para “hacer que el pr
 - [TUF security scope](https://github.com/theupdateframework/specification/blob/master/governance/02-scope.md) — amenazas cubiertas como rollback, freeze y mix-and-match.
 
 Este documento registra el diseño de seguridad y las decisiones que faltan. No introduce todavía almacenamiento durable, modo offline ni una garantía hardware anti-rollback.
+
+
+## 12. Estado de implementación tras PR #20 y ADR-0017
+
+- PR #20 integrado como `1bf7e13`: el último root TUF verificado se conserva entre refreshes de la misma instancia y sobrevive a un fallo posterior de timestamp/snapshot/targets.
+- CI pre-merge de PR #20: cinco jobs exitosos en [run 46090627346](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46090627346). CI post-merge en [run 46090879487](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46090879487): cinco jobs exitosos en Windows, macOS, Ubuntu, Race Detector y fuzzing.
+- ADR-0017 selecciona SQLite separado, root chain histórico, high-water por rol, commits separados de root y generación, y replay desde ancla independiente.
+- No existe aún el paquete `sqlitetuf`, el staging desde generaciones, la persistencia durable ni el validador offline. El nivel de assurance actual sigue siendo in-process/local y no anti-rollback fuerte tras restaurar el disco completo.
