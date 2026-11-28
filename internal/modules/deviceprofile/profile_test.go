@@ -209,7 +209,6 @@ func containsWarning(warnings []string, expected string) bool {
 	return false
 }
 
-
 func TestClassifyMapsDocumentedSMBIOSChassisFamilies(t *testing.T) {
 	tests := []struct {
 		name       string
