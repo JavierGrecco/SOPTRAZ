@@ -1,6 +1,6 @@
 # ADR-0017: Almacén durable de confianza TUF en SQLite
 
-- Estado: Aceptada. La root-chain SQLite y su integración con `NewPersistentTUFClient` están integradas en `main` (PR #22 y #23). PR #25 integra el esquema de generaciones y la API de commit/carga atómica con high-water por rol; falta conectar esa API al staging y al flujo del updater. Crash/restart abrupto, bootstrap de producción y modo offline siguen pendientes.
+- Estado: Aceptada. Root-chain persistente (PR #22/#23), store de generaciones SQLite v2 (PR #25) e integración online de captura/revalidación desde `TUFClient` (PR #27) están integrados en `main`. La generación se compromete después de resolver descriptores y solo incluye roles delegados realmente recorridos. Siguen pendientes la restauración offline desde generaciones, crash/restart abrupto, resiliencia ante fallos físicos, bootstrap de producción y ancla anti-rollback externa.
 - Fecha: 2026-11-28
 - Relacionada: ADR-0011, ADR-0015, Issue #5 (M1.4), Issue #4 (M1.5).
 - Alcance: estado de confianza, metadata TUF autenticada, high-water marks y generaciones del catálogo. No incluye targets ejecutables.
@@ -134,88 +134,48 @@ Esta ADR no habilita el modo offline. El almacén hace posible implementar un ve
 9. [ ] Completar SBOM, avisos/licencias y política de actualización de go-tuf/Sigstore.
 La implementación no se considera production-ready hasta que todas las pruebas de recuperación y anti-rollback estén verdes y el procedimiento de bootstrap/custodia de root esté aprobado.
 
-## Primera implementación del almacén de root-chain (PR #22, 2026-11-28)
+## Implementación integrada y evidencia
 
-Se implementó una primera capa ejecutable, todavía aislada de `TUFClient`:
+### PR #22 — Root-chain SQLite
 
-- Paquete: `internal/storage/sqlitetuf`, con `modernc.org/sqlite` y una base separada de `audit.sqlite`.
-- Registro estable del repositorio ligado a su URL y al hash/versión del trust anchor provisionado de manera independiente. Un cambio de origen o anchor no se acepta como re-enrolamiento implícito.
-- Cadena append-only de roots, con bytes originales, SHA-256, versión consecutiva y hash de la raíz anterior.
-- Commit por lotes en una transacción SQLite, con compare-and-swap del estado esperado. Un lote con un salto o un enlace incorrecto revierte completo.
-- Lectura de cadena y high-water desde una única transacción de lectura; vuelve a comprobar tamaño, hash, continuidad y enlace final.
-- Configuración SQLite inicial: una conexión, foreign keys, busy timeout, `synchronous=FULL`, `trusted_schema=OFF` y journaling rollback `DELETE`.
-- Pruebas de re-apertura del archivo, continuidad, commit por lotes, rollback de lote inválido, CAS, cambio de anchor y detección de alteración de blobs.
+- `internal/storage/sqlitetuf` guarda raíces históricas vinculadas al origen y al pin bootstrap, con hashes exactos, secuencia consecutiva, append-only, CAS y lectura consistente.
+- El store no verifica firmas TUF: solo recibe raíces autenticadas por `catalog`.
 
-El commit de código `c785aebe9190eac870cd3081689f4f794e50f93d` pasó los cinco jobs de CI en [run 46091958671](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46091958671): Windows, macOS, Ubuntu, Race Detector y fuzzing. La documentación de este PR no cambia el alcance del código.
+### PR #23 — `NewPersistentTUFClient`
 
-### Límites que permanecen
+- Registra origen y pin bootstrap; carga la cadena SQLite y reproduce cada root consecutiva con `trustedmetadata.UpdateRoot` antes de crear el updater oficial.
+- Captura respuestas versionadas `N.root.json` del origen configurado y persiste únicamente cuando la versión alcanzada por go-tuf coincide con la cadena candidata.
+- Conserva una rotación ya aceptada aunque falle timestamp/snapshot/targets más adelante; la instancia del updater queda invalidada y un proceso posterior vuelve a autenticar la cadena desde el pin original.
+- Integrado en `main` como `1988db9`.
 
-- El almacén no valida firmas TUF. Recibe únicamente raíces que la capa `catalog` debe haber verificado con `trustedmetadata.UpdateRoot`; al reabrir, el llamador aún debe reproducir toda la cadena desde el anchor independiente.
-- Todavía no hay integración que persista automáticamente una root aceptada por `TUFClient`, especialmente cuando el refresh falla después de rotar la root.
-- No se implementaron staging de metadata, generaciones, high-water por rol/delegación, ni actualización atómica de `active_generation`.
-- Las pruebas actuales incluyen cierre/reapertura ordenados y rollback transaccional ante candidatos inválidos; todavía faltan terminación abrupta real, recuperación crash/restart, dos procesos concurrentes y fallos de disco/permisos en la matriz.
-- No habilita catálogo offline ni demuestra anti-rollback frente a restauración integral del mismo disco.
+### PR #25 — Generaciones SQLite v2
 
-El siguiente paso es implementar staging y commits atómicos de generaciones completas, metadata por rol y high-water persistentes. M1.4 continúa abierto.
+- Migra v1→v2 sin perder una root-chain preexistente e incorpora `generations`, `generation_metadata`, `generation_role_parents`, `role_high_water` y `active_generations`.
+- `CommitGeneration` valida root actual, CAS, roles superiores, delegaciones declaradas, monotonicidad por rol y límites; escribe blobs, relaciones, high-water y puntero activo en una transacción.
+- El high-water conserva `source_generation_id` vinculado a bytes inmutables; triggers SQLite impiden borrado y downgrade directo.
+- `LoadActiveGeneration` lee una instantánea coherente y comprueba hash de blobs, manifiesto, root actual y evidencia histórica incluso para roles omitidos.
+- Integrado en `main` como `e4341ab`.
 
-## Integración de root-chain con TUFClient (PR #23, integrado)
+### PR #27 — Captura de generaciones desde `TUFClient`
 
-La implementación de `NewPersistentTUFClient` conecta el almacén anterior con el updater oficial sin sustituir su verificación:
+- Tras un `ResolveDescriptor` persistente exitoso, `TUFClient` reúne los paths resueltos y llama al capturador existente `CommitVerifiedGeneration` bajo el mismo mutex que serializa al updater.
+- El capturador lee los bytes originales almacenados por go-tuf, rechaza archivos no regulares, symlinks y tamaños fuera de límite, y exige que los documentos parseados coincidan con el estado confiable en memoria.
+- Reproduce timestamp → snapshot → targets y las delegaciones recorridas mediante `trustedmetadata`, incluyendo hashes/longitudes del snapshot, threshold, versiones y expiración.
+- Solo conserva roles delegados recorridos por descriptores exitosamente resueltos; no afirma haber descubierto todo el grafo de delegaciones del repositorio.
+- Compara contra la generación activa y evita crear una nueva cuando root, bytes, versiones, expiraciones y relaciones son idénticos. Si la persistencia falla, la resolución falla cerrada y el updater se invalida.
+- La generación no se crea en el constructor ni por un `Refresh()` aislado: se crea cuando existe al menos un descriptor autenticado. Esto evita presentar una generación parcial como catálogo completo.
+- Integrado en `main` como `4983f7d`.
 
-- `TrustAnchor` conserva por separado el root bootstrap original y el root vigente en memoria. El replay siempre comienza desde el bytes exactos y el pin inicial, no desde el último root mutable.
-- Al construir el cliente, registra el ID/origen/pin del repositorio, carga la cadena SQLite y reproduce cada root consecutiva con `trustedmetadata.UpdateRoot`. El high-water y el último hash deben coincidir antes de hacer cualquier solicitud de red.
-- Un transporte acotado observa solo respuestas `N.root.json` exitosas del mismo origen de metadata y devuelve exactamente los mismos bytes al fetcher oficial de go-tuf.
-- Después del refresh, la capa catalog reproduce los candidatos con go-tuf. Antes del commit durable comprueba que la versión final coincide con la versión efectivamente aceptada por el updater oficial. Solo entonces realiza el commit CAS de los roots válidos.
-- Si timestamp/snapshot/targets falla después de una rotación root válida, la rotación ya aceptada se conserva en SQLite; la instancia del updater se invalida y el siguiente proceso revalida la cadena desde el pin bootstrap.
-- La prueba de reinicio utiliza una segunda instancia, el anchor original y una caché metadata vacía: comprueba que no vuelve a descargar root v2 y continúa desde v2.
+### Evidencia de CI
 
-PR #23 se integró en `main` como `1988db9`. La matriz definitiva previa al merge pasó 5/5 en [run 46093570302](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46093570302) para el commit `c75ec36e8891bec608d276883c70b04b4c321229`: Windows, macOS, Ubuntu, Race Detector y fuzzing. El CI post-merge se ejecuta sobre el commit de `main`.
+- PR #25: matriz pre-merge 5/5 en [run 46095086164](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46095086164); CI post-merge 5/5 en [run 46095255858](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46095255858).
+- PR #27: matriz pre-merge 5/5 en [run 46097598736](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46097598736); CI post-merge 5/5 en [run 46097718344](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46097718344). Ambos cubren Windows, macOS, Ubuntu, Race Detector y fuzzing.
 
-### Límites que permanecen
+## Límites y siguientes hitos
 
-- Solo se persiste root-chain. Timestamp, snapshot, targets y roles delegados no tienen todavía almacenamiento transaccional por generación ni high-water durable por rol.
-- La prueba demuestra recuperación con una nueva instancia y una caché vacía después de un refresh que falla en timestamp; todavía faltan pruebas de terminación abrupta del proceso, disco lleno, dos procesos escritores y recuperación de commits interrumpidos.
-- `NewPersistentTUFClient` recibe un `*sqlitetuf.Store` ya abierto; el propietario debe mantenerlo abierto durante toda la vida del cliente.
-- No se habilita `UnsafeLocalMode`, catálogo offline ni anti-rollback fuerte frente a restauración integral del disco. El bootstrap de producción y la custodia/rotación real de claves siguen abiertos.
-
-El siguiente hito es staging y commit atómico de generaciones completas con metadata por rol, high-water persistentes y `active_generation`. M1.4 no se cierra hasta completar recuperación, políticas de bootstrap y validación offline.
-## Contrato de generaciones SQLite v2 (PR #25, integrado)
-
-PR #25 integra la primera implementación ejecutable del modelo de generaciones, todavía como capa de almacenamiento independiente del updater:
-
-- La migración v1→v2 crea `generations`, `generation_metadata`, `generation_role_parents`, `role_high_water` y `active_generations` sin modificar ni eliminar la root-chain existente. La prueba de migración incluye una rotación root v2 preexistente y verifica que sus bytes, hash y enlace con el ancla se conservan.
-- `CommitGeneration` requiere `timestamp`, `snapshot` y `targets`; acepta además roles delegados ya resueltos y verificados por `catalog`, junto con sus relaciones padre/hijo. Rechaza roles duplicados, relaciones ausentes, ciclos, tamaños excesivos y nombres no normalizados.
-- La operación exige que la root propuesta coincida con latest-root y aplica CAS sobre la generación activa. En una sola transacción inserta la generación, los blobs y relaciones, actualiza high-water por rol y cambia `active_generations`.
-- El high-water conserva la versión, hash, expiración y `source_generation_id`; sus claves foráneas lo vinculan a los bytes inmutables de la metadata original. Triggers SQLite prohíben su borrado o una actualización no monotónica.
-- `LoadActiveGeneration` lee desde una instantánea única y comprueba los hashes de los blobs, el manifiesto, root actual, high-water de roles activos y bytes fuente de high-water históricos incluso cuando el rol no aparece en la generación activa.
-- Tests cubren rollback total ante fallo de escritura, migración con root-chain existente, re-apertura, delegaciones, rollback/equivocation, root drift, CAS, borrado/decremento SQL y corrupción de la evidencia de un rol omitido.
-
-La matriz pre-merge del commit `c5fe257c22d19a6183b7d6b28031325a5539f01e` pasó 5/5 en [run 46095086164](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46095086164): Windows, macOS, Ubuntu, Race Detector y fuzzing. PR #25 se integró en `main` como `e4341ab`.
-
-### Límites que permanecen tras PR #25
-
-- `CommitGeneration` solo guarda metadata que el caller ya verificó; el paquete SQLite no verifica firmas TUF, threshold, hashes declarados por snapshot ni expiración.
-- `TUFClient` todavía no crea estas generaciones automáticamente. Falta materializar staging a partir del cache exacto del updater, comprobar hashes/longitudes de snapshot y recolectar cada delegación requerida mediante `GetTargetInfo`.
-- No se afirma que se haya resuelto el grafo completo de delegaciones del repositorio: la generación contiene los roles suministrados y verificados por el caller.
-- Los tests actuales prueban re-apertura y rollback transaccional inyectando errores; falta terminación abrupta real entre las etapas, disco lleno y escritores en procesos separados.
-- No se habilita `UnsafeLocalMode`, consulta offline ni anti-rollback fuerte frente a restauración integral del mismo disco.
-## Contrato de generaciones SQLite v2 (PR #25, integrado)
-
-PR #25 integra la primera implementación ejecutable del modelo de generaciones, todavía como capa de almacenamiento independiente del updater:
-
-- La migración v1→v2 crea `generations`, `generation_metadata`, `generation_role_parents`, `role_high_water` y `active_generations` sin modificar ni eliminar la root-chain existente. La prueba de migración incluye una rotación root v2 preexistente y verifica que sus bytes, hash y enlace con el ancla se conservan.
-- `CommitGeneration` requiere `timestamp`, `snapshot` y `targets`; acepta además roles delegados ya resueltos y verificados por `catalog`, junto con sus relaciones padre/hijo. Rechaza roles duplicados, relaciones ausentes, ciclos, tamaños excesivos y nombres no normalizados.
-- La operación exige que la root propuesta coincida con latest-root y aplica CAS sobre la generación activa. En una sola transacción inserta la generación, los blobs y relaciones, actualiza high-water por rol y cambia `active_generations`.
-- El high-water conserva versión, hash, expiración y `source_generation_id`; sus claves foráneas lo vinculan a los bytes inmutables de la metadata original. Triggers SQLite prohíben su borrado o una actualización no monotónica.
-- `LoadActiveGeneration` lee desde una instantánea única y comprueba hashes de los blobs, manifiesto, root actual, high-water de roles activos y bytes fuente de high-water históricos incluso cuando un rol no aparece en la generación activa.
-- Tests cubren rollback total ante fallo de escritura, migración con root-chain existente, re-apertura, delegaciones, rollback/equivocation, root drift, CAS, borrado/decremento SQL y corrupción de la evidencia de un rol omitido.
-
-La matriz pre-merge del commit `c5fe257c22d19a6183b7d6b28031325a5539f01e` pasó 5/5 en [run 46095086164](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46095086164): Windows, macOS, Ubuntu, Race Detector y fuzzing. PR #25 se integró en `main` como `e4341ab`.
-
-### Límites que permanecen tras PR #25
-
-- `CommitGeneration` solo guarda metadata que el caller ya verificó; el paquete SQLite no valida firmas TUF, threshold, hashes declarados por snapshot ni expiración.
-- `TUFClient` todavía no crea estas generaciones automáticamente. Falta materializar staging a partir de la caché exacta del updater, comprobar hashes/longitudes de snapshot y recolectar cada delegación requerida mediante `GetTargetInfo`.
-- No se afirma que se haya resuelto el grafo completo de delegaciones del repositorio: la generación contiene los roles suministrados y verificados por el caller.
-- Los tests actuales prueban re-apertura y rollback transaccional inyectando errores; falta terminación abrupta real entre etapas, disco lleno y escritores en procesos separados.
-- No se habilita `UnsafeLocalMode`, consulta offline ni anti-rollback fuerte frente a restauración integral del mismo disco.
+- El updater online todavía usa su caché de archivos como fuente de trabajo; PR #27 persiste los bytes aceptados en SQLite después de resolver descriptores, pero aún no construye un staging aislado e inmutable antes del refresh.
+- No existe todavía un flujo que materialice una generación desde SQLite en un reinicio y ejecute un verificador offline explícito. `UnsafeLocalMode` permanece deshabilitado.
+- La generación contiene metadata top-level y roles delegados recorridos por los descriptores resueltos; los roles nunca consultados no se presentan como verificados ni como parte de un grafo completo.
+- La re-apertura ordenada, la integridad de blobs y el rollback transaccional inyectado están cubiertos. Faltan pruebas de terminación abrupta entre etapas, disco lleno, errores de fsync/sidecar y escritores concurrentes en procesos distintos.
+- El estado SQLite local no protege frente a restaurar una imagen completa antigua del mismo disco. Sigue pendiente un TPM/contador monotónico o witness externo para elevar el assurance anti-rollback.
+- El bootstrap de confianza y la custodia/rotación de claves de producción siguen abiertos. No se declara M1.4 cerrado hasta completar recuperación, bootstrap y verificación offline.
