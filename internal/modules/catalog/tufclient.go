@@ -3,8 +3,6 @@ package catalog
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -18,8 +16,6 @@ import (
 
 	"github.com/JavierGrecco/SOPTRAZ/internal/modules/artifact"
 	"github.com/JavierGrecco/SOPTRAZ/internal/storage/sqlitetuf"
-	"github.com/theupdateframework/go-tuf/v2/metadata"
-	"github.com/theupdateframework/go-tuf/v2/metadata/trustedmetadata"
 	tufconfig "github.com/theupdateframework/go-tuf/v2/metadata/config"
 	tufupdater "github.com/theupdateframework/go-tuf/v2/metadata/updater"
 )
@@ -47,8 +43,8 @@ type TUFClientConfig struct {
 	AllowInsecureLoopbackHTTP bool
 }
 
-// TUFClient wraps the official go-tuf Updater. The Updater is not safe for
-// concurrent use, so all refresh/lookup operations are serialized here.
+// persistentTUFTrust keeps the durable bootstrap identity and latest verified
+// root used to seed each new official go-tuf Updater.
 type persistentTUFTrust struct {
 	store         *sqlitetuf.Store
 	repositoryID  string
