@@ -63,6 +63,7 @@ type Logger struct {
 	runLock        *flock.Flock
 	path           string
 	closed         bool
+	hasEvents      bool
 	crashOutputSet bool
 	recoveredRuns  []string
 }
@@ -196,7 +197,11 @@ func (logger *Logger) Record(event Event) error {
 	if logger.closed {
 		return ErrLoggerClosed
 	}
-	return logger.appendEventLocked(event, nil)
+	if err := logger.appendEventLocked(event, nil); err != nil {
+		return err
+	}
+	logger.hasEvents = true
+	return nil
 }
 
 // RecordPanic records an unexpected recovered panic with the current goroutine
@@ -218,7 +223,11 @@ func (logger *Logger) RecordPanic(component string, recovered any, stack []byte)
 		Message:   "Se recuperó un panic no esperado en el límite de ejecución.",
 		Cause:     fmt.Sprint(recovered),
 	}
-	return logger.appendEventLocked(event, stack)
+	if err := logger.appendEventLocked(event, stack); err != nil {
+		return err
+	}
+	logger.hasEvents = true
+	return nil
 }
 
 // Close records an orderly shutdown. If the process is killed or the OS stops
@@ -250,17 +259,41 @@ func (logger *Logger) Close() error {
 		result = errors.Join(result, fmt.Errorf("sincronizar informe de diagnóstico: %w", err))
 	}
 
+	removeRoutineReport := !logger.hasEvents && len(logger.recoveredRuns) == 0
+	var startupLock *flock.Flock
+	if removeRoutineReport {
+		var err error
+		startupLock, err = acquireStartupLock(filepath.Dir(logger.path))
+		if err != nil {
+			result = errors.Join(result, fmt.Errorf("proteger limpieza del informe rutinario: %w", err))
+			removeRoutineReport = false
+		}
+	}
+
 	if logger.runLock != nil {
 		if err := logger.runLock.Unlock(); err != nil {
 			result = errors.Join(result, fmt.Errorf("liberar lock del informe de diagnóstico: %w", err))
+			removeRoutineReport = false
 		}
 	}
 	if logger.file != nil {
 		if err := logger.file.Close(); err != nil {
 			result = errors.Join(result, fmt.Errorf("cerrar informe de diagnóstico: %w", err))
+			removeRoutineReport = false
 		}
 	}
 	logger.closed = true
+
+	if removeRoutineReport {
+		if err := os.Remove(logger.path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			result = errors.Join(result, fmt.Errorf("retirar informe sin incidencias: %w", err))
+		}
+	}
+	if startupLock != nil {
+		if err := startupLock.Unlock(); err != nil {
+			result = errors.Join(result, fmt.Errorf("liberar lock de limpieza de diagnósticos: %w", err))
+		}
+	}
 	return result
 }
 
