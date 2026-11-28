@@ -348,6 +348,13 @@ func (client *TUFClient) finishPersistentRefresh(
 	}
 
 	candidates, captureErr := persistence.capture.take()
+	if captureErr != nil {
+		if refreshErr != nil {
+			return fmt.Errorf("actualizar metadata TUF: %v; capturar root para persistencia: %w", refreshErr, captureErr)
+		}
+		return fmt.Errorf("capturar root TUF para persistencia: %w", captureErr)
+	}
+
 	currentState := TrustState{
 		Version: persistence.rootState.Version,
 		SHA256:  persistence.rootState.SHA256,
@@ -357,6 +364,23 @@ func (client *TUFClient) finishPersistentRefresh(
 		currentState,
 		candidates,
 	)
+
+	// Do not commit a captured candidate merely because a second replay accepts
+	// it. First prove that the official updater consumed and accepted the same
+	// root sequence. This prevents persisting a response that go-tuf rejected
+	// earlier (for example because its HTTP Content-Length was invalid).
+	trusted := officialUpdater.GetTrustedMetadataSet()
+	if trusted.Root == nil {
+		if refreshErr != nil {
+			return fmt.Errorf("actualizar metadata TUF: %w", refreshErr)
+		}
+		return fmt.Errorf("%w: updater TUF no devolvió una raíz confiable", ErrTUFClientUnavailable)
+	}
+	if trusted.Root.Signed.Version != latestState.Version {
+		return fmt.Errorf("%w: go-tuf quedó en root v%d y la cadena candidata en root v%d",
+			ErrTUFClientUnavailable, trusted.Root.Signed.Version, latestState.Version)
+	}
+
 	if len(verifiedRoots) > 0 {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		committed, err := persistence.store.CommitVerifiedRoots(
@@ -379,28 +403,11 @@ func (client *TUFClient) finishPersistentRefresh(
 		client.config.LocalTrustedRoot = append([]byte(nil), latestRootJSON...)
 	}
 
-	trusted := officialUpdater.GetTrustedMetadataSet()
-	if trusted.Root == nil {
-		if refreshErr != nil {
-			return fmt.Errorf("actualizar metadata TUF: %w", refreshErr)
-		}
-		return fmt.Errorf("%w: updater TUF no devolvió una raíz confiable", ErrTUFClientUnavailable)
-	}
-	if trusted.Root.Signed.Version != persistence.rootState.Version {
-		return fmt.Errorf("%w: go-tuf quedó en root v%d y SQLite en root v%d",
-			ErrTUFClientUnavailable, trusted.Root.Signed.Version, persistence.rootState.Version)
-	}
 	if verifyErr != nil {
 		if refreshErr != nil {
 			return fmt.Errorf("actualizar metadata TUF: %v; validar/persistir rotación: %w", refreshErr, verifyErr)
 		}
 		return fmt.Errorf("validar/persistir rotación TUF: %w", verifyErr)
-	}
-	if captureErr != nil {
-		if refreshErr != nil {
-			return fmt.Errorf("actualizar metadata TUF: %v; capturar root para persistencia: %w", refreshErr, captureErr)
-		}
-		return fmt.Errorf("capturar root TUF para persistencia: %w", captureErr)
 	}
 	if refreshErr != nil {
 		return fmt.Errorf("actualizar metadata TUF: %w", refreshErr)
