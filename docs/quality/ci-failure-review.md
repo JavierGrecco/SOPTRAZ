@@ -160,3 +160,23 @@ La integración de diagnósticos selectivos en `internal/modules/artifact` tuvo 
 La corrección agregó el recorder concurrency-safe, pruebas para discrepancias de integridad y symlinks, y comprobaciones para que errores esperables de descriptor/plataforma no generen eventos. El test también simula que el almacenamiento de diagnósticos falla y verifica que el resolver conserva su error original. La ejecución #231 pasó formato, `go vet` y tests en los tres sistemas; en Ubuntu también pasó `go mod tidy -diff` y `go mod verify`.
 
 Esta integración continúa siendo opcional: el composition root debe crear el resolver mediante `NewResolverWithDiagnostics`. No existe logging global ni integración equivalente en el cliente TUF. La ejecución #231 valida el código funcional del commit `75b68b4`; el presente apéndice documenta esa evidencia.
+## Actualización de PR #31 — diagnóstico TUF y equivocation — 2026-11-28
+
+La extensión del registrador al cliente TUF y la clasificación de respuestas contradictorias de raíz quedaron validadas así:
+
+| Run | Commit | Resultado | Causa o cobertura |
+|---|---|---|---|
+| [#233](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46109357908) | `04bec78` | Falló formato en Windows/macOS/Ubuntu; Race Detector, fuzzing e higiene de ramas pasaron | Dos líneas en blanco redundantes al introducir el helper de diagnóstico y su recorder de prueba. |
+| [#234](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46109406525) | `60006d0` | **6/6 aprobados** | Inyección de diagnósticos TUF, rechazo de replay inválido de raíces y silencio ante un fallo de disponibilidad por falta de `timestamp.json`. |
+| [#235](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46109620894) | `eacac7e` | Falló formato en Ubuntu/macOS; fuzzing e higiene de ramas pasaron | Una línea en blanco redundante antes de la nueva prueba de equivocation. |
+| [#236](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46109708061) | `2b24f1a` | **6/6 aprobados** | Prueba de respuestas idénticas de root aceptadas y contenidos distintos para la misma versión rechazados; CI completa en Windows/macOS/Ubuntu, Race Detector, fuzzing y branch hygiene. |
+
+La API opcional `TUFClientConfig.Diagnostics` ahora registra con mensajes fijos y sin URLs, rutas, metadata ni errores crudos:
+- Cadena de raíces persistida que no se puede autenticar desde el pin bootstrap (`CRITICAL`).
+- Conflicto de binding entre identidad/ancla del repositorio (`CRITICAL`).
+- Divergencia del high-water anti-rollback (`CRITICAL`).
+- Rotaciones no verificables y divergencia entre la root aceptada por go-tuf y la capturada (`CRITICAL`).
+- Dos contenidos distintos para una misma versión de root (`tuf.root_equivocation_detected`, `CRITICAL`).
+- Fallos de lectura/commit SQLite y captura no contradictoria (`ERROR`).
+
+Los errores normales de conectividad/metadata no se elevan a críticos: la prueba de refresh sin timestamp confirma que no se crea un evento de seguridad. El recorder es opcional y best-effort; un fallo del registro no sustituye el error TUF original. El composition root aún debe inyectarlo en los clientes usados por un flujo de producción.
