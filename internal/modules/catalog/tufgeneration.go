@@ -293,7 +293,7 @@ func captureAndVerifyGenerationMetadata(
 
 	replayed, err := replayVerifiedGeneration(rootJSON, rootState, trusted.RefTime, result, maxDelegations)
 	if err != nil {
-		return nil, fmt.Errorf("%w: replay go-tuf de la generación: %v", ErrGenerationCapture, err)
+		return nil, fmt.Errorf("%w: replay go-tuf de la generación: %w", ErrGenerationCapture, err)
 	}
 	if !reflect.DeepEqual(replayed.Root, trusted.Root) ||
 		!reflect.DeepEqual(replayed.Timestamp, trusted.Timestamp) ||
