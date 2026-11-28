@@ -68,13 +68,22 @@ func TestReplayVerifiedGenerationUsesOneExplicitReferenceTime(t *testing.T) {
 func TestReplayVerifiedGenerationRejectsExpiredMetadataAtExplicitReferenceTime(t *testing.T) {
 	fixture := makeDelegatedRepositoryFixture(t)
 	roles := replayFixtureRoles(t, fixture)
+
+	// Keep the root valid at the reference time so this exercises timestamp
+	// expiry rather than failing earlier on the root's expiration.
+	root, err := metadata.Root().FromBytes(fixture.rootJSON)
+	if err != nil {
+		t.Fatalf("parse fixture root: %v", err)
+	}
+	root.Signed.Expires = time.Now().UTC().Add(72 * time.Hour)
+	rootJSON := signedMetadataBytes(t, root, fixture.rootSigner)
+	rootState := sqlitetuf.RootState{Version: 1, SHA256: rootPin(rootJSON)}
 	referenceTime := time.Now().UTC().Add(48 * time.Hour)
 
-	if _, err := replayVerifiedGeneration(fixture.rootJSON, replayFixtureRootState(fixture), referenceTime, roles, 4); !errors.Is(err, ErrGenerationReplay) {
+	if _, err := replayVerifiedGeneration(rootJSON, rootState, referenceTime, roles, 4); !errors.Is(err, ErrGenerationReplay) {
 		t.Fatalf("replayVerifiedGeneration() error = %v, want ErrGenerationReplay", err)
 	}
 }
-
 func TestReplayVerifiedGenerationRejectsWrongRootPinAndMissingTime(t *testing.T) {
 	fixture := makeDelegatedRepositoryFixture(t)
 	roles := replayFixtureRoles(t, fixture)
@@ -94,7 +103,7 @@ func TestReplayVerifiedGenerationRejectsDelegatedBytesNotBoundBySnapshot(t *test
 	roles := replayFixtureRoles(t, fixture)
 	var envelope struct {
 		Signatures []struct {
-			Sig string `json:"sig"` 
+			Sig string `json:"sig"`
 		} `json:"signatures"`
 	}
 	if err := json.Unmarshal(roles[3].Metadata, &envelope); err != nil {
