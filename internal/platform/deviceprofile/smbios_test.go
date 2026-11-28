@@ -166,7 +166,6 @@ func appendSMBIOSStructure(table []byte, structureType byte, formatted []byte) [
 	return append(table, 0, 0)
 }
 
-
 func TestParseSMBIOSChassisTypesRejectsMissingEndMarker(t *testing.T) {
 	table := appendSMBIOSStructure(nil, 3, []byte{1, 9})
 	_, err := ParseSMBIOSChassisTypes(wrapRawSMBIOS(table))
