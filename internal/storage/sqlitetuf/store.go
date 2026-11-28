@@ -94,12 +94,9 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		return nil, fmt.Errorf("%w: se requiere una ruta de archivo local", ErrInvalidTrustStore)
 	}
 
-	absolutePath, err := filepath.Abs(path)
+	absolutePath, err := prepareTrustStorePath(path)
 	if err != nil {
-		return nil, fmt.Errorf("%w: resolver la ruta: %v", ErrInvalidTrustStore, err)
-	}
-	if err := os.MkdirAll(filepath.Dir(absolutePath), 0o700); err != nil {
-		return nil, fmt.Errorf("%w: crear el directorio: %v", ErrInvalidTrustStore, err)
+		return nil, err
 	}
 
 	db, err := sql.Open("sqlite", sqliteDSN(absolutePath))
