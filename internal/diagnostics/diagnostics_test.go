@@ -245,3 +245,38 @@ func TestPanicReportIncludesStack(t *testing.T) {
 		}
 	}
 }
+
+func TestReportRetentionKeepsOnlyMostRecentThirtyRuns(t *testing.T) {
+	directory := t.TempDir()
+	for index := 0; index < maxRunReports+3; index++ {
+		logger, err := Open(directory, "retention-test")
+		if err != nil {
+			t.Fatalf("Open() run %d: %v", index, err)
+		}
+		if err := logger.Record(Event{
+			Severity: SeverityError,
+			Component: "test.retention",
+			Code: "test.retention",
+			Message: "retention fixture",
+		}); err != nil {
+			t.Fatalf("Record() run %d: %v", index, err)
+		}
+		if err := logger.Close(); err != nil {
+			t.Fatalf("Close() run %d: %v", index, err)
+		}
+	}
+
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		t.Fatalf("ReadDir() error = %v", err)
+	}
+	count := 0
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), runLogPrefix) && strings.HasSuffix(entry.Name(), ".txt") {
+			count++
+		}
+	}
+	if count != maxRunReports {
+		t.Fatalf("retained reports = %d, want %d", count, maxRunReports)
+	}
+}
