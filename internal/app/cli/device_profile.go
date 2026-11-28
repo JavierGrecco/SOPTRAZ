@@ -17,7 +17,7 @@ type deviceProfileReport struct {
 	ScopeNote        string                        `json:"scope_note"`
 }
 
-const deviceProfileScopeNote = "Inventario inicial de solo lectura: chasis SMBIOS, alimentación/batería, dispositivos touch/pen y estado de convertible/dock cuando está disponible. Las capacidades no recolectadas permanecen como unknown; no se aplican optimizaciones."
+const deviceProfileScopeNote = "Inventario de solo lectura con cobertura según plataforma: Windows consulta firmware/SMBIOS, alimentación y dispositivos de puntero; Linux consulta DMI y fuentes de alimentación sysfs; macOS consulta la familia del modelo mediante hw.model. Sensores, SMART, capacidades no recolectadas y datos no verificables permanecen como unknown; no se aplican optimizaciones."
 
 func buildDeviceProfileReport(result platformprofile.Result) deviceProfileReport {
 	observations := moduleprofile.NormalizeObservations(result.Observations)

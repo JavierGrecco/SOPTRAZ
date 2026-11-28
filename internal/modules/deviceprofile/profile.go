@@ -136,14 +136,23 @@ type Capabilities struct {
 	ConvertibleSlate SlateMode   `json:"convertible_slate_mode"`
 }
 
+// EvidenceSources identifies the native source behind normalized observations.
+// Empty fields retain the original Windows source identifiers for compatibility.
+type EvidenceSources struct {
+	DeviceForm         string `json:"device_form,omitempty"`
+	SMBIOSChassisTypes string `json:"smbios_chassis_types,omitempty"`
+	PCSystemType       string `json:"pc_system_type,omitempty"`
+	VirtualMachine     string `json:"virtual_machine,omitempty"`
+}
+
 // Observations contains normalized, read-only results from platform adapters.
-// DeviceForm is the normalized Windows DeviceForm result when available.
-// SMBIOSChassisTypes contains raw Win32_SystemEnclosure.ChassisTypes codes.
+// SMBIOSChassisTypes contains chassis codes obtained from firmware/DMI sources.
 type Observations struct {
-	DeviceForm         FormFactor   `json:"device_form,omitempty"`
-	SMBIOSChassisTypes []uint16     `json:"smbios_chassis_types,omitempty"`
-	PCSystemType       PCSystemType `json:"pc_system_type,omitempty"`
-	Capabilities       Capabilities `json:"capabilities"`
+	DeviceForm         FormFactor      `json:"device_form,omitempty"`
+	SMBIOSChassisTypes []uint16        `json:"smbios_chassis_types,omitempty"`
+	PCSystemType       PCSystemType    `json:"pc_system_type,omitempty"`
+	EvidenceSources    EvidenceSources `json:"evidence_sources,omitempty"`
+	Capabilities       Capabilities    `json:"capabilities"`
 }
 
 // Evidence records why a classification was selected or left uncertain.
@@ -199,7 +208,7 @@ func Classify(observations Observations) Profile {
 		profile.FormFactor = FormFactorVirtual
 		profile.Confidence = ConfidenceHigh
 		profile.Evidence = append(profile.Evidence, Evidence{
-			Source: evidenceVirtual, Value: "true", Candidate: FormFactorVirtual, Strength: "explicit",
+			Source: sourceOr(observations.EvidenceSources.VirtualMachine, evidenceVirtual), Value: "true", Candidate: FormFactorVirtual, Strength: "explicit",
 		})
 		if hasPhysicalFormFactorEvidence(observations) {
 			profile.Warnings = append(profile.Warnings, "El entorno virtual informa también datos de chasis físico; no se infiere el hardware del host.")
@@ -213,7 +222,7 @@ func Classify(observations Observations) Profile {
 			profile.Warnings = append(profile.Warnings, fmt.Sprintf("DeviceForm contiene una categoría no soportada: %q.", deviceForm))
 		} else {
 			profile.Evidence = append(profile.Evidence, Evidence{
-				Source: evidenceDeviceForm, Value: string(deviceForm), Candidate: deviceForm, Strength: "specific",
+				Source: sourceOr(observations.EvidenceSources.DeviceForm, evidenceDeviceForm), Value: string(deviceForm), Candidate: deviceForm, Strength: "specific",
 			})
 		}
 	}
@@ -226,11 +235,11 @@ func Classify(observations Observations) Profile {
 		if recognized {
 			chassisCandidates[candidate] = struct{}{}
 			profile.Evidence = append(profile.Evidence, Evidence{
-				Source: evidenceSMBIOS, Value: strconv.FormatUint(uint64(code), 10), Candidate: candidate, Strength: "specific",
+				Source: sourceOr(observations.EvidenceSources.SMBIOSChassisTypes, evidenceSMBIOS), Value: strconv.FormatUint(uint64(code), 10), Candidate: candidate, Strength: "specific",
 			})
 		} else if generic {
 			profile.Evidence = append(profile.Evidence, Evidence{
-				Source: evidenceSMBIOS, Value: strconv.FormatUint(uint64(code), 10), Candidate: FormFactorUnknown, Strength: "generic",
+				Source: sourceOr(observations.EvidenceSources.SMBIOSChassisTypes, evidenceSMBIOS), Value: strconv.FormatUint(uint64(code), 10), Candidate: FormFactorUnknown, Strength: "generic",
 			})
 			profile.Warnings = append(profile.Warnings, fmt.Sprintf("SMBIOS ChassisType %d es demasiado genérico para distinguir tablet de notebook.", code))
 		} else {
@@ -258,7 +267,7 @@ func Classify(observations Observations) Profile {
 			strength = "ambiguous"
 		}
 		profile.Evidence = append(profile.Evidence, Evidence{
-			Source: evidencePCSystem, Value: value, Candidate: candidate, Strength: strength,
+			Source: sourceOr(observations.EvidenceSources.PCSystemType, evidencePCSystem), Value: value, Candidate: candidate, Strength: strength,
 		})
 		if observations.PCSystemType == PCSystemTypeMobile {
 			profile.Warnings = append(profile.Warnings, "PCSystemType Mobile no distingue por sí solo notebook, tablet o convertible.")
@@ -331,6 +340,13 @@ func formFactorFromChassis(code uint16) (FormFactor, bool, bool) {
 	default:
 		return FormFactorUnknown, false, false
 	}
+}
+
+func sourceOr(source, fallback string) string {
+	if strings.TrimSpace(source) == "" {
+		return fallback
+	}
+	return source
 }
 
 func formFactorFromPCSystemType(systemType PCSystemType) (FormFactor, bool) {
