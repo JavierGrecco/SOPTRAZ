@@ -9,21 +9,22 @@ import (
 )
 
 type deviceProfileReport struct {
-	CollectionStatus string                         `json:"collection_status"`
-	Observations     moduleprofile.Observations     `json:"observations"`
-	Profile          moduleprofile.Profile          `json:"profile"`
-	SourceErrors     []platformprofile.SourceError   `json:"source_errors,omitempty"`
-	MutationsApplied bool                           `json:"mutations_applied"`
-	ScopeNote        string                         `json:"scope_note"`
+	CollectionStatus string                        `json:"collection_status"`
+	Observations     moduleprofile.Observations    `json:"observations"`
+	Profile          moduleprofile.Profile         `json:"profile"`
+	SourceErrors     []platformprofile.SourceError `json:"source_errors,omitempty"`
+	MutationsApplied bool                          `json:"mutations_applied"`
+	ScopeNote        string                        `json:"scope_note"`
 }
 
 const deviceProfileScopeNote = "Inventario inicial de solo lectura: chasis SMBIOS, alimentación/batería, dispositivos touch/pen y estado de convertible/dock cuando está disponible. Las capacidades no recolectadas permanecen como unknown; no se aplican optimizaciones."
 
 func buildDeviceProfileReport(result platformprofile.Result) deviceProfileReport {
+	observations := moduleprofile.NormalizeObservations(result.Observations)
 	return deviceProfileReport{
 		CollectionStatus: deviceCollectionStatus(result),
-		Observations:     result.Observations,
-		Profile:          moduleprofile.Classify(result.Observations),
+		Observations:     observations,
+		Profile:          moduleprofile.Classify(observations),
 		SourceErrors:     result.SourceErrors,
 		MutationsApplied: false,
 		ScopeNote:        deviceProfileScopeNote,
@@ -41,10 +42,11 @@ func deviceCollectionStatus(result platformprofile.Result) string {
 }
 
 func hasObservedDeviceData(observations moduleprofile.Observations) bool {
+	observations = moduleprofile.NormalizeObservations(observations)
 	capabilities := observations.Capabilities
-	return observations.DeviceForm != "" ||
+	return (observations.DeviceForm != "" && observations.DeviceForm != moduleprofile.FormFactorUnknown) ||
 		len(observations.SMBIOSChassisTypes) > 0 ||
-		observations.PCSystemType != "" ||
+		(observations.PCSystemType != "" && observations.PCSystemType != moduleprofile.PCSystemTypeUnknown) ||
 		capabilities.BatteryPresent != moduleprofile.Unknown ||
 		capabilities.Touch != moduleprofile.Unknown ||
 		capabilities.Pen != moduleprofile.Unknown ||
@@ -54,8 +56,8 @@ func hasObservedDeviceData(observations moduleprofile.Observations) bool {
 		capabilities.ThermalSensors != moduleprofile.Unknown ||
 		capabilities.DockPresent != moduleprofile.Unknown ||
 		capabilities.VirtualMachine != moduleprofile.Unknown ||
-		capabilities.PowerSource != moduleprofile.PowerSourceUnknown ||
-		capabilities.ConvertibleSlate != moduleprofile.SlateModeUnknown
+		(capabilities.PowerSource != "" && capabilities.PowerSource != moduleprofile.PowerSourceUnknown) ||
+		(capabilities.ConvertibleSlate != "" && capabilities.ConvertibleSlate != moduleprofile.SlateModeUnknown)
 }
 
 func runDeviceProfile(args []string, stdout, stderr io.Writer) int {
