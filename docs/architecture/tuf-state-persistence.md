@@ -248,7 +248,7 @@ No se restaurará automáticamente una generación vieja para “hacer que el pr
 - [go-tuf v2.5.0 updater.go](https://github.com/theupdateframework/go-tuf/blob/v2.5.0/metadata/updater/updater.go) — flujo del updater, refresh, UnsafeLocalMode y persistencia individual de metadata.
 - [TUF security scope](https://github.com/theupdateframework/specification/blob/master/governance/02-scope.md) — amenazas cubiertas como rollback, freeze y mix-and-match.
 
-Este documento registra el diseño de seguridad y las decisiones que faltan. No introduce todavía almacenamiento durable, modo offline ni una garantía hardware anti-rollback.
+Este documento registra el diseño de seguridad y las decisiones que faltan. La persistencia durable de root-chain ya está implementada; este documento no habilita todavía el modo offline ni una garantía hardware anti-rollback.
 
 
 ## 12. Estado de implementación tras PR #20, PR #22 y PR #23
@@ -256,6 +256,6 @@ Este documento registra el diseño de seguridad y las decisiones que faltan. No 
 - PR #20 integrado como `1bf7e13`: el último root TUF verificado se conserva entre refreshes de la misma instancia y sobrevive a un fallo posterior de timestamp/snapshot/targets.
 - PR #22 integrado en `main`: el paquete `internal/storage/sqlitetuf` persiste la cadena histórica de root en un SQLite separado, con ancla/origen fijados, hashes exactos, enlaces consecutivos, append-only, CAS transaccional y lectura consistente.
 - PR #23 integrado como `1988db9` añade `NewPersistentTUFClient`: replay de cada root desde el pin bootstrap inmutable, captura acotada de las respuestas versionadas y commit durable únicamente si go-tuf alcanzó la misma versión. Conserva raíces válidas aunque falle metadata posterior y las recupera con una nueva instancia/caché vacía.
-- La matriz definitiva pre-merge pasó 5/5 en [run 46093570302](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46093570302) para el commit `c75ec36e8891bec608d276883c70b04b4c321229`: Windows, macOS, Ubuntu, Race Detector y fuzzing. El CI post-merge de `main` corresponde al commit `1988db9`.
+- La matriz definitiva pre-merge pasó 5/5 en [run 46093570302](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46093570302) para el commit `c75ec36e8891bec608d276883c70b04b4c321229`: Windows, macOS, Ubuntu, Race Detector y fuzzing. El CI post-merge también pasó 5/5 en [run 46093718592](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46093718592) sobre `main` (`1988db9`).
 - Persistencia de timestamp/snapshot/targets/delegaciones por generación, high-water por rol, staging, `active_generation`, recuperación tras terminación abrupta y validador offline siguen pendientes. No se habilita `UnsafeLocalMode`.
 - El nivel de assurance local no protege frente a restauración integral de una imagen antigua del mismo disco sin TPM/contador monotónico o witness externo; el bootstrap/custodia de claves para producción sigue pendiente.
