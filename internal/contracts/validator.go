@@ -9,8 +9,8 @@ import (
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
-	"github.com/JavierGrecco/SOPTRAZ/internal/strictjson"
 	"github.com/JavierGrecco/SOPTRAZ/internal/modules/supervisor"
+	"github.com/JavierGrecco/SOPTRAZ/internal/strictjson"
 )
 
 //go:embed schemas/*.schema.json
