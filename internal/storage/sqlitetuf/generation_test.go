@@ -454,3 +454,31 @@ func TestRoleHighWaterSurvivesOmissionWithImmutableSourceGeneration(t *testing.T
 		t.Fatalf("rejected reintroduction changed active generation to %d", afterReject.ID)
 	}
 }
+
+
+func TestRoleHighWaterCannotBeDeletedOrDowngradedThroughSQL(t *testing.T) {
+	ctx := context.Background()
+	store, _, anchor := openGenerationTestStore(t)
+	if _, err := store.CommitGeneration(ctx, "soptraz-tools", 0, anchor, generationTestRoles(4, 5, 6)); err != nil {
+		t.Fatalf("CommitGeneration() error = %v", err)
+	}
+
+	if _, err := store.db.ExecContext(ctx,
+		"UPDATE role_high_water SET version = version - 1 WHERE repository_id = ? AND role_name = ?",
+		"soptraz-tools",
+		"timestamp",
+	); err == nil {
+		t.Fatal("direct SQL downgrade of role high-water unexpectedly succeeded")
+	}
+	if _, err := store.db.ExecContext(ctx,
+		"DELETE FROM role_high_water WHERE repository_id = ? AND role_name = ?",
+		"soptraz-tools",
+		"timestamp",
+	); err == nil {
+		t.Fatal("direct SQL deletion of role high-water unexpectedly succeeded")
+	}
+
+	if _, err := store.LoadActiveGeneration(ctx, "soptraz-tools"); err != nil {
+		t.Fatalf("LoadActiveGeneration() after rejected SQL mutations: %v", err)
+	}
+}
