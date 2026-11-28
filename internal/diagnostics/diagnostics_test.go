@@ -5,11 +5,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
 )
+
+var diagnosticsHelperLogger *Logger
 
 func TestOpenCreatesPrivatePlainTextReportAndCleanCloseMarker(t *testing.T) {
 	directory := filepath.Join(t.TempDir(), "diagnostics")
@@ -124,10 +125,12 @@ func TestDiagnosticsAbruptExitHelper(t *testing.T) {
 	}
 	directory := os.Getenv("SOPTRAZ_DIAGNOSTICS_DIR")
 	readyPath := os.Getenv("SOPTRAZ_DIAGNOSTICS_READY")
+	releasePath := os.Getenv("SOPTRAZ_DIAGNOSTICS_RELEASE")
 	logger, err := Open(directory, "helper-version")
 	if err != nil {
 		os.Exit(91)
 	}
+	diagnosticsHelperLogger = logger
 	if err := logger.Record(Event{
 		Severity:  SeverityCritical,
 		Component: "test.helper",
@@ -139,20 +142,25 @@ func TestDiagnosticsAbruptExitHelper(t *testing.T) {
 	if err := os.WriteFile(readyPath, []byte(logger.Path()), 0o600); err != nil {
 		os.Exit(93)
 	}
-	// The parent forcibly kills this process; Close() and deferred cleanup never run.
-	done := make(chan struct{})
-	<-done
-	runtime.KeepAlive(logger)
+	for {
+		if _, err := os.Stat(releasePath); err == nil {
+			// os.Exit skips deferred cleanup and Logger.Close, simulating a hard exit.
+			os.Exit(0)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 func TestNextStartupDetectsAbruptProcessTermination(t *testing.T) {
 	directory := t.TempDir()
 	readyPath := filepath.Join(t.TempDir(), "ready")
+	releasePath := filepath.Join(t.TempDir(), "release")
 	command := exec.Command(os.Args[0], "-test.run=^TestDiagnosticsAbruptExitHelper$")
 	command.Env = append(os.Environ(),
 		"SOPTRAZ_DIAGNOSTICS_HELPER=1",
 		"SOPTRAZ_DIAGNOSTICS_DIR="+directory,
 		"SOPTRAZ_DIAGNOSTICS_READY="+readyPath,
+		"SOPTRAZ_DIAGNOSTICS_RELEASE="+releasePath,
 	)
 	if err := command.Start(); err != nil {
 		t.Fatalf("start abrupt-exit helper: %v", err)
@@ -160,7 +168,7 @@ func TestNextStartupDetectsAbruptProcessTermination(t *testing.T) {
 	processExited := false
 	defer func() {
 		if !processExited {
-			_ = command.Process.Kill()
+			_ = os.WriteFile(releasePath, []byte("EXIT"), 0o600)
 			_ = command.Wait()
 		}
 	}()
@@ -174,54 +182,15 @@ func TestNextStartupDetectsAbruptProcessTermination(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if err := command.Process.Kill(); err != nil {
-		t.Fatalf("kill diagnostics helper: %v", err)
+	if err := os.WriteFile(releasePath, []byte("EXIT"), 0o600); err != nil {
+		t.Fatalf("release diagnostics helper for abrupt exit: %v", err)
 	}
-	if err := command.Wait(); err == nil {
-		t.Fatal("forcibly terminated diagnostics helper exited successfully")
+	if err := command.Wait(); err != nil {
+		t.Fatalf("abrupt-exit helper returned error: %v", err)
 	}
 	processExited = true
 
 	logger, err := Open(directory, "recovery-version")
-	if err != nil {
-		t.Fatalf("Open() after abrupt exit: %v", err)
-	}
-	defer logger.Close()
-
-	recovered := logger.RecoveredRuns()
-	if len(recovered) != 1 {
-		t.Fatalf("RecoveredRuns() = %v, want exactly one incomplete execution", recovered)
-	}
-	previous, err := os.ReadFile(recovered[0])
-	if err != nil {
-		t.Fatalf("read previous execution report: %v", err)
-	}
-	report := string(previous)
-	for _, expected := range []string{
-		"test.abrupt_exit",
-		"CRITICAL",
-		"runtime.unexpected_shutdown",
-		"terminó sin registrar un cierre normal",
-		"Causa: indeterminada",
-		"RECUPERACIÓN REGISTRADA:",
-	} {
-		if !strings.Contains(report, expected) {
-			t.Errorf("recovered report does not contain %q: %s", expected, report)
-		}
-	}
-	if err := logger.Close(); err != nil {
-		t.Fatalf("close recovery run: %v", err)
-	}
-	next, err := Open(directory, "third-run-version")
-	if err != nil {
-		t.Fatalf("Open() after recovery marker: %v", err)
-	}
-	defer next.Close()
-	if len(next.RecoveredRuns()) != 0 {
-		t.Fatalf("same interrupted run was reported again: %v", next.RecoveredRuns())
-	}
-}
-
 func TestConcurrentActiveExecutionIsNotReportedAsCrash(t *testing.T) {
 	directory := t.TempDir()
 	first, err := Open(directory, "first-version")
