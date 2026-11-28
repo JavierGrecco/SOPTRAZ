@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "1.0.0",
+  "profileId": "soptraz.process.osquery.os-version",
+  "profileVersion": "1.0.0",
+  "actionId": "soptraz.inventory.os-version",
+  "actionVersion": "1.0.0",
+  "artifactId": "soptraz.osquery",
+  "artifactVersion": "5.24.1",
+  "purpose": "Consultar la versión del sistema operativo con una consulta fija y de solo lectura.",
+  "risk": "read_only",
+  "requiresAdmin": false,
+  "requiresApproval": false,
+  "idempotent": true,
+  "executionMode": "direct_argv",
+  "networkAccess": "none",
+  "timeoutSeconds": 10,
+  "fixedArguments": [
+    "--json",
+    "SELECT name, version, build FROM os_version;"
+  ],
+  "outputFormat": "json",
+  "maxStdoutBytes": 2097152,
+  "maxStderrBytes": 65536,
+  "acceptedExitCodes": [0]
+}

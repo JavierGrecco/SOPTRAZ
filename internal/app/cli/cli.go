@@ -56,7 +56,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return runTimeStatus(args, stdout, stderr)
 	case "validate":
 		if len(args) != 3 {
-			fmt.Fprintln(stderr, "uso: soptraz validate <manifest|action|intervention|event|checkpoint|artifact> <archivo.json>")
+			fmt.Fprintln(stderr, "uso: soptraz validate <manifest|action|intervention|event|checkpoint|artifact|process-profile> <archivo.json>")
 			return 2
 		}
 		raw, err := readContractFile(args[2])
@@ -233,7 +233,7 @@ func writeUsage(w io.Writer) {
 	fmt.Fprintln(w, "  soptraz host-info [--json]")
 	fmt.Fprintln(w, "  soptraz device-profile [--json]")
 	fmt.Fprintln(w, "  soptraz time-status [--json]")
-	fmt.Fprintln(w, "  soptraz validate <manifest|action|intervention|event|checkpoint|artifact> <archivo.json>")
+	fmt.Fprintln(w, "  soptraz validate <manifest|action|intervention|event|checkpoint|artifact|process-profile> <archivo.json>")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "La CLI inicial solo expone información de lectura y validación. No modifica el equipo.")
 }
