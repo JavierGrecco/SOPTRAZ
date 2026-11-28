@@ -62,6 +62,8 @@ Runtime Go, registro local, IDs, acciones tipadas, permisos/riesgo, cancelación
 - [ ] Completar resiliencia: terminación abrupta real y limpieza segura de stages huérfanos, recuperación tras caída en cada etapa, disco lleno, lock y escritores multi-proceso, y política de actualización de metadata no-root cacheada.
 - [x] Definir el contrato puro `internal/platform/trustedtime`: intervalo de incertidumbre, procedencia, ancla, identidad de clave y SHA-256 de la atestación, sin I/O ni dependencias externas.
 - [x] Definir el DTO puro `SystemTimeDiagnostics` separado de `Evidence`, con estados independientes de servicio/sincronización, unknown explícito y timestamps UTC canónicos.
+- [x] Implementar política pura de aceptación en memoria: allowlist exacta, operadores únicos, límites de incertidumbre, intersección común máxima y piso anti-rollback; conserva evidencia seleccionada sin I/O.
+- [ ] Integrar la política con adaptadores Roughtime/NTS autenticados, frescura/replay, provisión/rotación de anclas y persistencia SQLite v3.
 - [x] Implementar el lector Linux read-only del estado del kernel con `golang.org/x/sys/unix.Adjtimex` y `Modes=0`; probar mapeo de estados, contexto cancelado, errores sanitizados y que el código no solicita ajustes. No se obtiene identidad de servidor ni hora de última sincronización.
 - [x] Implementar consulta read-only del estado de W32Time mediante Service Control Manager con SC_MANAGER_CONNECT y SERVICE_QUERY_STATUS; sin elevación, UAC, w32tm ni controles sobre el servicio.
 - [ ] Mantener SynchronizationState=unknown en Windows hasta disponer de una señal no privilegiada y fiable de sincronización efectiva; no inferirla del estado activo de W32Time.
