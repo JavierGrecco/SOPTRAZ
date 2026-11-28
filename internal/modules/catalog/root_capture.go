@@ -18,7 +18,7 @@ import (
 // TUF root request. It is only a candidate until go-tuf and the persistent
 // trust chain independently verify it.
 type capturedRootMetadata struct {
-	version int64
+	version  int64
 	metadata []byte
 }
 
@@ -27,10 +27,10 @@ type capturedRootMetadata struct {
 // so go-tuf remains the protocol verifier and this transport does not replace
 // signature, threshold, version or expiry checks.
 type rootMetadataCaptureTransport struct {
-	base      http.RoundTripper
-	origin    *url.URL
-	mu        sync.Mutex
-	roots     map[int64][]byte
+	base       http.RoundTripper
+	origin     *url.URL
+	mu         sync.Mutex
+	roots      map[int64][]byte
 	captureErr error
 }
 
