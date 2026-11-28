@@ -126,11 +126,10 @@ Esta ADR no habilita el modo offline. El almacén hace posible implementar un ve
 1. [x] Implementar el store SQLite aislado para root-chain con migración, ancla/origen fijados, append-only, CAS y tests transaccionales (PR #22).
 2. [x] Añadir replay de root-chain desde el ancla fijada con `trustedmetadata.UpdateRoot` y comprobar el high-water durable (PR #23).
 3. [x] Capturar respuestas versionadas de root, reproducirlas con go-tuf y persistir solo cuando el updater oficial confirma la misma versión (PR #23).
-4. [x] Implementar el contrato de generaciones SQLite v2, migración sin pérdida de root-chain v1, metadata por rol/delegación, manifiesto SHA-256, high-water con procedencia inmutable y puntero activo (PR #25).
-5. [x] Implementar `CommitGeneration`/`LoadActiveGeneration` con root binding, CAS, rollback/equivocation guard, commit atómico y validación de integridad de metadata y evidencia histórica (PR #25).
-6. [ ] Integrar el updater online con staging: obtener los bytes exactos que go-tuf verificó, resolver los roles delegados que la aplicación necesita y solo entonces llamar a `CommitGeneration`; no declarar completo un grafo que no se haya recorrido.
+4. [x] Implementar el esquema de generaciones SQLite v2, migración sin pérdida de root-chain v1, metadata por rol/delegación, manifiesto SHA-256 y high-water con procedencia inmutable (PR #25).
+5. [x] Implementar `CommitGeneration`/`LoadActiveGeneration` con root binding, CAS, guardas de rollback/equivocation, commit atómico y validación de integridad de metadata y evidencia histórica (PR #25).
+6. [ ] Integrar el updater online con staging: obtener los bytes exactos autenticados por go-tuf, resolver los roles delegados que la aplicación necesita y solo entonces llamar a `CommitGeneration`; no declarar completo un grafo que no se haya recorrido.
 7. [ ] Añadir tests de terminación abrupta real, crash/restart, corrupción, rollback, disco lleno y concurrencia entre procesos en Windows/macOS/Linux.
-7. [ ] Implementar el validador offline explícito y su reporte de assurance.
 8. [ ] Implementar el validador offline explícito y su reporte de assurance.
 9. [ ] Completar SBOM, avisos/licencias y política de actualización de go-tuf/Sigstore.
 La implementación no se considera production-ready hasta que todas las pruebas de recuperación y anti-rollback estén verdes y el procedimiento de bootstrap/custodia de root esté aprobado.
@@ -199,4 +198,24 @@ La matriz pre-merge del commit `c5fe257c22d19a6183b7d6b28031325a5539f01e` pasó 
 - `TUFClient` todavía no crea estas generaciones automáticamente. Falta materializar staging a partir del cache exacto del updater, comprobar hashes/longitudes de snapshot y recolectar cada delegación requerida mediante `GetTargetInfo`.
 - No se afirma que se haya resuelto el grafo completo de delegaciones del repositorio: la generación contiene los roles suministrados y verificados por el caller.
 - Los tests actuales prueban re-apertura y rollback transaccional inyectando errores; falta terminación abrupta real entre las etapas, disco lleno y escritores en procesos separados.
+- No se habilita `UnsafeLocalMode`, consulta offline ni anti-rollback fuerte frente a restauración integral del mismo disco.
+## Contrato de generaciones SQLite v2 (PR #25, integrado)
+
+PR #25 integra la primera implementación ejecutable del modelo de generaciones, todavía como capa de almacenamiento independiente del updater:
+
+- La migración v1→v2 crea `generations`, `generation_metadata`, `generation_role_parents`, `role_high_water` y `active_generations` sin modificar ni eliminar la root-chain existente. La prueba de migración incluye una rotación root v2 preexistente y verifica que sus bytes, hash y enlace con el ancla se conservan.
+- `CommitGeneration` requiere `timestamp`, `snapshot` y `targets`; acepta además roles delegados ya resueltos y verificados por `catalog`, junto con sus relaciones padre/hijo. Rechaza roles duplicados, relaciones ausentes, ciclos, tamaños excesivos y nombres no normalizados.
+- La operación exige que la root propuesta coincida con latest-root y aplica CAS sobre la generación activa. En una sola transacción inserta la generación, los blobs y relaciones, actualiza high-water por rol y cambia `active_generations`.
+- El high-water conserva versión, hash, expiración y `source_generation_id`; sus claves foráneas lo vinculan a los bytes inmutables de la metadata original. Triggers SQLite prohíben su borrado o una actualización no monotónica.
+- `LoadActiveGeneration` lee desde una instantánea única y comprueba hashes de los blobs, manifiesto, root actual, high-water de roles activos y bytes fuente de high-water históricos incluso cuando un rol no aparece en la generación activa.
+- Tests cubren rollback total ante fallo de escritura, migración con root-chain existente, re-apertura, delegaciones, rollback/equivocation, root drift, CAS, borrado/decremento SQL y corrupción de la evidencia de un rol omitido.
+
+La matriz pre-merge del commit `c5fe257c22d19a6183b7d6b28031325a5539f01e` pasó 5/5 en [run 46095086164](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46095086164): Windows, macOS, Ubuntu, Race Detector y fuzzing. PR #25 se integró en `main` como `e4341ab`.
+
+### Límites que permanecen tras PR #25
+
+- `CommitGeneration` solo guarda metadata que el caller ya verificó; el paquete SQLite no valida firmas TUF, threshold, hashes declarados por snapshot ni expiración.
+- `TUFClient` todavía no crea estas generaciones automáticamente. Falta materializar staging a partir de la caché exacta del updater, comprobar hashes/longitudes de snapshot y recolectar cada delegación requerida mediante `GetTargetInfo`.
+- No se afirma que se haya resuelto el grafo completo de delegaciones del repositorio: la generación contiene los roles suministrados y verificados por el caller.
+- Los tests actuales prueban re-apertura y rollback transaccional inyectando errores; falta terminación abrupta real entre etapas, disco lleno y escritores en procesos separados.
 - No se habilita `UnsafeLocalMode`, consulta offline ni anti-rollback fuerte frente a restauración integral del mismo disco.
