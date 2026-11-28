@@ -167,9 +167,9 @@ type ResolvedArtifact struct {
 // Resolver verifies artifacts under one application-managed directory.
 // It does not trust PATH, search other locations or fall back to another build.
 type Resolver struct {
-	root     *os.Root
-	rootPath string
-	platform Platform
+	root        *os.Root
+	rootPath    string
+	platform    Platform
 	maxBytes    int64
 	diagnostics DiagnosticRecorder
 

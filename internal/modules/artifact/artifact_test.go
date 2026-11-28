@@ -351,7 +351,6 @@ func TestResolveRejectsSymlinkedArtifactPath(t *testing.T) {
 	}
 }
 
-
 func TestResolveReportsRejectedSymlink(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("la creación de symlinks puede requerir Developer Mode o privilegios en Windows")
