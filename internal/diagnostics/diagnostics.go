@@ -34,7 +34,9 @@ var (
 
 	secretAssignmentPattern = regexp.MustCompile(`(?i)\b(password|passwd|token|access[_-]?key|api[_-]?key|secret|authorization)\b(\s*[:=]\s*)[^\s,;]+`)
 	urlCredentialsPattern   = regexp.MustCompile(`(?i)(https?://)[^/\s@]+@`)
-	querySecretPattern      = regexp.MustCompile(`(?i)([?&](?:password|passwd|token|access[_-]?key|api[_-]?key|secret|signature|sig|auth)=)[^&\s]+`)
+	authorizationPattern    = regexp.MustCompile(`(?i)(authorization\s*[:=]\s*)(?:bearer|basic)\s+[^\s,;]+`)
+	bearerPattern           = regexp.MustCompile(`(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+`)
+	querySecretPattern      = regexp.MustCompile(`(?i)([?&](?:password|passwd|token|access[_-]?token|refresh[_-]?token|access[_-]?key|api[_-]?key|secret|signature|sig|auth)=)[^&\s]+`)
 )
 
 type Severity string
@@ -71,7 +73,7 @@ type Logger struct {
 // OpenDefault stores reports in the current user's private configuration
 // directory. Reports remain local and are never uploaded by this package.
 func OpenDefault(version string) (*Logger, error) {
-	base, err := os.UserConfigDir()
+	base, err := os.UserCacheDir()
 	if err != nil {
 		return nil, fmt.Errorf("resolver carpeta local de configuración: %w", err)
 	}
@@ -380,6 +382,8 @@ func cleanField(value string) string {
 	value = strings.ReplaceAll(value, "\n", " ")
 	value = strings.TrimSpace(value)
 	value = urlCredentialsPattern.ReplaceAllString(value, "${1}[CREDENCIALES-OCULTAS]@")
+	value = authorizationPattern.ReplaceAllString(value, "${1}[OCULTO]")
+	value = bearerPattern.ReplaceAllString(value, "Bearer [OCULTO]")
 	value = querySecretPattern.ReplaceAllString(value, "${1}[OCULTO]")
 	value = secretAssignmentPattern.ReplaceAllString(value, "${1}${2}[OCULTO]")
 	if len(value) > 4096 {
