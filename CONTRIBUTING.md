@@ -9,6 +9,10 @@
 - No habilitar operaciones mutantes sin contrato, riesgo, autorización, auditoría y verificación.
 - Mantener documentación y ADR alineadas con el código.
 
+## Entorno local
+
+Seguí [la guía de desarrollo local](docs/development/local-development.md) para verificar Git, Go, la versión fijada en `go.mod`, compilar y ejecutar las pruebas en macOS, Windows y Linux. Los verificadores de entorno son de solo lectura y no instalan ni actualizan dependencias.
+
 ## Flujo de trabajo y ramas
 
 1. Usar `main` como única rama de larga vida.
