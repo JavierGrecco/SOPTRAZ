@@ -390,7 +390,6 @@ func TestOpenMigratesExistingVersionOneTrustDatabase(t *testing.T) {
 	}
 }
 
-
 func TestRoleHighWaterSurvivesOmissionWithImmutableSourceGeneration(t *testing.T) {
 	ctx := context.Background()
 	store, _, anchor := openGenerationTestStore(t)
@@ -454,7 +453,6 @@ func TestRoleHighWaterSurvivesOmissionWithImmutableSourceGeneration(t *testing.T
 		t.Fatalf("rejected reintroduction changed active generation to %d", afterReject.ID)
 	}
 }
-
 
 func TestRoleHighWaterCannotBeDeletedOrDowngradedThroughSQL(t *testing.T) {
 	ctx := context.Background()
