@@ -57,6 +57,14 @@ func TestPersistentTUFClientReplaysStoredRootAfterRestartWhenLaterMetadataFails(
 	); err == nil {
 		t.Fatal("NewPersistentTUFClient() succeeded despite missing timestamp metadata")
 	}
+	firstMetadataRoot := filepath.Join(firstCache, "metadata")
+	entries, err := os.ReadDir(firstMetadataRoot)
+	if err != nil {
+		t.Fatalf("read configured metadata-cache root after failed refresh: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("failed refresh leaked attempt metadata into the durable cache root: %v", entries)
+	}
 
 	chain, storedState, err := store.LoadRootChain(context.Background(), "test-repository")
 	if err != nil {
@@ -292,6 +300,13 @@ func TestPersistentTUFClientCommitsVerifiedGenerationAndDelegationMetadata(t *te
 	if err != nil {
 		t.Fatalf("NewPersistentTUFClient(): %v", err)
 	}
+	configuredMetadataRoot := filepath.Join(cacheRoot, "metadata")
+	if filepath.Clean(client.config.LocalMetadataDir) == filepath.Clean(configuredMetadataRoot) {
+		t.Fatal("persistent updater is using the durable metadata root directly instead of an isolated stage")
+	}
+	if _, err := os.Stat(filepath.Join(client.config.LocalMetadataDir, "targets.json")); err != nil {
+		t.Fatalf("isolated metadata stage is missing the updater's current targets metadata: %v", err)
+	}
 
 	initialID, err := store.ActiveGenerationID(context.Background(), "test-repository")
 	if err != nil {
@@ -352,6 +367,166 @@ func TestPersistentTUFClientCommitsVerifiedGenerationAndDelegationMetadata(t *te
 	}
 }
 
+func TestPersistentTUFClientRehydratesCommittedGenerationIntoNewStageAfterRestart(t *testing.T) {
+	fixture := makeDelegatedRepositoryFixture(t)
+	server, requests, requestsMu := startDelegatedMetadataServer(t, fixture)
+	cacheRoot := t.TempDir()
+	storePath := filepath.Join(t.TempDir(), "catalog-trust.sqlite")
+	store, err := sqlitetuf.Open(context.Background(), storePath)
+	if err != nil {
+		t.Fatalf("open persistent TUF store: %v", err)
+	}
+	t.Cleanup(func() {
+		if store != nil {
+			if err := store.Close(); err != nil {
+				t.Errorf("close persistent TUF store: %v", err)
+			}
+		}
+	})
+
+	anchor, err := NewPinnedTrustAnchor(fixture.rootJSON, rootPin(fixture.rootJSON))
+	if err != nil {
+		t.Fatalf("create pinned anchor: %v", err)
+	}
+	first, err := NewPersistentTUFClient(
+		anchor,
+		persistentClientConfig(server.URL+"/metadata", cacheRoot),
+		store,
+		"test-repository",
+	)
+	if err != nil {
+		t.Fatalf("create first persistent client: %v", err)
+	}
+	if _, err := first.ResolveDescriptor(fixture.descriptor); err != nil {
+		t.Fatalf("resolve descriptor with first client: %v", err)
+	}
+	firstStage := first.config.LocalMetadataDir
+	if _, err := os.Stat(filepath.Join(firstStage, "osquery.json")); err != nil {
+		t.Fatalf("first isolated stage lacks resolved delegated role: %v", err)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatalf("close first persistent client: %v", err)
+	}
+	if _, err := os.Stat(firstStage); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("Close() left the private metadata stage behind: %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("close SQLite store before restart: %v", err)
+	}
+	store = nil
+	store, err = sqlitetuf.Open(context.Background(), storePath)
+	if err != nil {
+		t.Fatalf("reopen SQLite store after restart: %v", err)
+	}
+
+	requestsMu.Lock()
+	*requests = nil
+	requestsMu.Unlock()
+	second, err := NewPersistentTUFClient(
+		anchor,
+		persistentClientConfig(server.URL+"/metadata", cacheRoot),
+		store,
+		"test-repository",
+	)
+	if err != nil {
+		t.Fatalf("create persistent client after restart: %v", err)
+	}
+	defer func() {
+		if err := second.Close(); err != nil {
+			t.Errorf("close second persistent client: %v", err)
+		}
+	}()
+	secondStage := second.config.LocalMetadataDir
+	if filepath.Clean(secondStage) == filepath.Clean(filepath.Join(cacheRoot, "metadata")) {
+		t.Fatal("restarted client did not receive an isolated metadata stage")
+	}
+	if _, err := os.Stat(filepath.Join(secondStage, "osquery.json")); err != nil {
+		t.Fatalf("committed generation was not restored into the new stage: %v", err)
+	}
+	if _, err := second.ResolveDescriptor(fixture.descriptor); err != nil {
+		t.Fatalf("resolve descriptor from SQLite-restored stage: %v", err)
+	}
+
+	requestsMu.Lock()
+	defer requestsMu.Unlock()
+	for _, requestPath := range *requests {
+		if requestPath == "/metadata/osquery.json" {
+			t.Fatalf("delegated metadata was re-downloaded instead of restored from the committed generation: %v", *requests)
+		}
+	}
+}
+
+func TestPersistentRefreshFailurePreservesCommittedGenerationAndDiscardsAttempt(t *testing.T) {
+	fixture := makeDelegatedRepositoryFixture(t)
+	server, _, _ := startDelegatedMetadataServer(t, fixture)
+	cacheRoot := t.TempDir()
+	store, err := sqlitetuf.Open(context.Background(), filepath.Join(t.TempDir(), "catalog-trust.sqlite"))
+	if err != nil {
+		t.Fatalf("open persistent TUF store: %v", err)
+	}
+	defer store.Close()
+
+	anchor, err := NewPinnedTrustAnchor(fixture.rootJSON, rootPin(fixture.rootJSON))
+	if err != nil {
+		t.Fatalf("create pinned anchor: %v", err)
+	}
+	client, err := NewPersistentTUFClient(
+		anchor,
+		persistentClientConfig(server.URL+"/metadata", cacheRoot),
+		store,
+		"test-repository",
+	)
+	if err != nil {
+		t.Fatalf("create persistent TUF client: %v", err)
+	}
+	defer func() {
+		if err := client.Close(); err != nil {
+			t.Errorf("close persistent TUF client: %v", err)
+		}
+	}()
+	if _, err := client.ResolveDescriptor(fixture.descriptor); err != nil {
+		t.Fatalf("resolve descriptor before failed refresh: %v", err)
+	}
+	before, err := store.LoadActiveGeneration(context.Background(), "test-repository")
+	if err != nil {
+		t.Fatalf("load active generation before failed refresh: %v", err)
+	}
+
+	previousStage := client.config.LocalMetadataDir
+	delete(fixture.metadata, "timestamp.json")
+	if err := client.Refresh(); err == nil {
+		t.Fatal("Refresh() succeeded after the repository timestamp was removed")
+	}
+	if _, err := os.Stat(previousStage); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("previous staging workspace was not replaced after refresh failure: %v", err)
+	}
+	if filepath.Clean(client.config.LocalMetadataDir) != filepath.Clean(filepath.Join(cacheRoot, "metadata")) {
+		t.Fatalf("failed refresh did not restore the configured stage root: %q", client.config.LocalMetadataDir)
+	}
+	after, err := store.LoadActiveGeneration(context.Background(), "test-repository")
+	if err != nil {
+		t.Fatalf("load active generation after failed refresh: %v", err)
+	}
+	if after.ID != before.ID || after.ManifestSHA256 != before.ManifestSHA256 {
+		t.Fatalf("failed refresh changed the committed generation: before=%d after=%d", before.ID, after.ID)
+	}
+
+	fixture.metadata["timestamp.json"] = fixture.timestampJSON
+	if err := client.Refresh(); err != nil {
+		t.Fatalf("Refresh() after restoring timestamp: %v", err)
+	}
+	if _, err := client.ResolveDescriptor(fixture.descriptor); err != nil {
+		t.Fatalf("resolve descriptor after recovering refresh: %v", err)
+	}
+	recovered, err := store.LoadActiveGeneration(context.Background(), "test-repository")
+	if err != nil {
+		t.Fatalf("load active generation after recovery: %v", err)
+	}
+	if recovered.ID != before.ID || recovered.ManifestSHA256 != before.ManifestSHA256 {
+		t.Fatalf("identical refreshed metadata created a redundant generation: before=%d after=%d", before.ID, recovered.ID)
+	}
+}
+
 func TestPersistentTUFGenerationRejectsCacheBytesChangedAfterUpdaterAcceptedThem(t *testing.T) {
 	fixture := makeDelegatedRepositoryFixture(t)
 	server, _, _ := startDelegatedMetadataServer(t, fixture)
@@ -383,7 +558,7 @@ func TestPersistentTUFGenerationRejectsCacheBytesChangedAfterUpdaterAcceptedThem
 		t.Fatalf("load committed generation: %v", err)
 	}
 
-	delegatedCache := filepath.Join(cacheRoot, "metadata", "osquery.json")
+	delegatedCache := filepath.Join(client.config.LocalMetadataDir, "osquery.json")
 	if err := os.WriteFile(delegatedCache, []byte("{\"signed\":{\"_type\":\"targets\"}}"), 0o600); err != nil {
 		t.Fatalf("replace delegated cache fixture: %v", err)
 	}

@@ -1,6 +1,6 @@
 # ADR-0017: Almacén durable de confianza TUF en SQLite
 
-- Estado: Aceptada. Root-chain persistente (PR #22/#23), store de generaciones SQLite v2 (PR #25) e integración online de captura/revalidación desde `TUFClient` (PR #27) están integrados en `main`. La generación se compromete después de resolver descriptores y solo incluye roles delegados realmente recorridos. Siguen pendientes la restauración offline desde generaciones, crash/restart abrupto, resiliencia ante fallos físicos, bootstrap de producción y ancla anti-rollback externa.
+- Estado: Aceptada. Root-chain persistente (PR #22/#23), store de generaciones SQLite v2 (PR #25), captura/revalidación online desde `TUFClient` (PR #27) y staging privado rehidratado desde SQLite (PR #29) están integrados en `main`. La generación se compromete después de resolver descriptores y solo incluye roles delegados realmente recorridos. Siguen pendientes cleanup tras crash, concurrencia multi-proceso, fallos físicos, modo offline, bootstrap de producción y ancla anti-rollback externa.
 - Fecha: 2026-11-28
 - Relacionada: ADR-0011, ADR-0015, Issue #5 (M1.4), Issue #4 (M1.5).
 - Alcance: estado de confianza, metadata TUF autenticada, high-water marks y generaciones del catálogo. No incluye targets ejecutables.
@@ -9,7 +9,7 @@
 
 La primera capa online TUF ya utiliza el `updater.Updater` oficial de go-tuf v2.5.0 y resuelve roles delegados. PR #20 corrigió la recreación del updater para que un root que ya fue verificado se conserve entre refrescos dentro del mismo proceso, incluso si después falla timestamp/snapshot/targets.
 
-Ese arreglo no era persistencia durable: `TUFClient.config.LocalTrustedRoot` vivía en memoria. PR #23 añade `NewPersistentTUFClient`, que conserva la cadena de roots en SQLite y la reproduce desde el pin bootstrap antes de inicializar el updater. PR #25 añade `CommitGeneration` y `LoadActiveGeneration`. PR #27 conecta la captura al flujo de `TUFClient`: tras resolver un descriptor firmado, compara los bytes originales de la caché de go-tuf con los objetos confiables en memoria, reproduce timestamp/snapshot/targets y las delegaciones recorridas con `trustedmetadata`, y compromete el conjunto mediante una transacción SQLite. Esta integración persiste online los roles realmente usados; todavía no restaura una generación desde SQLite ni habilita consultas offline, y el updater continúa utilizando su caché de archivos como espacio de trabajo.
+Ese arreglo no era persistencia durable: `TUFClient.config.LocalTrustedRoot` vivía en memoria. PR #23 añade `NewPersistentTUFClient`, que conserva la cadena de roots en SQLite y la reproduce desde el pin bootstrap antes de inicializar el updater. PR #25 añade `CommitGeneration` y `LoadActiveGeneration`. PR #27 conecta la captura al flujo de `TUFClient`: tras resolver un descriptor firmado, compara los bytes originales de la caché de go-tuf con los objetos confiables en memoria, reproduce timestamp/snapshot/targets y las delegaciones recorridas con `trustedmetadata`, y compromete el conjunto mediante una transacción SQLite. PR #29 completa el aislamiento del espacio de trabajo online: restaura los roles de la generación activa compatible en un directorio privado por refresh, deja que go-tuf ejecute su verificación online normal y elimina el stage si el intento falla; el store sigue siendo la autoridad. No habilita consultas offline y un cierre abrupto todavía puede dejar stages huérfanos.
 
 SOPTRAZ ya usa `modernc.org/sqlite` sin CGO en Field. El adaptador de auditoría aporta convenciones que podemos reutilizar: una conexión, transacciones inmediatas, `busy_timeout`, `foreign_keys`, `synchronous=FULL`, migraciones versionadas y tests de recuperación. El estado del catálogo debe permanecer separado de `audit.sqlite`: sus ciclos de vida, políticas de backup y superficies de acceso no son los mismos.
 
@@ -71,8 +71,8 @@ Si una raíz avanzó pero el refresh posterior falló, el root chain sí puede q
 2. Leer la cadena de roots persistida y comprobar que su primer ancla coincide exactamente con el pin independiente.
 3. Reproducir roots en orden estrictamente consecutivo con las primitivas oficiales de `trustedmetadata`; no confiar en el último `root.json` aislado.
 4. Comprobar que versión/hash final coinciden con latest-root del almacén.
-5. Materializar la generación activa en un staging temporal con nombres de roles normalizados; comprobar digest, longitud, relaciones y high-water antes de abrir el updater.
-6. Crear un updater oficial desde la raíz verificada y el staging. Ningún archivo cacheado se promueve solo por estar presente.
+5. Si existe una generación activa compatible con la root, reconstruir un stage privado desde sus bytes después de validar digest, longitud, relaciones y high-water en SQLite; si la root no coincide, no reutilizar esa generación como caché.
+6. Crear el updater oficial desde la raíz verificada y el stage y ejecutar refresh online para revalidar la metadata. Ningún archivo cacheado se promueve solo por estar presente ni se usa como bypass offline.
 7. Si la cadena, generación o high-water están ausentes, corruptos, inconsistentes o por debajo del estado registrado, bloquear el catálogo y exigir recuperación online o reenrolamiento; no rebajar versiones ni elegir automáticamente un backup viejo.
 
 Un cambio de ancla de enrolamiento tras una actualización de SOPTRAZ requiere una migración explícita que demuestre continuidad con una raíz ya presente en la cadena verificada. Un pin distinto no se acepta silenciosamente ni se reemplaza por el root cacheado.
@@ -167,6 +167,14 @@ La implementación no se considera production-ready hasta que todas las pruebas 
 - La generación no se crea en el constructor ni por un `Refresh()` aislado: se crea cuando existe al menos un descriptor autenticado. Esto evita presentar una generación parcial como catálogo completo.
 - Integrado en `main` como `4983f7d`.
 
+### PR #29 — Staging aislado y recuperación de caché desde SQLite
+
+- Antes de cada refresh persistente, crea un directorio temporal privado bajo la raíz configurada y lo asigna a `UpdaterConfig.LocalMetadataDir`.
+- Rehidrata el stage solo con la generación SQLite activa si su root coincide con la root persistente actual; si no hay una generación utilizable, comienza vacío.
+- Mantiene el refresh online oficial de go-tuf; no activa `UnsafeLocalMode` ni interpreta la rehidratación como autorización offline.
+- Descarta el stage cuando falla la creación del updater o el refresh; `TUFClient.Close()` limpia el workspace en cierres ordenados.
+- Los tests verifican aislamiento, descarte ante fallo, conservación de la generación activa y reconstrucción después de cerrar/reabrir SQLite. No simulan un `kill -9` del proceso.
+
 ### Evidencia de CI
 
 - PR #25: matriz pre-merge 5/5 en [run 46095086164](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46095086164); CI post-merge 5/5 en [run 46095255858](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46095255858).
@@ -174,9 +182,9 @@ La implementación no se considera production-ready hasta que todas las pruebas 
 
 ## Límites y siguientes hitos
 
-- El updater online todavía usa su caché de archivos como fuente de trabajo; PR #27 persiste los bytes aceptados en SQLite después de resolver descriptores, pero aún no construye un staging aislado e inmutable antes del refresh.
-- No existe todavía un flujo que materialice una generación desde SQLite en un reinicio y ejecute un verificador offline explícito. `UnsafeLocalMode` permanece deshabilitado.
+- El updater online usa un stage privado reconstruido desde SQLite en vez de escribir en la carpeta base de caché. El stage no es el registro autoritativo y no se conserva automáticamente tras un cierre abrupto.
+- No existe todavía un verificador offline explícito que consuma una generación revalidada sin red. La reconstrucción del stage se usa únicamente como caché del updater online. `UnsafeLocalMode` permanece deshabilitado.
 - La generación contiene metadata top-level y roles delegados recorridos por los descriptores resueltos; los roles nunca consultados no se presentan como verificados ni como parte de un grafo completo.
-- La re-apertura ordenada, la integridad de blobs y el rollback transaccional inyectado están cubiertos. Faltan pruebas de terminación abrupta entre etapas, disco lleno, errores de fsync/sidecar y escritores concurrentes en procesos distintos.
+- La re-apertura de SQLite y reconstrucción de un nuevo stage están cubiertas. Faltan pruebas de terminación abrupta entre etapas, limpieza segura de stages huérfanos, disco lleno, errores de fsync/sidecar y escritores concurrentes en procesos distintos.
 - El estado SQLite local no protege frente a restaurar una imagen completa antigua del mismo disco. Sigue pendiente un TPM/contador monotónico o witness externo para elevar el assurance anti-rollback.
 - El bootstrap de confianza y la custodia/rotación de claves de producción siguen abiertos. No se declara M1.4 cerrado hasta completar recuperación, bootstrap y verificación offline.
