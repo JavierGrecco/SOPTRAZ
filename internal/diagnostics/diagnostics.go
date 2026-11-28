@@ -141,8 +141,10 @@ func Open(directory, version string) (*Logger, error) {
 	}
 	locked, err := runLock.TryLock()
 	if err != nil || !locked {
+		_ = runLock.Unlock()
 		_ = file.Close()
 		_ = os.Remove(file.Name())
+		_ = os.Remove(runLock.Path())
 		if err != nil {
 			return nil, fmt.Errorf("bloquear informe de diagnóstico: %w", err)
 		}
@@ -537,6 +539,9 @@ func recoverPreviousRuns(directory string) ([]string, error) {
 		}
 		if err := lock.Unlock(); err != nil {
 			return recovered, fmt.Errorf("liberar lock de informe anterior %q: %w", name, err)
+		}
+		if err := os.Remove(lock.Path()); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return recovered, fmt.Errorf("retirar lock lateral de informe anterior %q: %w", name, err)
 		}
 	}
 	return recovered, nil
