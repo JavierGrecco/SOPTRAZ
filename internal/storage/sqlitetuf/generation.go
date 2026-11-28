@@ -28,14 +28,14 @@ const (
 )
 
 var (
-	ErrInvalidGeneration       = errors.New("generación TUF inválida")
-	ErrGenerationIncomplete    = errors.New("generación TUF incompleta")
-	ErrGenerationNotFound      = errors.New("no hay generación TUF activa")
-	ErrGenerationConflict      = errors.New("la generación TUF activa cambió concurrentemente")
-	ErrGenerationRootMismatch  = errors.New("la raíz actual no coincide con la generación TUF")
-	ErrGenerationCorrupt       = errors.New("la generación TUF almacenada está dañada")
-	ErrRoleRollback            = errors.New("rollback de versión de metadata TUF rechazado")
-	ErrRoleEquivocation        = errors.New("la misma versión de metadata TUF tiene bytes diferentes")
+	ErrInvalidGeneration      = errors.New("generación TUF inválida")
+	ErrGenerationIncomplete   = errors.New("generación TUF incompleta")
+	ErrGenerationNotFound     = errors.New("no hay generación TUF activa")
+	ErrGenerationConflict     = errors.New("la generación TUF activa cambió concurrentemente")
+	ErrGenerationRootMismatch = errors.New("la raíz actual no coincide con la generación TUF")
+	ErrGenerationCorrupt      = errors.New("la generación TUF almacenada está dañada")
+	ErrRoleRollback           = errors.New("rollback de versión de metadata TUF rechazado")
+	ErrRoleEquivocation       = errors.New("la misma versión de metadata TUF tiene bytes diferentes")
 )
 
 // VerifiedRoleMetadata is one metadata role whose bytes and signature chain
