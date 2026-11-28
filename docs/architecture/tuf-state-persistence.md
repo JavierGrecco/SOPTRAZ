@@ -1,6 +1,6 @@
 # Modelo de persistencia, anti-rollback y recuperación del catálogo TUF
 
-- Estado: root-chain SQLite, replay persistente, store de generaciones, captura/revalidación online y staging privado rehidratado desde la generación activa integrados en `main` (PR #22, #23, #25, #27 y #29). Siguen pendientes la limpieza de stages huérfanos tras caída abrupta, coordinación multi-proceso, fallos físicos y modo offline.
+- Estado: root-chain SQLite, replay persistente, store de generaciones, captura/revalidación online, staging privado, lock interproceso y recuperación de stages huérfanos implementados en la rama de trabajo (PR #22, #23, #25, #27, #29 y #31). Siguen pendientes las pruebas de fallos físicos y el modo offline.
 - Fecha: 2026-11-28
 - Relacionado: ADR-0015, ADR-0017, Issue #5 (M1.4), Issue #4 (M1.5).
 - Alcance: metadata de confianza y caché del catálogo; no targets ejecutables.
@@ -77,9 +77,9 @@ La falta de un ancla de hardware o externa no debe disfrazarse como anti-rollbac
 
 Cada refresh persistente trabaja sobre un directorio temporal privado creado bajo la raíz local de caché. Se inicializa con los roles de la generación activa de SQLite solo cuando el root version/hash coincide con la root durable actual; si no hay generación compatible, comienza vacío. `UpdaterConfig.LocalMetadataDir` apunta al stage, por lo que el updater oficial de go-tuf escribe allí y no altera la carpeta base ni el snapshot comprometido. El flujo sigue siendo online: go-tuf valida la metadata local y consulta el repositorio remoto según el protocolo normal.
 
-Si la inicialización o el refresh falla, el stage de ese intento se descarta y la generación activa anterior no cambia. `TUFClient.Close()` elimina el workspace en un cierre ordenado. Una caída abrupta puede dejar un directorio `.soptraz-tuf-stage-*` huérfano; la limpieza automática queda pendiente hasta implementar coordinación segura entre procesos. La materialización desde SQLite no habilita `UnsafeLocalMode` ni consultas offline.
+Si la inicialización o el refresh falla, el stage de ese intento se descarta y la generación activa anterior no cambia. `TUFClient.Close()` elimina el workspace en un cierre ordenado. PR #31 incorpora un lock OS estable por ruta de trust store e ID de repositorio, mantenido durante la vida del cliente. Si un proceso termina abruptamente, el OS libera el lock; el siguiente constructor lo adquiere antes de inspeccionar y eliminar stages huérfanos. El prefijo de cada stage incluye el hash del ID de repositorio, por lo que una caché compartida no permite que la limpieza de un repositorio borre stages de otro. Los archivos de lock permanecen en disco intencionalmente: borrar un lockfile mientras otro proceso puede tenerlo abierto crearía una carrera de inode. La materialización desde SQLite no habilita `UnsafeLocalMode` ni consultas offline.
 
-- Un solo escritor por repositorio, protegido por lock de proceso y coordinación entre instancias.
+- Un solo escritor por repositorio, protegido por lock OS entre procesos; el test de integración mantiene un proceso hijo bloqueando el repositorio, comprueba que un segundo proceso es rechazado, lo termina por fuerza y valida que el lock se libera.
 - Staging en el mismo volumen del store para que los movimientos de archivos no crucen volúmenes.
 - Límite de bytes y cantidad de metadata antes de materializar.
 - Nombres de roles normalizados, sin traversal ni nombres de archivo arbitrarios.
