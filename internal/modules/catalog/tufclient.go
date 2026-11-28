@@ -56,13 +56,13 @@ type persistentTUFTrust struct {
 // TUFClient wraps the official go-tuf Updater. The Updater is not safe for
 // concurrent use, so all refresh/lookup operations are serialized here.
 type TUFClient struct {
-	mu                 sync.Mutex
-	config             *tufconfig.UpdaterConfig
-	updater            *tufupdater.Updater
-	persistence        *persistentTUFTrust
-	resolvedTargets    map[string]struct{}
-	metadataCacheRoot  string
-	metadataStageDir   string
+	mu                sync.Mutex
+	config            *tufconfig.UpdaterConfig
+	updater           *tufupdater.Updater
+	persistence       *persistentTUFTrust
+	resolvedTargets   map[string]struct{}
+	metadataCacheRoot string
+	metadataStageDir  string
 }
 
 // NewTUFClient builds a bounded production-mode TUF client from a previously
