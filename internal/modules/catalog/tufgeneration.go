@@ -5,6 +5,7 @@
 package catalog
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -49,7 +50,17 @@ func (client *TUFClient) CommitVerifiedGeneration(ctx context.Context) (sqlitetu
 
 	client.mu.Lock()
 	defer client.mu.Unlock()
+	return client.commitVerifiedGenerationLocked(ctx)
+}
 
+// commitVerifiedGenerationLocked must be called while client.mu is held.
+func (client *TUFClient) commitVerifiedGenerationLocked(ctx context.Context) (sqlitetuf.Generation, error) {
+	if client == nil {
+		return sqlitetuf.Generation{}, ErrTUFClientUnavailable
+	}
+	if ctx == nil {
+		return sqlitetuf.Generation{}, fmt.Errorf("%w: el contexto no puede ser nil", ErrGenerationCapture)
+	}
 	if client.persistence == nil || client.persistence.store == nil {
 		return sqlitetuf.Generation{}, ErrGenerationPersistenceUnavailable
 	}
@@ -83,6 +94,18 @@ func (client *TUFClient) CommitVerifiedGeneration(ctx context.Context) (sqlitetu
 	if err != nil {
 		return sqlitetuf.Generation{}, fmt.Errorf("%w: leer generación activa: %v", ErrGenerationCapture, err)
 	}
+	if activeID > 0 {
+		active, loadErr := client.persistence.store.LoadActiveGeneration(ctx, client.persistence.repositoryID)
+		if loadErr == nil && generationContentMatches(active, client.persistence.rootState, roles) {
+			return active, nil
+		}
+		if loadErr != nil &&
+			!errors.Is(loadErr, sqlitetuf.ErrGenerationRootMismatch) &&
+			!errors.Is(loadErr, sqlitetuf.ErrGenerationNotFound) {
+			return sqlitetuf.Generation{}, fmt.Errorf("%w: validar generación activa anterior: %v", ErrGenerationCapture, loadErr)
+		}
+	}
+
 	generation, err := client.persistence.store.CommitGeneration(
 		ctx,
 		client.persistence.repositoryID,
@@ -97,6 +120,46 @@ func (client *TUFClient) CommitVerifiedGeneration(ctx context.Context) (sqlitetu
 		return sqlitetuf.Generation{}, fmt.Errorf("comprometer generación TUF verificada: %w", err)
 	}
 	return generation, nil
+}
+
+func generationContentMatches(
+	active sqlitetuf.Generation,
+	root sqlitetuf.RootState,
+	candidate []sqlitetuf.VerifiedRoleMetadata,
+) bool {
+	if active.Root != root || len(active.Roles) != len(candidate) {
+		return false
+	}
+	activeRoles := make(map[string]sqlitetuf.VerifiedRoleMetadata, len(active.Roles))
+	for _, role := range active.Roles {
+		activeRoles[role.Role] = role
+	}
+	for _, role := range candidate {
+		stored, ok := activeRoles[role.Role]
+		if !ok || stored.Version != role.Version ||
+			!stored.ExpiresAt.Equal(role.ExpiresAt) ||
+			!bytes.Equal(stored.Metadata, role.Metadata) ||
+			!sameGenerationRoleParents(stored.Parents, role.Parents) {
+			return false
+		}
+	}
+	return true
+}
+
+func sameGenerationRoleParents(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	leftSorted := append([]string(nil), left...)
+	rightSorted := append([]string(nil), right...)
+	sort.Strings(leftSorted)
+	sort.Strings(rightSorted)
+	for index := range leftSorted {
+		if leftSorted[index] != rightSorted[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func captureAndVerifyGenerationMetadata(
@@ -303,18 +366,32 @@ func readCachedMetadata(cacheDir, roleName string, maxBytes int64) ([]byte, erro
 		return nil, fmt.Errorf("%w: ubicación de metadata inválida", ErrGenerationCapture)
 	}
 	filePath := filepath.Join(cacheDir, url.PathEscape(roleName)+".json")
+	before, err := os.Lstat(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("%w: localizar metadata %q: %v", ErrGenerationCapture, roleName, err)
+	}
+	if !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 ||
+		before.Size() < 1 || before.Size() > maxBytes {
+		return nil, fmt.Errorf("%w: metadata %q no es un archivo regular dentro del límite", ErrGenerationCapture, roleName)
+	}
 	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("%w: abrir metadata %q: %v", ErrGenerationCapture, roleName, err)
 	}
 	defer file.Close()
-
+	opened, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("%w: inspeccionar metadata %q: %v", ErrGenerationCapture, roleName, err)
+	}
+	if !opened.Mode().IsRegular() || !os.SameFile(before, opened) {
+		return nil, fmt.Errorf("%w: metadata %q cambió durante la apertura", ErrGenerationCapture, roleName)
+	}
 	data, err := io.ReadAll(io.LimitReader(file, maxBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("%w: leer metadata %q: %v", ErrGenerationCapture, roleName, err)
 	}
-	if int64(len(data)) > maxBytes {
-		return nil, fmt.Errorf("%w: metadata %q supera %d bytes", ErrGenerationCapture, roleName, maxBytes)
+	if len(data) == 0 || int64(len(data)) > maxBytes || int64(len(data)) != opened.Size() {
+		return nil, fmt.Errorf("%w: metadata %q excede el límite o cambió durante la lectura", ErrGenerationCapture, roleName)
 	}
 	return data, nil
 }
