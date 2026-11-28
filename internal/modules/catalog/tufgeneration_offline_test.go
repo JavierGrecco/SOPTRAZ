@@ -335,7 +335,6 @@ func TestReplayOfflineTargetMetadataRejectsTamperedDelegatedBytes(t *testing.T) 
 	}
 }
 
-
 func TestReplayOfflineTargetMetadataRejectsTimestampAtExactExpiryBoundary(t *testing.T) {
 	fixture := createPersistedDelegatedFixtureWithLongerRootExpiry(t)
 	defer fixture.server.Close()
