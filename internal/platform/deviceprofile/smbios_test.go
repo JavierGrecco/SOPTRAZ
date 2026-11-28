@@ -52,6 +52,7 @@ func TestParseSMBIOSChassisTypesReturnsEmptyWhenNoEnclosureIsPresent(t *testing.
 
 func TestParseSMBIOSChassisTypesIgnoresBytesOutsideDeclaredTable(t *testing.T) {
 	table := appendSMBIOSStructure(nil, 3, []byte{1, 9})
+	table = appendSMBIOSStructure(table, smbiosEndOfTableType, nil)
 	raw := wrapRawSMBIOS(table)
 	raw = append(raw, 0xde, 0xad, 0xbe, 0xef)
 
@@ -163,4 +164,13 @@ func appendSMBIOSStructure(table []byte, structureType byte, formatted []byte) [
 	table = append(table, structureType, byte(structureLength), 0, 0)
 	table = append(table, formatted...)
 	return append(table, 0, 0)
+}
+
+
+func TestParseSMBIOSChassisTypesRejectsMissingEndMarker(t *testing.T) {
+	table := appendSMBIOSStructure(nil, 3, []byte{1, 9})
+	_, err := ParseSMBIOSChassisTypes(wrapRawSMBIOS(table))
+	if !errors.Is(err, ErrInvalidRawSMBIOS) {
+		t.Fatalf("error = %v, want ErrInvalidRawSMBIOS", err)
+	}
 }
