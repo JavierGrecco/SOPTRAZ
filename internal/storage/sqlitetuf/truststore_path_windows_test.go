@@ -50,8 +50,8 @@ func TestOpenRejectsBroadWritableAncestorDACL(t *testing.T) {
 	}
 }
 
-// Create permission alone can add a new sibling but cannot replace a protected
-// existing directory entry. It is therefore not treated as an unsafe ancestor.
+// A non-inheritable create-only ACE can add a sibling but cannot replace an
+// existing directory entry or grant write access to the SQLite file itself.
 func TestOpenAllowsCreateOnlyBroadAncestorDACL(t *testing.T) {
 	root := t.TempDir()
 	ancestor := filepath.Join(root, "create-only-ancestor")
@@ -60,7 +60,7 @@ func TestOpenAllowsCreateOnlyBroadAncestorDACL(t *testing.T) {
 		t.Fatalf("create nested private parent: %v", err)
 	}
 
-	sd, err := windows.SecurityDescriptorFromString("D:P(A;OICI;0x00000006;;;WD)")
+	sd, err := windows.SecurityDescriptorFromString("D:P(A;;0x00000006;;;WD)")
 	if err != nil {
 		t.Fatalf("build create-only DACL: %v", err)
 	}
