@@ -20,5 +20,6 @@ Las decisiones aceptadas se mantienen aquí. Una ADR registra contexto, alternat
 | ADR-0014 | Agilidad de firma: Ed25519 y ECDSA P-256 | Aceptada para el contrato criptográfico; adaptadores protegidos pendientes |
 | ADR-0015 | Catálogo de artefactos TUF con go-tuf/v2 | Primera capa online con targets delegados implementada; root productivo y offline pendientes |
 | ADR-0016 | Optimización y mantenimiento modular de Windows | Aceptada como dirección; implementación pendiente |
+| ADR-0017 | Almacén durable de confianza TUF en SQLite | Aceptada como decisión de almacenamiento; implementación pendiente |
 
 Pendiente: licencia de distribución, cifrado local, firmas de releases, packaging Python, sincronización e identidad antes de implementar esas funciones.
