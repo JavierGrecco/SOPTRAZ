@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/JavierGrecco/SOPTRAZ/internal/diagnostics"
 )
 
 func writeArtifact(t *testing.T, root, relative string, content []byte) string {
@@ -346,5 +348,35 @@ func TestResolveRejectsSymlinkedArtifactPath(t *testing.T) {
 	_, err := resolver.Resolve(value)
 	if !errors.Is(err, ErrArtifactPath) {
 		t.Fatalf("Resolve() error = %v, want ErrArtifactPath", err)
+	}
+}
+
+
+func TestResolveReportsRejectedSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("la creación de symlinks puede requerir Developer Mode o privilegios en Windows")
+	}
+	root := t.TempDir()
+	content := []byte("trusted artifact")
+	target := writeArtifact(t, root, "payloads/osqueryi", content)
+	if err := os.MkdirAll(filepath.Join(root, "osquery"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(root, "osquery", "osqueryi")); err != nil {
+		t.Fatalf("create artifact symlink: %v", err)
+	}
+	value := testDescriptor(content)
+	value.RelativePath = "osquery/osqueryi"
+	recorder := &recordingDiagnosticRecorder{}
+	resolver := newTestResolverWithDiagnostics(t, root, Platform{OS: "linux", Architecture: "amd64"}, recorder)
+	if _, err := resolver.Resolve(value); !errors.Is(err, ErrArtifactPath) {
+		t.Fatalf("Resolve() error = %v, want ErrArtifactPath", err)
+	}
+	events := recorder.snapshot()
+	if len(events) != 1 || events[0].Code != "artifact.path_rejected" || events[0].Severity != diagnostics.SeverityCritical {
+		t.Fatalf("unexpected diagnostic events: %#v", events)
+	}
+	if strings.Contains(events[0].Message, root) || strings.Contains(events[0].Cause, root) {
+		t.Fatalf("diagnostic event exposed an absolute filesystem path: %#v", events[0])
 	}
 }

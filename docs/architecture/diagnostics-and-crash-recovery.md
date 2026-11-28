@@ -31,7 +31,7 @@ Cada ejecución crea un informe temporal `soptraz-run-*.txt`; si termina normalm
 - Mensaje del runtime cuando se produce un panic no manejado o un fallo fatal de Go.
 - Detección posterior de una ejecución sin marca de cierre normal.
 
-`INFO` y `WARN` rutinarios no se escriben en el informe. Los módulos pueden enviar eventos importantes con `diagnostics.Logger.Record`; los errores esperados por validaciones del usuario no deben clasificarse como fallos críticos.
+`INFO` y `WARN` rutinarios no se escriben en el informe. La interfaz `diagnostics.Logger.Record` se inyecta explícitamente: el resolver de artefactos puede registrar discrepancias de integridad, enlaces/reparse points no permitidos, sustitución de rutas y errores de lectura durante la verificación. Los errores esperables de descriptor, plataforma o ausencia de un artefacto no se clasifican como incidentes. La integración requiere que el composition root utilice `NewResolverWithDiagnostics`; no existe un registrador global automático.
 
 ## Recuperación de terminaciones inesperadas
 
@@ -58,4 +58,4 @@ El lock del informe se libera automáticamente al terminar el proceso. Esta mism
 
 ## Límites y evolución
 
-Esta primera capa cubre el ciclo de vida de la CLI y proporciona una API para registrar eventos críticos desde módulos; el registro automático desde todos los módulos todavía debe integrarse explícitamente. Todavía no es un servicio central de observabilidad para procesos auxiliares, UI Field/Hub ni agentes remotos. La exportación redactada, correlación por intervención, retención configurable y envío voluntario por el técnico requieren contratos y controles adicionales.
+Esta primera capa cubre el ciclo de vida de la CLI y proporciona una API inyectable para eventos críticos desde módulos. El resolver de artefactos dispone de una integración explícita y selectiva; el cliente TUF y los demás módulos todavía no reportan incidentes automáticamente. Todavía no es un servicio central de observabilidad para procesos auxiliares, UI Field/Hub ni agentes remotos. La exportación redactada, correlación por intervención, retención configurable y envío voluntario por el técnico requieren contratos y controles adicionales.
