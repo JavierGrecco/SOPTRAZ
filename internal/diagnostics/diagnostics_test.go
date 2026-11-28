@@ -60,8 +60,7 @@ func TestOpenCreatesPrivatePlainTextReportAndCleanCloseMarker(t *testing.T) {
 		"CIERRE NORMAL:",
 	} {
 		if !strings.Contains(report, expected) {
-			t.Errorf("report does not contain %q:
-%s", expected, report)
+			t.Errorf("report does not contain %q:\n%s", expected, report)
 		}
 	}
 	for _, excluded := range []string{"routine info", "routine warning"} {
