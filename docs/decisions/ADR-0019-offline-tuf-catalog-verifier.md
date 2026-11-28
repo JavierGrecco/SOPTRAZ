@@ -116,6 +116,35 @@ Se agregará una marca local `last_observed_utc` por repositorio al trust store.
 
 Esta marca reside en el mismo almacén local: detecta retrocesos del reloj respecto del estado que aún se conserva, pero **no** es un reloj seguro ni un contador hardware. Restaurar una imagen completa antigua que incluya base, marca horaria y software puede retroceder todos esos datos juntos. El nivel inicial se denomina `local` y debe declarar esa limitación.
 
+### Contrato de implementación de la marca temporal (normativo)
+
+**Persistencia y migración**
+
+- El esquema SQLite pasa de v2 a v3 y agrega `repositories.last_observed_utc`, una marca UTC canónica en formato RFC3339Nano por repositorio. Después de la migración, el campo ausente o inválido es corrupción del trust store y bloquea la validación; no se reemplaza silenciosamente por la hora actual.
+- La migración v2→v3 se ejecuta en una transacción. Para cada repositorio calcula el máximo cronológico entre `repositories.created_at`, los `root_chain.committed_at` y `active_generations.activated_at` disponibles. Esas fechas ya son UTC RFC3339Nano, registradas por operaciones locales anteriores. Deben parsearse como instantes en Go: no usar `MAX(TEXT)` de SQLite, porque RFC3339Nano omite ceros fraccionarios y el orden lexicográfico no siempre coincide con el cronológico.
+- Si alguna fecha necesaria está ausente o no se puede parsear, la migración falla y revierte el cambio de esquema. No se utiliza `time.Now()` para inventar una observación histórica. Una instalación nueva inicializa la marca al registrar el repositorio.
+- La marca solo avanza con una validación completa satisfactoria. En el flujo online, el commit de la generación y la activación actualizan la marca en la misma transacción. Un commit aislado de root-chain no la avanza. La operación debe recibir el instante de referencia capturado al inicio del flujo, no tomar una hora distinta al final.
+
+**Política de reloj**
+
+- Capturar una sola hora de referencia UTC al inicio de cada operación y usarla en todas las comprobaciones de expiración de esa operación. El flujo online debe comparar la hora de referencia que realmente utiliza el `updater.Updater` con la marca persistida antes de llamar a `Refresh()` o `GetTargetInfo()`.
+- Si la hora de referencia es anterior a `last_observed_utc`, aunque sea por una fracción de segundo, la operación falla con una causa tipada de retroceso del reloj. No hay tolerancia de aceptación: permitir una hora anterior podría validar metadata que ya estaba vencida respecto de una observación previa.
+- No utilizar `updater.Updater.UnsafeSetRefTime` en producción: go-tuf lo documenta para pruebas. La aplicación debe rechazar el reloj atrasado, no alterar por una API de prueba el reloj interno del updater. Referencias: [API de go-tuf v2.5.0](https://pkg.go.dev/github.com/theupdateframework/go-tuf/v2/metadata/updater@v2.5.0#Updater.UnsafeSetRefTime) y [hora fija de inicio del workflow TUF](https://theupdateframework.github.io/specification/latest/#fix-time).
+- En el flujo offline se pasa la hora capturada a la instancia aislada de `trustedmetadata` y se usa durante todo el replay. Si la validación tiene éxito, la marca se avanza en una transacción posterior; si esa persistencia falla, no se devuelve `VerifiedTarget`.
+- La operación offline mantiene el lock exclusivo del repositorio desde la lectura snapshot hasta la actualización de la marca. La transacción final verifica mediante compare-and-swap que la generación activa, la raíz y la marca esperada no cambiaron. Si hay conflicto, se descarta el resultado y se falla cerrado.
+- La consulta offline no modifica metadata TUF, root-chain, generaciones ni high-water marks. Su único efecto persistente permitido es avanzar `last_observed_utc` después de completar correctamente la verificación.
+
+**Pruebas obligatorias de la marca**
+
+1. Migrar stores v2 con solo repositorio, con root-chain y con generación activa; comprobar el máximo cronológico correcto y que el valor no se obtiene del reloj de la máquina durante la migración.
+2. Rechazar fechas históricas inválidas y comprobar rollback completo de la migración: `user_version` permanece en v2 y no queda una columna parcialmente migrada.
+3. Comprobar alta nueva, avance monotónico, idempotencia y que un commit de root sin generación no avanza la marca.
+4. Comprobar retroceso de reloj antes del updater, antes del replay offline y durante el commit final; ningún caso debe devolver un target ni rebajar la marca.
+5. Comprobar que una verificación offline fallida no cambia la marca y que una exitosa la avanza sin alterar root-chain, generaciones o high-water marks.
+6. Probar conflictos CAS y dos procesos concurrentes manteniendo el lock del repositorio; ningún target se devuelve con snapshot obsoleto.
+7. Mantener el test explícito de restauración integral de una copia antigua: debe demostrar el límite conocido del nivel `local`, no presentar una detección inexistente.
+
+
 No se afirmará anti-rollback fuerte frente a restauración integral del disco. TPM/contador monotónico o witness externo se evaluarán como niveles de assurance futuros, con enrolamiento y recuperación propios.
 
 ### 8. Límites operativos
