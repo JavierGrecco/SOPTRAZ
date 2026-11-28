@@ -89,7 +89,7 @@ func TestReplayVerifiedGenerationRejectsWrongRootPinAndMissingTime(t *testing.T)
 	}
 }
 
-func TestReplayVerifiedGenerationRejectsAlteredDelegatedSignature(t *testing.T) {
+func TestReplayVerifiedGenerationRejectsDelegatedBytesNotBoundBySnapshot(t *testing.T) {
 	fixture := makeDelegatedRepositoryFixture(t)
 	roles := replayFixtureRoles(t, fixture)
 	var envelope struct {
@@ -98,7 +98,7 @@ func TestReplayVerifiedGenerationRejectsAlteredDelegatedSignature(t *testing.T) 
 		} `json:"signatures"`
 	}
 	if err := json.Unmarshal(roles[3].Metadata, &envelope); err != nil {
-		t.Fatalf("decode delegated fixture signature: %v", err)
+		t.Fatalf("decode delegated fixture signature metadata: %v", err)
 	}
 	if len(envelope.Signatures) == 0 || len(envelope.Signatures[0].Sig) == 0 {
 		t.Fatal("delegated fixture has no signature")
@@ -117,7 +117,39 @@ func TestReplayVerifiedGenerationRejectsAlteredDelegatedSignature(t *testing.T) 
 	roles[3].Metadata = mutated
 
 	if _, err := replayVerifiedGeneration(fixture.rootJSON, replayFixtureRootState(fixture), time.Now().UTC(), roles, 4); !errors.Is(err, ErrGenerationReplay) {
-		t.Fatalf("altered delegated signature error = %v, want ErrGenerationReplay", err)
+		t.Fatalf("altered delegated bytes error = %v, want ErrGenerationReplay", err)
+	}
+}
+
+func TestReplayVerifiedGenerationRejectsSnapshotBytesNotBoundByTimestamp(t *testing.T) {
+	fixture := makeDelegatedRepositoryFixture(t)
+	roles := replayFixtureRoles(t, fixture)
+	var envelope struct {
+		Signatures []struct {
+			Sig string `json:"sig"`
+		} `json:"signatures"`
+	}
+	if err := json.Unmarshal(roles[1].Metadata, &envelope); err != nil {
+		t.Fatalf("decode snapshot fixture signature: %v", err)
+	}
+	if len(envelope.Signatures) == 0 || envelope.Signatures[0].Sig == "" {
+		t.Fatal("snapshot fixture has no signature")
+	}
+	mutated := append([]byte(nil), roles[1].Metadata...)
+	signature := []byte(envelope.Signatures[0].Sig)
+	index := bytes.Index(mutated, signature)
+	if index < 0 {
+		t.Fatal("could not locate exact snapshot signature bytes")
+	}
+	if mutated[index] == '0' {
+		mutated[index] = '1'
+	} else {
+		mutated[index] = '0'
+	}
+	roles[1].Metadata = mutated
+
+	if _, err := replayVerifiedGeneration(fixture.rootJSON, replayFixtureRootState(fixture), time.Now().UTC(), roles, 4); !errors.Is(err, ErrGenerationReplay) {
+		t.Fatalf("snapshot bytes not bound by timestamp error = %v, want ErrGenerationReplay", err)
 	}
 }
 
