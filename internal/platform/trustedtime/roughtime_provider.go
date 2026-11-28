@@ -89,7 +89,7 @@ func NewRoughtimeProvider(config RoughtimeProviderConfig) (*RoughtimeProvider, e
 	}
 
 	witnesses := make([]RoughtimeWitness, len(config.Witnesses))
-	sourceIDs, operators, keys := map[string]bool{}, map[string]bool{}, map[string]bool{}
+	sourceIDs, operators, keys, anchors := map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]bool{}
 	for i, input := range config.Witnesses {
 		if err := input.Source.Validate(); err != nil {
 			return nil, fmt.Errorf("%w: testigo %d: %v", ErrInvalidRoughtimeConfig, i, err)
@@ -105,8 +105,8 @@ func NewRoughtimeProvider(config RoughtimeProviderConfig) (*RoughtimeProvider, e
 		if input.Source.KeyID != hex.EncodeToString(fingerprint[:]) {
 			return nil, fmt.Errorf("%w: KeyID no coincide con la raíz fijada para %q", ErrInvalidRoughtimeConfig, input.Source.ID)
 		}
-		if sourceIDs[input.Source.ID] || operators[input.Source.OperatorID] || keys[string(input.PublicKey)] {
-			return nil, fmt.Errorf("%w: Source.ID, OperatorID o raíz duplicados", ErrInvalidRoughtimeConfig)
+		if sourceIDs[input.Source.ID] || operators[input.Source.OperatorID] || keys[string(input.PublicKey)] || anchors[input.Source.TrustAnchorID] {
+			return nil, fmt.Errorf("%w: Source.ID, OperatorID, raíz o TrustAnchorID duplicado", ErrInvalidRoughtimeConfig)
 		}
 		if len(input.Endpoints) == 0 || len(input.Endpoints) > MaxRoughtimeEndpoints {
 			return nil, fmt.Errorf("%w: endpoints inválidos para %q", ErrInvalidRoughtimeConfig, input.Source.ID)
@@ -126,7 +126,7 @@ func NewRoughtimeProvider(config RoughtimeProviderConfig) (*RoughtimeProvider, e
 			endpoints[j] = normalized
 		}
 		witnesses[i] = RoughtimeWitness{Source: input.Source, PublicKey: append([]byte(nil), input.PublicKey...), Endpoints: endpoints}
-		sourceIDs[input.Source.ID], operators[input.Source.OperatorID], keys[string(input.PublicKey)] = true, true, true
+		sourceIDs[input.Source.ID], operators[input.Source.OperatorID], keys[string(input.PublicKey)], anchors[input.Source.TrustAnchorID] = true, true, true, true
 	}
 	return &RoughtimeProvider{
 		witnesses: witnesses, exchangeTimeout: config.ExchangeTimeout,
