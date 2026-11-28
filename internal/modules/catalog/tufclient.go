@@ -606,16 +606,19 @@ func (client *TUFClient) Close() error {
 	defer client.mu.Unlock()
 	client.updater = nil
 	client.resolvedTargets = make(map[string]struct{})
+
+	var result error
 	if err := client.discardPersistentMetadataStage(); err != nil {
-		return fmt.Errorf("limpiar workspace de metadata TUF: %w", err)
+		result = errors.Join(result, fmt.Errorf("limpiar workspace de metadata TUF: %w", err))
 	}
 	if client.persistence != nil && client.persistence.repositoryLock != nil {
 		if err := client.persistence.repositoryLock.Unlock(); err != nil {
-			return fmt.Errorf("liberar lock del repositorio TUF: %w", err)
+			result = errors.Join(result, fmt.Errorf("liberar lock del repositorio TUF: %w", err))
+		} else {
+			client.persistence.repositoryLock = nil
 		}
-		client.persistence.repositoryLock = nil
 	}
-	return nil
+	return result
 }
 
 func (anchor *TrustAnchor) rootSnapshot() ([]byte, error) {
