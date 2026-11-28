@@ -26,6 +26,7 @@ const (
 	maxLogBytes        = 4 << 20
 	maxRecordBytes     = 64 << 10
 	maxCrashTailBytes  = 64 << 10
+	maxRunReports      = 30
 )
 
 var (
@@ -105,6 +106,9 @@ func Open(directory, version string) (*Logger, error) {
 
 	recovered, err := recoverPreviousRuns(absolute)
 	if err != nil {
+		return nil, err
+	}
+	if err := pruneOldRunReports(absolute, maxRunReports-1); err != nil {
 		return nil, err
 	}
 
@@ -529,4 +533,68 @@ func hasCleanShutdownMarker(path string) (bool, error) {
 		return false, err
 	}
 	return bytes.Contains(data, []byte("CIERRE NORMAL:")), nil
+}
+
+func pruneOldRunReports(directory string, keep int) error {
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return fmt.Errorf("listar informes para retención: %w", err)
+	}
+	type reportFile struct {
+		path    string
+		modTime time.Time
+	}
+	var reports []reportFile
+	for _, entry := range entries {
+		if !strings.HasPrefix(entry.Name(), runLogPrefix) || !strings.HasSuffix(entry.Name(), ".txt") {
+			continue
+		}
+		path := filepath.Join(directory, entry.Name())
+		info, err := os.Lstat(path)
+		if err != nil {
+			return fmt.Errorf("inspeccionar informe para retención %q: %w", entry.Name(), err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			return fmt.Errorf("informe para retención %q no es un archivo regular", entry.Name())
+		}
+		reports = append(reports, reportFile{path: path, modTime: info.ModTime()})
+	}
+	if len(reports) <= keep {
+		return nil
+	}
+	sort.Slice(reports, func(i, j int) bool {
+		if reports[i].modTime.Equal(reports[j].modTime) {
+			return reports[i].path < reports[j].path
+		}
+		return reports[i].modTime.Before(reports[j].modTime)
+	})
+
+	remaining := len(reports)
+	for _, report := range reports {
+		if remaining <= keep {
+			break
+		}
+		lock, err := openLockFile(report.path)
+		if err != nil {
+			return err
+		}
+		locked, err := lock.TryLock()
+		if err != nil {
+			_ = lock.Unlock()
+			return fmt.Errorf("bloquear informe antiguo para retención: %w", err)
+		}
+		if !locked {
+			continue // Never remove a report owned by a running process.
+		}
+		if err := lock.Unlock(); err != nil {
+			return fmt.Errorf("liberar informe antiguo para retención: %w", err)
+		}
+		// The caller holds the directory startup lock, so no new scanner can
+		// race the unlock-to-remove interval.
+		if err := os.Remove(report.path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("eliminar informe antiguo por retención: %w", err)
+		}
+		remaining--
+	}
+	return nil
 }
