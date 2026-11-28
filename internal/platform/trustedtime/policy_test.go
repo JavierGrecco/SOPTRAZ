@@ -216,7 +216,7 @@ func TestAcceptancePolicyRejectsExcessiveAggregateUncertainty(t *testing.T) {
 	}
 }
 
-func TestAcceptancePolicyClampsToPreviousAcceptedLowerBound(t *testing.T) {
+func TestAcceptancePolicyUsesPreviousGuaranteedLowerBoundNotUpperBound(t *testing.T) {
 	start := policyTestStart()
 	a := policyTestSource("source-a", "operator-a")
 	b := policyTestSource("source-b", "operator-b")
