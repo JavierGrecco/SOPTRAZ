@@ -1,6 +1,6 @@
 # Modelo de persistencia, anti-rollback y recuperación del catálogo TUF
 
-- Estado: modelo de amenazas vigente; root-chain SQLite, replay persistente de `TUFClient` y contrato de almacenamiento de generaciones/high-water integrados en `main` (PR #22, #23 y #25). Falta conectar el updater con staging y generación automática; crash/restart abrupto y modo offline siguen pendientes.
+- Estado: root-chain SQLite, replay persistente, store de generaciones y captura/revalidación online desde `TUFClient` integrados en `main` (PR #22, #23, #25 y #27). La generación se compromete después de resolver descriptores; staging aislado, recuperación abrupta y modo offline siguen pendientes.
 - Fecha: 2026-11-28
 - Relacionado: ADR-0015, ADR-0017, Issue #5 (M1.4), Issue #4 (M1.5).
 - Alcance: metadata de confianza y caché del catálogo; no targets ejecutables.
@@ -9,7 +9,7 @@
 
 SOPTRAZ ya cuenta con una primera capa online de TUF basada en el `updater.Updater` oficial de go-tuf v2.5.0. El cliente recibe un `TrustAnchor` previamente fijado, resuelve roles delegados, verifica el descriptor artifact v1 y no descarga ni ejecuta el binario.
 
-La próxima etapa no consiste en guardar `root.json` en una carpeta. El store ya puede persistir y activar atómicamente un conjunto de metadata por rol; falta conectar el updater a ese contrato para construir una **generación coherente de metadata autenticada**, resolver las delegaciones requeridas y recuperarla tras fallos parciales.
+La siguiente etapa no consiste en guardar `root.json` en una carpeta. El contrato de generaciones SQLite ya está conectado al `TUFClient`: después de resolver un descriptor, el cliente captura bytes originales aceptados por go-tuf, los compara con su estado confiable, reproduce la cadena con `trustedmetadata` y activa el conjunto en una transacción. Falta aislar el refresh en staging antes de modificar la caché y recuperar una generación desde SQLite tras reinicios para habilitar un verificador offline explícito.
 
 El diseño separa cuatro propiedades que no son equivalentes:
 
@@ -33,7 +33,7 @@ No se habilita el modo offline de producción ni se declara cerrado M1.4 con est
 - Un refresh fallido invalida la instancia del updater en memoria para que la aplicación no continúe consultando metadata vieja de esa instancia.
 - PR #20 conserva también el último root que go-tuf dejó verificado como base de los refreshes siguientes dentro del mismo proceso. Si el refresh falla después de una rotación, el updater queda invalidado para consultas, pero la raíz verificada se conserva en memoria. No sobrevive todavía a reinicios ni a la recreación de la aplicación.
 - El updater puede persistir archivos de metadata en el directorio de caché. La implementación oficial escribe cada metadata mediante archivo temporal, cierra, renombra y relee para comparar bytes. Esto protege la escritura individual frente a truncamiento lógico, pero no equivale a una transacción única de todo el conjunto root/timestamp/snapshot/targets/delegaciones ni documenta por sí solo una garantía de durabilidad frente a pérdida súbita de energía.
-- El esquema SQLite v2 ya almacena generaciones inmutables, metadata por rol/delegación, high-water con procedencia y `active_generation` (PR #25). Sin embargo, el repositorio de metadata del `TUFClient` todavía es una carpeta configurada en `TUFClientConfig`: el updater aún no lee ni publica generaciones desde este store.
+- El esquema SQLite v2 almacena generaciones inmutables, metadata por rol/delegación, high-water con procedencia y `active_generation` (PR #25). PR #27 conecta `TUFClient` con ese store: tras `ResolveDescriptor` exitoso, lee los bytes originales de la caché de go-tuf, los compara con los objetos confiables en memoria, revalida con `trustedmetadata` y compromete la generación. El updater sigue utilizando su caché individual como espacio de trabajo; todavía no existe staging aislado antes del refresh ni restauración desde SQLite para modo offline.
 
 ### 2.2 Reglas del protocolo
 
@@ -87,7 +87,7 @@ Cada intento de actualización trabaja sobre un directorio temporal exclusivo de
 
 ### 4.2 Registro de generación
 
-Cada generación comprometida por `CommitGeneration` ya tiene un manifiesto SHA-256 determinista sobre repositorio, IDs, root, roles, versiones, expiración, bytes y relaciones padre/hijo. El contrato de almacenamiento está implementado; la integración que suministra los roles autenticados desde el updater sigue pendiente. El manifiesto cubre:
+Cada generación comprometida por `CommitGeneration` tiene un manifiesto SHA-256 determinista sobre repositorio, IDs, root, roles, versiones, expiración, bytes y relaciones padre/hijo. PR #27 suministra esos roles desde la caché del updater oficial únicamente después de compararlos con el estado confiable y reproducir la cadena con `trustedmetadata`. El manifiesto cubre:
 
 - `repository_id` y origen configurado del repositorio.
 - `generation_id` único y número monotónico local.
@@ -103,7 +103,7 @@ No confiar en fechas locales como prueba de orden; usar versiones TUF firmadas. 
 
 ### 4.3 Commit atómico (decisión tomada por ADR-0017)
 
-Se selecciona un SQLite separado (`catalog-trust.sqlite`), no `audit.sqlite`. PR #25 integra el esquema v2 y la API transaccional: BLOBs para metadata original, manifiesto por generación, relaciones de delegación, high-water por rol con procedencia inmutable y puntero `active_generation`. `CommitGeneration` inserta roles y relaciones, valida root actual, monotonicidad y CAS, actualiza high-water y cambia el puntero en una sola transacción. Si cualquier operación falla, todo revierte. Este contrato todavía no está alimentado automáticamente por el updater.
+Se selecciona un SQLite separado (`catalog-trust.sqlite`), no `audit.sqlite`. PR #25 integra el esquema v2 y la API transaccional: BLOBs para metadata original, manifiesto por generación, relaciones de delegación, high-water por rol con procedencia inmutable y puntero `active_generation`. PR #27 conecta `TUFClient` a esta API: captura metadata solo tras una resolución exitosa, compara los bytes de caché con los objetos confiables de go-tuf, reproduce roles superiores y delegaciones recorridas mediante `trustedmetadata` y después llama a `CommitGeneration`. La transacción valida root actual, monotonicidad y CAS, actualiza high-water y cambia el puntero; si cualquier operación falla, todo revierte.
 
 La cadena de root tiene un commit separado e independiente:
 - Después de un intento de refresh, la capa `catalog` recupera los roots que go-tuf efectivamente verificó y los reproduce desde el trust anchor independiente con `trustedmetadata.UpdateRoot`.
@@ -229,12 +229,12 @@ No se restaurará automáticamente una generación vieja para “hacer que el pr
 
 ## 10. Plan de implementación propuesto
 
-1. Mantener la implementación online actual como prototipo; no marcarla como production-ready/offline.
-2. Añadir tests que caractericen exactamente cómo go-tuf v2.5.0 lee/persiste root y roles, incluidas delegaciones y recuperación tras fallo.
+1. Mantener la implementación online como prototipo reforzado; no marcarla como production-ready/offline.
+2. [x] Caracterizar el comportamiento de go-tuf v2.5.0 para root, roles superiores y delegaciones bajo demanda; continuar ampliando pruebas de recuperación y fallos.
 3. [x] Seleccionar almacenamiento SQLite separado y contrato de root chain/generaciones/high-water mediante ADR-0017.
-4. [x] Implementar store de root-chain (PR #22), replay/commit persistente de `TUFClient` (PR #23) y contrato transaccional de generaciones/high-water (PR #25). [ ] Integrar el loader online, staging y captura de metadata por rol desde go-tuf.
-5. [ ] Implementar loader online basado en staging temporal e importar al store solo después de validar roles superiores y delegaciones requeridas.
-6. [ ] Añadir tests de terminación abrupta real, disco lleno y dos procesos concurrentes; la re-apertura ordenada y el rollback transaccional inyectado ya están cubiertos por PR #25.
+4. [x] Implementar store de root-chain (PR #22), replay/commit persistente de `TUFClient` (PR #23), store de generaciones/high-water (PR #25) y captura/revalidación online desde `TUFClient` (PR #27).
+5. [ ] Implementar staging aislado por generación antes del refresh y restauración validada desde SQLite; la caché oficial deja de ser el único espacio de trabajo pero nunca se promueve por presencia solamente.
+6. [ ] Añadir tests de terminación abrupta real, disco lleno y dos procesos concurrentes; la reapertura ordenada, replay TUF y rollback transaccional inyectado ya están cubiertos.
 7. [ ] Implementar el verificador offline local usando `trustedmetadata` y validación de delegaciones; no usar `UnsafeLocalMode`.
 8. [ ] Añadir ancla monotónica por plataforma o witness externo cuando esté disponible, manteniendo un nivel local explícito cuando no lo esté.
 9. [ ] Completar SBOM, avisos/licencias y política de actualización de go-tuf/Sigstore.
@@ -252,13 +252,14 @@ No se restaurará automáticamente una generación vieja para “hacer que el pr
 Este documento registra el diseño de seguridad y las decisiones que faltan. La persistencia durable de root-chain ya está implementada; este documento no habilita todavía el modo offline ni una garantía hardware anti-rollback.
 
 
-## 12. Estado de implementación tras PR #20, PR #22, PR #23 y PR #25
+## 12. Estado de implementación tras PR #20, PR #22, PR #23, PR #25 y PR #27
 
-- PR #20 integrado como `1bf7e13`: el último root TUF verificado se conserva entre refreshes de la misma instancia y sobrevive a un fallo posterior de timestamp/snapshot/targets.
-- PR #22 integrado en `main`: `internal/storage/sqlitetuf` persiste la cadena histórica de root en SQLite separado, con ancla/origen fijados, hashes exactos, enlaces consecutivos, append-only, CAS y lectura consistente.
-- PR #23 integrado como `1988db9` añade `NewPersistentTUFClient`: replay desde el pin bootstrap, captura acotada de respuestas versionadas y commit durable solo si go-tuf alcanzó la misma versión. Recupera roots verificadas aunque falle metadata posterior.
-- PR #25 integrado como `e4341ab` migra el store a esquema v2 y añade `CommitGeneration`/`LoadActiveGeneration`, metadata por rol/delegación, manifiesto SHA-256, high-water con procedencia inmutable y activación CAS transaccional. La migración conserva y prueba root-chain v1 con una rotación previa.
-- La matriz pre-merge de PR #25 pasó 5/5 en [run 46095086164](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46095086164) para `c5fe257c22d19a6183b7d6b28031325a5539f01e`: Windows, macOS, Ubuntu, Race Detector y fuzzing. El CI post-merge de `main` se ejecuta sobre `e4341ab`.
-- El store de generaciones aún no se alimenta automáticamente desde `TUFClient`: faltan staging, captura de bytes exactos autenticados por go-tuf, validación de los enlaces timestamp/snapshot/targets y resolución de todas las delegaciones requeridas. No declarar completo un grafo que no se haya recorrido.
-- La re-apertura ordenada y el rollback transaccional inyectado pasan; faltan terminación abrupta real entre etapas, disco lleno y escritores multi-proceso. No se habilita `UnsafeLocalMode` ni catálogo offline.
-- El nivel local no protege contra restaurar una imagen antigua completa del mismo disco sin TPM/contador monotónico o witness externo. Bootstrap/custodia de claves de producción y ancla hardware/externa siguen pendientes.
+- PR #20 integrado como `1bf7e13`: conserva el último root verificado entre refreshes dentro del mismo proceso.
+- PR #22 integra root-chain append-only SQLite con pin/origen, hashes exactos, enlaces consecutivos, CAS y lectura consistente.
+- PR #23 integrado como `1988db9` añade `NewPersistentTUFClient`: reproduce roots desde el pin bootstrap y persiste rotaciones aceptadas por go-tuf incluso si falla metadata posterior.
+- PR #25 integrado como `e4341ab` añade esquema SQLite v2, generaciones inmutables, roles/delegaciones, manifiesto SHA-256, high-water con procedencia inmutable y activación CAS transaccional.
+- PR #27 integrado como `4983f7d` conecta el capturador existente con `TUFClient`: después de una resolución exitosa, captura bytes originales, compara con el estado confiable, reproduce roles superiores y delegaciones recorridas con `trustedmetadata` y compromete de manera idempotente. Si falla el commit, la resolución persistente falla cerrada.
+- La matriz pre-merge de PR #27 pasó 5/5 en [run 46097598736](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46097598736); el CI post-merge de `main` también pasó 5/5 en [run 46097718344](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46097718344): Windows, macOS, Ubuntu, Race Detector y fuzzing.
+- La generación contiene metadata top-level y los roles delegados recorridos por los descriptores resueltos; no afirma que todo el grafo del repositorio esté cargado. No se crea una generación en el constructor ni por `Refresh()` sin descriptores resueltos.
+- Falta staging aislado antes del refresh, recuperación desde SQLite para un validador offline, terminación abrupta real entre etapas, disco lleno y escritores multi-proceso. `UnsafeLocalMode` sigue deshabilitado.
+- No existe protección fuerte frente a restauración de una imagen antigua completa del mismo disco sin TPM/contador monotónico o witness externo. Bootstrap y custodia de claves de producción siguen pendientes.
