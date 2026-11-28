@@ -261,73 +261,8 @@ func captureAndVerifyGenerationMetadata(
 		roleValues[roleName] = parsed
 	}
 
-	// Replay exact bytes from a clean trust state. The reference time is copied
-	// from the official updater so the replay tests the same expiry instant.
-	replayed, err := trustedmetadata.New(rootJSON)
-	if err != nil {
-		return nil, fmt.Errorf("%w: reconstruir estado root: %v", ErrGenerationCapture, err)
-	}
-	replayed.RefTime = trusted.RefTime
-	if _, err := replayed.UpdateTimestamp(timestampBytes); err != nil {
-		return nil, fmt.Errorf("%w: revalidar timestamp con go-tuf: %v", ErrGenerationCapture, err)
-	}
-	if _, err := replayed.UpdateSnapshot(snapshotBytes, false); err != nil {
-		return nil, fmt.Errorf("%w: revalidar snapshot con go-tuf: %v", ErrGenerationCapture, err)
-	}
-	if _, err := replayed.UpdateTargets(targetsBytes); err != nil {
-		return nil, fmt.Errorf("%w: revalidar targets con go-tuf: %v", ErrGenerationCapture, err)
-	}
-	if !reflect.DeepEqual(replayed.Timestamp, trusted.Timestamp) ||
-		!reflect.DeepEqual(replayed.Snapshot, trusted.Snapshot) ||
-		!reflect.DeepEqual(replayed.Targets[metadata.TARGETS], trusted.Targets[metadata.TARGETS]) {
-		return nil, fmt.Errorf("%w: el replay top-level no coincide con el updater oficial", ErrGenerationCapture)
-	}
-
-	pending := make([]string, 0, len(selectedRoles)-1)
-	for _, roleName := range roleNames {
-		if roleName != metadata.TARGETS {
-			pending = append(pending, roleName)
-		}
-	}
-	verified := map[string]bool{metadata.TARGETS: true}
-	for len(pending) > 0 {
-		progress := false
-		remaining := make([]string, 0, len(pending))
-		for _, roleName := range pending {
-			parents := parentsByRole[roleName]
-			ready := len(parents) > 0
-			for _, parent := range parents {
-				if !verified[parent] {
-					ready = false
-					break
-				}
-			}
-			if !ready {
-				remaining = append(remaining, roleName)
-				continue
-			}
-
-			for _, parent := range parents {
-				if _, err := replayed.UpdateDelegatedTargets(roleBytes[roleName], roleName, parent); err != nil {
-					return nil, fmt.Errorf("%w: revalidar delegación %q desde %q: %v",
-						ErrGenerationCapture, roleName, parent, err)
-				}
-			}
-			if !reflect.DeepEqual(replayed.Targets[roleName], roleValues[roleName]) {
-				return nil, fmt.Errorf("%w: replay del rol delegado %q no coincide con go-tuf", ErrGenerationCapture, roleName)
-			}
-			verified[roleName] = true
-			progress = true
-		}
-		if !progress {
-			return nil, fmt.Errorf("%w: delegaciones no verificables o grafo incompleto", ErrGenerationCapture)
-		}
-		pending = remaining
-	}
-	if len(verified) != len(selectedRoles) {
-		return nil, fmt.Errorf("%w: faltan roles delegados verificados", ErrGenerationCapture)
-	}
-
+	// Persist only exact role bytes that were also authenticated by the official
+	// updater. The same replay primitive is used by the future offline verifier.
 	result := make([]sqlitetuf.VerifiedRoleMetadata, 0, 2+len(selectedRoles))
 	result = append(result,
 		sqlitetuf.VerifiedRoleMetadata{
@@ -345,10 +280,7 @@ func captureAndVerifyGenerationMetadata(
 	)
 	for _, roleName := range roleNames {
 		role := roleValues[roleName]
-		parents := make([]string, 0, len(parentsByRole[roleName]))
-		for _, parent := range parentsByRole[roleName] {
-			parents = append(parents, parent)
-		}
+		parents := append([]string(nil), parentsByRole[roleName]...)
 		sort.Strings(parents)
 		result = append(result, sqlitetuf.VerifiedRoleMetadata{
 			Role:      roleName,
@@ -357,6 +289,21 @@ func captureAndVerifyGenerationMetadata(
 			ExpiresAt: role.Signed.Expires,
 			Metadata:  append([]byte(nil), roleBytes[roleName]...),
 		})
+	}
+
+	replayed, err := replayVerifiedGeneration(rootJSON, rootState, trusted.RefTime, result, maxDelegations)
+	if err != nil {
+		return nil, fmt.Errorf("%w: replay go-tuf de la generación: %v", ErrGenerationCapture, err)
+	}
+	if !reflect.DeepEqual(replayed.Root, trusted.Root) ||
+		!reflect.DeepEqual(replayed.Timestamp, trusted.Timestamp) ||
+		!reflect.DeepEqual(replayed.Snapshot, trusted.Snapshot) {
+		return nil, fmt.Errorf("%w: el replay top-level no coincide con el updater oficial", ErrGenerationCapture)
+	}
+	for _, roleName := range roleNames {
+		if !reflect.DeepEqual(replayed.Targets[roleName], trusted.Targets[roleName]) {
+			return nil, fmt.Errorf("%w: el replay delegado %q no coincide con el updater oficial", ErrGenerationCapture, roleName)
+		}
 	}
 	return result, nil
 }
