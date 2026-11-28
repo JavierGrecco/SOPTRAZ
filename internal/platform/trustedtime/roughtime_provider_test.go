@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"reflect"
 	"sort"
@@ -175,6 +176,162 @@ func newRTPWitness(t *testing.T, id, operator string, rec *rtpRecorder, opts ...
 
 func newRTPRecorder() *rtpRecorder {
 	return &rtpRecorder{nonces: map[string]bool{}, counts: map[string]int{}}
+}
+
+func newRTPTCPWitness(t *testing.T, id, operator string, recorder *rtpRecorder) RoughtimeWitness {
+	t.Helper()
+	_, root, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate TCP Roughtime root key: %v", err)
+	}
+	_, online, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate TCP Roughtime online key: %v", err)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen TCP Roughtime server: %v", err)
+	}
+	base := time.Now()
+	cert, err := protocol.NewCertificate(base.Add(-time.Hour), base.Add(time.Hour), online, root)
+	if err != nil {
+		_ = listener.Close()
+		t.Fatalf("create TCP Roughtime delegation: %v", err)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			conn, acceptErr := listener.Accept()
+			if acceptErr != nil {
+				return
+			}
+			func() {
+				defer conn.Close()
+				var header [protocol.PacketHeaderSize]byte
+				if _, readErr := io.ReadFull(conn, header[:]); readErr != nil {
+					t.Errorf("read TCP Roughtime packet header: %v", readErr)
+					return
+				}
+				bodyLength, parseErr := protocol.ParsePacketHeader(header[:])
+				if parseErr != nil || bodyLength == 0 || bodyLength > 64*1024 {
+					t.Errorf("invalid TCP Roughtime packet header: length=%d error=%v", bodyLength, parseErr)
+					return
+				}
+				requestPacket := make([]byte, protocol.PacketHeaderSize+int(bodyLength))
+				copy(requestPacket, header[:])
+				if _, readErr := io.ReadFull(conn, requestPacket[protocol.PacketHeaderSize:]); readErr != nil {
+					t.Errorf("read TCP Roughtime request body: %v", readErr)
+					return
+				}
+				request, requestErr := protocol.ParseRequest(requestPacket)
+				if requestErr != nil {
+					t.Errorf("parse TCP Roughtime request: %v", requestErr)
+					return
+				}
+				if !reflect.DeepEqual(request.Versions, []protocol.Version{protocol.Version1}) {
+					t.Errorf("TCP request versions=%v, want RFC 10049 v1", request.Versions)
+					return
+				}
+				recorder.mu.Lock()
+				recorder.order = append(recorder.order, id)
+				recorder.counts[id]++
+				if recorder.nonces[string(request.Nonce)] {
+					recorder.mu.Unlock()
+					t.Errorf("TCP Roughtime request nonce reused")
+					return
+				}
+				recorder.nonces[string(request.Nonce)] = true
+				recorder.mu.Unlock()
+
+				midpoint := base.Add(time.Since(base))
+				replies, replyErr := protocol.CreateReplies(
+					protocol.Version1,
+					[]protocol.Request{*request},
+					midpoint,
+					100*time.Millisecond,
+					cert,
+				)
+				if replyErr != nil {
+					t.Errorf("create TCP Roughtime response: %v", replyErr)
+					return
+				}
+				reply := replies[0]
+				for len(reply) > 0 {
+					written, writeErr := conn.Write(reply)
+					if writeErr != nil {
+						t.Errorf("write TCP Roughtime response: %v", writeErr)
+						return
+					}
+					if written == 0 {
+						t.Errorf("write TCP Roughtime response: zero-byte write")
+						return
+					}
+					reply = reply[written:]
+				}
+			}()
+		}
+	}()
+	t.Cleanup(func() {
+		_ = listener.Close()
+		<-done
+		cert.Wipe()
+	})
+
+	fingerprint := sha256.Sum256(root.Public().(ed25519.PublicKey))
+	return RoughtimeWitness{
+		Source: Source{
+			ID: id, OperatorID: operator, Kind: SourceRoughtime, Assurance: AssuranceAttested,
+			TrustAnchorID: "tcp-lab-anchor-" + id, KeyID: hex.EncodeToString(fingerprint[:]),
+		},
+		PublicKey: append([]byte(nil), root.Public().(ed25519.PublicKey)...),
+		Endpoints: []RoughtimeEndpoint{{Transport: "tcp", Address: listener.Addr().String()}},
+	}
+}
+
+func TestRoughtimeProviderSupportsTCPTransport(t *testing.T) {
+	recorder := newRTPRecorder()
+	witnesses := make([]RoughtimeWitness, 0, 3)
+	for i := 0; i < 3; i++ {
+		id := fmt.Sprintf("tcp-witness-%d", i+1)
+		witnesses = append(witnesses, newRTPTCPWitness(t, id, fmt.Sprintf("tcp-operator-%d", i+1), recorder))
+	}
+	provider, err := NewRoughtimeProvider(RoughtimeProviderConfig{
+		Witnesses: witnesses, ExchangeTimeout: time.Second,
+		MeasurementTimeout: 15 * time.Second, MaxRadius: 2 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("NewRoughtimeProvider() error = %v", err)
+	}
+	evidence, err := provider.ObserveBatch(context.Background())
+	if err != nil {
+		t.Fatalf("TCP ObserveBatch() error = %v", err)
+	}
+	if len(evidence) != len(witnesses) {
+		t.Fatalf("TCP ObserveBatch() returned %d samples, want %d", len(evidence), len(witnesses))
+	}
+	for _, item := range evidence {
+		if err := item.Validate(); err != nil {
+			t.Errorf("invalid TCP evidence: %v", err)
+		}
+	}
+
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+	if len(recorder.order) != 2*len(witnesses) {
+		t.Fatalf("observed %d TCP requests, want %d", len(recorder.order), 2*len(witnesses))
+	}
+	if !reflect.DeepEqual(recorder.order[:len(witnesses)], recorder.order[len(witnesses):]) {
+		t.Fatalf("TCP measurement did not repeat the same witness order: %v", recorder.order)
+	}
+	if len(recorder.nonces) != 2*len(witnesses) {
+		t.Fatalf("observed %d unique TCP request nonces, want %d", len(recorder.nonces), 2*len(witnesses))
+	}
+	for _, witness := range witnesses {
+		if recorder.counts[witness.Source.ID] != 2 {
+			t.Errorf("TCP witness %s received %d requests, want 2", witness.Source.ID, recorder.counts[witness.Source.ID])
+		}
+	}
 }
 
 func TestRoughtimeProviderTwoPassesCausalChainAndEvidence(t *testing.T) {
