@@ -114,6 +114,14 @@ func (transport *rootMetadataCaptureTransport) requestedRootVersion(request *htt
 	return version, true
 }
 
+// reset discards candidates from a previous refresh before a new Updater run.
+func (transport *rootMetadataCaptureTransport) reset() {
+	transport.mu.Lock()
+	defer transport.mu.Unlock()
+	transport.roots = make(map[int64][]byte)
+	transport.captureErr = nil
+}
+
 func (transport *rootMetadataCaptureTransport) recordRoot(version int64, metadata []byte) {
 	transport.mu.Lock()
 	defer transport.mu.Unlock()
