@@ -267,6 +267,22 @@ func TestRoutineExecutionDoesNotLeaveAnEmptyReport(t *testing.T) {
 	}
 }
 
+func TestCrashOutputCanBeConfiguredAndDisabled(t *testing.T) {
+	logger, err := Open(t.TempDir(), "test-version")
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	if err := logger.ConfigureCrashOutput(); err != nil {
+		t.Fatalf("ConfigureCrashOutput() error = %v", err)
+	}
+	if err := logger.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if _, err := os.Stat(logger.Path()); !os.IsNotExist(err) {
+		t.Fatalf("clean execution with no incident left a report behind: %v", err)
+	}
+}
+
 func TestPanicReportIncludesStack(t *testing.T) {
 	logger, err := Open(t.TempDir(), "test-version")
 	if err != nil {
