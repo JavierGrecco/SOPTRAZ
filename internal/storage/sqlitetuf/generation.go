@@ -113,10 +113,6 @@ func (store *Store) CommitGeneration(
 	if err != nil {
 		return Generation{}, err
 	}
-	manifestRolesDigest := generationManifestDigest(repositoryID, 0, expectedActiveID, root, normalized)
-	if manifestRolesDigest == "" { // defensive: a SHA-256 digest is never empty
-		return Generation{}, ErrInvalidGeneration
-	}
 	if totalBytes > MaxGenerationTotalBytes {
 		return Generation{}, fmt.Errorf("%w: el conjunto supera %d bytes", ErrInvalidGeneration, MaxGenerationTotalBytes)
 	}
