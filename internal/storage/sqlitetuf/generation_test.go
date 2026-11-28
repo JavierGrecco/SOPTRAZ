@@ -508,7 +508,6 @@ func TestRoleHighWaterCannotBeDeletedOrDowngradedThroughSQL(t *testing.T) {
 	}
 }
 
-
 func TestLoadActiveGenerationDetectsTamperedHighWaterEvidenceForOmittedRole(t *testing.T) {
 	ctx := context.Background()
 	store, _, anchor := openGenerationTestStore(t)
