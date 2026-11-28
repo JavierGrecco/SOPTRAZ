@@ -50,7 +50,6 @@ func TestOpenRejectsBroadWritableAncestorDACL(t *testing.T) {
 	}
 }
 
-
 // Create permission alone can add a new sibling but cannot replace a protected
 // existing directory entry. It is therefore not treated as an unsafe ancestor.
 func TestOpenAllowsCreateOnlyBroadAncestorDACL(t *testing.T) {
