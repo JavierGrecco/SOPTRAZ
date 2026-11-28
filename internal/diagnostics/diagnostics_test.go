@@ -134,7 +134,8 @@ func TestDiagnosticsAbruptExitHelper(t *testing.T) {
 		os.Exit(93)
 	}
 	// The parent forcibly kills this process; Close() and deferred cleanup never run.
-	select {}
+	done := make(chan struct{})
+	<-done
 	runtime.KeepAlive(logger)
 }
 
