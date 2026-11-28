@@ -185,7 +185,6 @@ func TestUnknownCommandReturnsUsageError(t *testing.T) {
 	}
 }
 
-
 func TestDeviceProfileReportSerializesUnknownCapabilitiesExplicitly(t *testing.T) {
 	report := buildDeviceProfileReport(platformprofile.Result{})
 	var stdout bytes.Buffer
