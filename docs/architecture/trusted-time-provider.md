@@ -43,9 +43,13 @@ Una evidencia que pasa Validate sigue siendo una afirmación, no una autorizaci�
 
 Los errores del proveedor no deben filtrar respuestas crudas, secretos, tokens ni material criptográfico. Toda operación de red futura deberá respetar el context, timeout y límites de tamaño. Ningún proveedor cambiará el reloj del sistema automáticamente.
 
+## Diagnóstico nativo del sistema operativo (ADR-0021)
+
+El diagnóstico del reloj del SO será una capa separada de Evidence: no convertirá time.Now() en un intervalo de incertidumbre cero ni elevará el estado de un servicio a authenticated/attested. Distinguirá estado del servicio y estado de sincronización, y permitirá unknown cuando la plataforma no exponga datos suficientes sin privilegios. Los adaptadores no modificarán el reloj ni la configuración y no habilitarán TUF. La política por plataforma y sus límites están en [ADR-0021](../decisions/ADR-0021-os-time-diagnostics.md).
+
 ## Lo que todavía no está implementado
 
-- Proveedores nativos de solo lectura para Windows, macOS y Linux, y un diagnóstico separado de SystemWallClock.
+- Adaptadores nativos de solo lectura para Windows, macOS y Linux y el contrato SystemTimeDiagnostics de ADR-0021; la sincronización puede permanecer unknown si la plataforma no la expone con seguridad.
 - Pruebas de NTS y Roughtime en laboratorio, incluidas claves/raíces, nonce, replay, incertidumbre, fuentes contradictorias y rotación.
 - Política de selección y combinación de varias fuentes independientes.
 - Persistencia SQLite v3 de LastAcceptedTrustedTime y migración v2 → v3 sin convertir fechas locales antiguas en evidencia.
