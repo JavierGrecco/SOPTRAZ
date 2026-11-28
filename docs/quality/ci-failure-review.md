@@ -180,3 +180,19 @@ La API opcional `TUFClientConfig.Diagnostics` ahora registra con mensajes fijos 
 - Fallos de lectura/commit SQLite y captura no contradictoria (`ERROR`).
 
 Los errores normales de conectividad/metadata no se elevan a críticos: la prueba de refresh sin timestamp confirma que no se crea un evento de seguridad. El recorder es opcional y best-effort; un fallo del registro no sustituye el error TUF original. El composition root aún debe inyectarlo en los clientes usados por un flujo de producción.
+## Actualización de PR #31 — inyección VFS de fallos SQLite — 2026-11-28
+
+La prueba de errores del journal tuvo dos fallos intermedios antes de quedar verde:
+
+| Run | Commit | Resultado | Causa observada |
+|---|---|---|---|
+| [#238](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46110054324) | `7f720ec` | Falló formato en macOS/Ubuntu | Alineación de campos y literal del archivo VFS en el test nuevo. Los tests no habían empezado en esos jobs. |
+| [#239](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46110171279) | `d16cf23` | Pasó formato y `go vet`, pero fallaron tests en Windows/macOS | El VFS de prueba no consiguió abrir la DB (`unable to open database file`, SQLite 14); Race Detector, Ubuntu, fuzzing e higiene de ramas pasaron. |
+| [#240](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46110424318) | `13dbd5c` | **6/6 jobs aprobados** | Normalización de URI `file:` (separando el path de query params como `vfs` y `_txlock`) y canonicalización de la raíz temporal del VFS. Tests completos en Windows, macOS y Ubuntu, Race Detector, fuzzing y branch hygiene. |
+
+La cobertura VFS nueva:
+- devuelve `modernc.org/sqlite/vfs.ErrFull` en una escritura del archivo `-journal`; SQLite devuelve `SQLITE_FULL`;
+- devuelve un error I/O controlado desde `File.Sync` del journal;
+- verifica que `CommitVerifiedRoots` falla y que `RootState` y `LoadRootChain` permanecen en el ancla inicial, sin una rotación parcial.
+
+El VFS está registrado solo por tests; el `Open` de producción continúa usando el VFS OS normal. El error de espacio se inyecta en el punto de escritura del journal y el error de sync en la frontera VFS: **no se afirma que se haya llenado físicamente el disco ni que se haya probado un corte eléctrico**. El VFS del driver mantiene ciertos archivos temporales en memoria; el ENOSPC físico en unidades reales, la durabilidad del sync de directorio por filesystem y ensayos hardware siguen pendientes.
