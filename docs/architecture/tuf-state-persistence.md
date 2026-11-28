@@ -1,6 +1,6 @@
 # Modelo de persistencia, anti-rollback y recuperación del catálogo TUF
 
-- Estado: root-chain SQLite, replay persistente, store de generaciones y captura/revalidación online desde `TUFClient` integrados en `main` (PR #22, #23, #25 y #27). La generación se compromete después de resolver descriptores; staging aislado, recuperación abrupta y modo offline siguen pendientes.
+- Estado: root-chain SQLite, replay persistente, store de generaciones, captura/revalidación online y staging privado rehidratado desde la generación activa integrados en `main` (PR #22, #23, #25, #27 y #29). Siguen pendientes la limpieza de stages huérfanos tras caída abrupta, coordinación multi-proceso, fallos físicos y modo offline.
 - Fecha: 2026-11-28
 - Relacionado: ADR-0015, ADR-0017, Issue #5 (M1.4), Issue #4 (M1.5).
 - Alcance: metadata de confianza y caché del catálogo; no targets ejecutables.
@@ -9,7 +9,7 @@
 
 SOPTRAZ ya cuenta con una primera capa online de TUF basada en el `updater.Updater` oficial de go-tuf v2.5.0. El cliente recibe un `TrustAnchor` previamente fijado, resuelve roles delegados, verifica el descriptor artifact v1 y no descarga ni ejecuta el binario.
 
-La siguiente etapa no consiste en guardar `root.json` en una carpeta. El contrato de generaciones SQLite ya está conectado al `TUFClient`: después de resolver un descriptor, el cliente captura bytes originales aceptados por go-tuf, los compara con su estado confiable, reproduce la cadena con `trustedmetadata` y activa el conjunto en una transacción. Falta aislar el refresh en staging antes de modificar la caché y recuperar una generación desde SQLite tras reinicios para habilitar un verificador offline explícito.
+El contrato de generaciones SQLite está conectado al `TUFClient`: después de resolver un descriptor, el cliente captura bytes originales aceptados por go-tuf, los compara con su estado confiable, reproduce la cadena con `trustedmetadata` y activa el conjunto en una transacción. PR #29 agrega un workspace privado por refresh; al iniciar un updater persistente, copia allí los roles de la generación activa solo si su root coincide con la raíz durable actual. El updater oficial sigue el flujo online y vuelve a validar la caché; ante un error se elimina el stage candidato y permanece la generación SQLite anterior. `Close()` elimina el workspace en cierres ordenados. Esto permite reconstruir la caché de trabajo desde SQLite, pero no constituye un modo offline ni garantiza la limpieza de directorios huérfanos tras una terminación abrupta.
 
 El diseño separa cuatro propiedades que no son equivalentes:
 
@@ -33,7 +33,7 @@ No se habilita el modo offline de producción ni se declara cerrado M1.4 con est
 - Un refresh fallido invalida la instancia del updater en memoria para que la aplicación no continúe consultando metadata vieja de esa instancia.
 - PR #20 conserva también el último root que go-tuf dejó verificado como base de los refreshes siguientes dentro del mismo proceso. Si el refresh falla después de una rotación, el updater queda invalidado para consultas, pero la raíz verificada se conserva en memoria. No sobrevive todavía a reinicios ni a la recreación de la aplicación.
 - El updater puede persistir archivos de metadata en el directorio de caché. La implementación oficial escribe cada metadata mediante archivo temporal, cierra, renombra y relee para comparar bytes. Esto protege la escritura individual frente a truncamiento lógico, pero no equivale a una transacción única de todo el conjunto root/timestamp/snapshot/targets/delegaciones ni documenta por sí solo una garantía de durabilidad frente a pérdida súbita de energía.
-- El esquema SQLite v2 almacena generaciones inmutables, metadata por rol/delegación, high-water con procedencia y `active_generation` (PR #25). PR #27 conecta `TUFClient` con ese store: tras `ResolveDescriptor` exitoso, lee los bytes originales de la caché de go-tuf, los compara con los objetos confiables en memoria, revalida con `trustedmetadata` y compromete la generación. El updater sigue utilizando su caché individual como espacio de trabajo; todavía no existe staging aislado antes del refresh ni restauración desde SQLite para modo offline.
+- El esquema SQLite v2 almacena generaciones inmutables, metadata por rol/delegación, high-water con procedencia y `active_generation` (PR #25). PR #27 conecta `TUFClient` con ese store: tras `ResolveDescriptor` exitoso, lee los bytes originales de la caché de go-tuf, los compara con los objetos confiables en memoria, revalida con `trustedmetadata` y compromete la generación. PR #29 mueve el directorio de trabajo de go-tuf a un stage privado por intento y restaura desde SQLite la última generación compatible con la root actual; la validación sigue siendo online y usa el updater oficial. No existe todavía recuperación offline ni limpieza segura de stages huérfanos tras crash.
 
 ### 2.2 Reglas del protocolo
 
@@ -71,11 +71,13 @@ SOPTRAZ no debe afirmar que un registro SQLite, un HMAC almacenado en el mismo e
 
 La falta de un ancla de hardware o externa no debe disfrazarse como anti-rollback fuerte. El reporte debe nombrar el nivel real y la limitación.
 
-## 4. Propuesta de persistencia por generaciones
+## 4. Persistencia por generaciones
 
-### 4.1 Staging aislado
+### 4.1 Staging aislado implementado para el flujo online (PR #29)
 
-Cada intento de actualización trabaja sobre un directorio temporal exclusivo de generación. Se parte de una copia de la última generación aceptada y se construye allí el estado candidato. El updater oficial solo escribe dentro de ese staging; nunca modifica la generación actualmente confirmada.
+Cada refresh persistente trabaja sobre un directorio temporal privado creado bajo la raíz local de caché. Se inicializa con los roles de la generación activa de SQLite solo cuando el root version/hash coincide con la root durable actual; si no hay generación compatible, comienza vacío. `UpdaterConfig.LocalMetadataDir` apunta al stage, por lo que el updater oficial de go-tuf escribe allí y no altera la carpeta base ni el snapshot comprometido. El flujo sigue siendo online: go-tuf valida la metadata local y consulta el repositorio remoto según el protocolo normal.
+
+Si la inicialización o el refresh falla, el stage de ese intento se descarta y la generación activa anterior no cambia. `TUFClient.Close()` elimina el workspace en un cierre ordenado. Una caída abrupta puede dejar un directorio `.soptraz-tuf-stage-*` huérfano; la limpieza automática queda pendiente hasta implementar coordinación segura entre procesos. La materialización desde SQLite no habilita `UnsafeLocalMode` ni consultas offline.
 
 - Un solo escritor por repositorio, protegido por lock de proceso y coordinación entre instancias.
 - Staging en el mismo volumen del store para que los movimientos de archivos no crucen volúmenes.
@@ -111,7 +113,7 @@ La cadena de root tiene un commit separado e independiente:
 - Este commit se realiza aun cuando timestamp/snapshot/targets posteriores hayan fallado: una raíz ya verificada debe sobrevivir ese fallo.
 - La generación activa anterior permanece almacenada, pero no es elegible offline si su root version/hash ya no coincide con latest-root. El catálogo queda en estado `refresh_required` hasta comprometer una generación completa bajo la raíz actual.
 
-El proceso online materializa la generación activa en un staging temporal, ejecuta el updater oficial y resuelve los roles delegados requeridos. Solo después de validar tamaños, nombres de rol, versiones, hashes, expiraciones y manifiesto, se compromete la generación. El filesystem de staging no es el registro autoritativo.
+El proceso online restaura la generación activa compatible en un staging privado, ejecuta el updater oficial y resuelve los roles delegados requeridos. Solo después de validar tamaños, nombres de rol, versiones, hashes, expiraciones y manifiesto, `CommitGeneration` actualiza SQLite. El filesystem temporal es solo espacio de trabajo; SQLite sigue siendo el registro autoritativo. El stage puede descartarse y reconstruirse desde la última generación confirmada.
 
 La base usa `modernc.org/sqlite` sin CGO, una conexión de escritura, transacciones `BEGIN IMMEDIATE`, foreign keys, busy timeout acotado, `synchronous=FULL`, `trusted_schema=OFF` y journaling rollback `DELETE` explícito inicialmente. El esquema v2 conserva la root-chain v1 e incorpora tablas append-only para generaciones, metadata y delegaciones, además de high-water con referencia a los bytes fuente y triggers monotónicos. El archivo queda separado de auditoría; la carpeta de datos y ACL se configuran con mínimo privilegio. No se habilita WAL hasta contar con pruebas de recovery/sidecar en Windows, macOS y Linux.
 
@@ -252,14 +254,15 @@ No se restaurará automáticamente una generación vieja para “hacer que el pr
 Este documento registra el diseño de seguridad y las decisiones que faltan. La persistencia durable de root-chain ya está implementada; este documento no habilita todavía el modo offline ni una garantía hardware anti-rollback.
 
 
-## 12. Estado de implementación tras PR #20, PR #22, PR #23, PR #25 y PR #27
+## 12. Estado de implementación tras PR #20, PR #22, PR #23, PR #25, PR #27 y PR #29
 
 - PR #20 integrado como `1bf7e13`: conserva el último root verificado entre refreshes dentro del mismo proceso.
 - PR #22 integra root-chain append-only SQLite con pin/origen, hashes exactos, enlaces consecutivos, CAS y lectura consistente.
 - PR #23 integrado como `1988db9` añade `NewPersistentTUFClient`: reproduce roots desde el pin bootstrap y persiste rotaciones aceptadas por go-tuf incluso si falla metadata posterior.
 - PR #25 integrado como `e4341ab` añade esquema SQLite v2, generaciones inmutables, roles/delegaciones, manifiesto SHA-256, high-water con procedencia inmutable y activación CAS transaccional.
 - PR #27 integrado como `4983f7d` conecta el capturador existente con `TUFClient`: después de una resolución exitosa, captura bytes originales, compara con el estado confiable, reproduce roles superiores y delegaciones recorridas con `trustedmetadata` y compromete de manera idempotente. Si falla el commit, la resolución persistente falla cerrada.
+- PR #29 agrega un workspace privado por refresh persistente, rehidratado desde SQLite solo cuando la generación activa coincide con la root durable. El updater oficial revalida online y no escribe en la carpeta base; un refresh fallido descarta el stage. `TUFClient.Close()` limpia el workspace. La caída abrupta, stages huérfanos, procesos concurrentes y modo offline siguen fuera del alcance.
 - La matriz pre-merge de PR #27 pasó 5/5 en [run 46097598736](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46097598736); el CI post-merge de `main` también pasó 5/5 en [run 46097718344](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46097718344): Windows, macOS, Ubuntu, Race Detector y fuzzing.
 - La generación contiene metadata top-level y los roles delegados recorridos por los descriptores resueltos; no afirma que todo el grafo del repositorio esté cargado. No se crea una generación en el constructor ni por `Refresh()` sin descriptores resueltos.
-- Falta staging aislado antes del refresh, recuperación desde SQLite para un validador offline, terminación abrupta real entre etapas, disco lleno y escritores multi-proceso. `UnsafeLocalMode` sigue deshabilitado.
+- Falta limpiar stages huérfanos tras una terminación abrupta, probar fallos de disco/espacio, proteger escritores multi-proceso y definir un validador offline explícito. `UnsafeLocalMode` sigue deshabilitado.
 - No existe protección fuerte frente a restauración de una imagen antigua completa del mismo disco sin TPM/contador monotónico o witness externo. Bootstrap y custodia de claves de producción siguen pendientes.
