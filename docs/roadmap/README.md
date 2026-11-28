@@ -51,7 +51,9 @@ Runtime Go, registro local, IDs, acciones tipadas, permisos/riesgo, cancelación
 - [x] Incorporar primera capa online `TUFClient` sobre el `updater.Updater` oficial: resuelve roles delegados, valida descriptor firmado y serializa accesos; límites HTTP/metadata, redirects desactivados y pruebas de integración con repo TUF delegado. No descarga ni ejecuta binarios.
 - [ ] Completar bootstrap/enrolamiento de root de producción y política de threshold/rotación/revocación; el cliente actual recibe un `TrustAnchor` ya fijado.
 - [x] Seleccionar almacenamiento durable para root chain, generaciones, high-water y active generation mediante SQLite separado (ADR-0017).
-- [ ] Implementar store SQLite de confianza con commits independientes de root chain/generación y recuperación atómica crash/restart.
+- [x] Implementar la primera capa aislada del store SQLite para la cadena root: anchor/origen fijados, raíces append-only, enlaces SHA-256, versiones consecutivas, CAS transaccional, lectura consistente y reapertura (PR #22; CI completo de cinco jobs).
+- [ ] Integrar el store con `TUFClient`: reproducir la cadena desde el anchor independiente y persistir cada root verificada por go-tuf, incluso si falla metadata posterior.
+- [ ] Implementar staging y commits atómicos de generaciones completas, metadata por rol/delegación, high-water marks y `active_generation`; cubrir crash/restart real y concurrencia.
 - [ ] Integrar TUFClient con root replay desde el trust anchor, staging por generación y materialización de metadata.
 - [ ] Completar ciclo de producción y resiliencia del updater: persistencia durable del estado anti-rollback, recuperación tras reinicio y política de actualización de root cacheado.
 - [ ] Definir modo offline que revalide metadata cacheada, vigente y anti-rollback; no usar TOFU ni UnsafeLocalMode como bypass.
