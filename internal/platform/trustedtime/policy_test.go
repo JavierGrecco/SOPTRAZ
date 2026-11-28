@@ -107,6 +107,7 @@ func TestAcceptancePolicyRejectsDuplicateOperatorEvenWithDifferentSourceIDs(t *t
 	b := policyTestSource("source-b", "operator-shared")
 	c := policyTestSource("source-c", "operator-c")
 	policy := policyTestConfig(a, b, c)
+	policy.MinDistinctOperators = 2
 
 	_, err := policy.Accept([]Evidence{
 		policyTestEvidence(a, start, start.Add(time.Second)),
