@@ -263,6 +263,9 @@ func (logger *Logger) Close() error {
 	if logger.crashOutputSet {
 		if err := debug.SetCrashOutput(nil, debug.CrashOptions{}); err != nil {
 			result = errors.Join(result, fmt.Errorf("desactivar salida de fallos fatales: %w", err))
+			// Preserve the file if the runtime may still hold its crash-output
+			// descriptor; deleting it could discard a later fatal diagnostic.
+			logger.hasEvents = true
 		}
 		logger.crashOutputSet = false
 	}
