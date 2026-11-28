@@ -191,6 +191,44 @@ func TestNextStartupDetectsAbruptProcessTermination(t *testing.T) {
 	processExited = true
 
 	logger, err := Open(directory, "recovery-version")
+	if err != nil {
+		t.Fatalf("Open() after abrupt exit: %v", err)
+	}
+	defer logger.Close()
+
+	recovered := logger.RecoveredRuns()
+	if len(recovered) != 1 {
+		t.Fatalf("RecoveredRuns() = %v, want exactly one incomplete execution", recovered)
+	}
+	previous, err := os.ReadFile(recovered[0])
+	if err != nil {
+		t.Fatalf("read previous execution report: %v", err)
+	}
+	report := string(previous)
+	for _, expected := range []string{
+		"test.abrupt_exit",
+		"CRITICAL",
+		"runtime.unexpected_shutdown",
+		"terminó sin registrar un cierre normal",
+		"Causa: indeterminada",
+		"RECUPERACIÓN REGISTRADA:",
+	} {
+		if !strings.Contains(report, expected) {
+			t.Errorf("recovered report does not contain %q: %s", expected, report)
+		}
+	}
+	if err := logger.Close(); err != nil {
+		t.Fatalf("close recovery run: %v", err)
+	}
+	next, err := Open(directory, "third-run-version")
+	if err != nil {
+		t.Fatalf("Open() after recovery marker: %v", err)
+	}
+	defer next.Close()
+	if len(next.RecoveredRuns()) != 0 {
+		t.Fatalf("same interrupted run was reported again: %v", next.RecoveredRuns())
+	}
+}
 func TestConcurrentActiveExecutionIsNotReportedAsCrash(t *testing.T) {
 	directory := t.TempDir()
 	first, err := Open(directory, "first-version")
