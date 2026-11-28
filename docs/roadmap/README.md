@@ -66,7 +66,7 @@ Runtime Go, registro local, IDs, acciones tipadas, permisos/riesgo, cancelación
 - [x] Implementar consulta read-only del estado de W32Time mediante Service Control Manager con SC_MANAGER_CONNECT y SERVICE_QUERY_STATUS; sin elevación, UAC, w32tm ni controles sobre el servicio.
 - [ ] Mantener SynchronizationState=unknown en Windows hasta disponer de una señal no privilegiada y fiable de sincronización efectiva; no inferirla del estado activo de W32Time.
 - [ ] Implementar diagnóstico macOS timed sin leer estado cacheado privado; sincronización unknown hasta disponer de API pública verificable.
-- [ ] Auditar POC aisladas de NTS/Roughtime, política de operadores independientes, anclas y rotación antes de seleccionar dependencias.
+- [ ] Ejecutar la POC aislada de Roughtime RFC 10049 v1 y NTS según [criterios de evaluación y aceptación](../research/trusted-time-provider-poc.md); revisar operadores realmente independientes, anclas y rotación antes de seleccionar dependencias.
 - [ ] Integrar evidencia aceptada con la política de recuperación online, persistencia SQLite v3 y un mecanismo de referencia temporal compatible con go-tuf.
 - [ ] Implementar modo offline estricto que revalide metadata cacheada, vigente y anti-rollback con evidencia temporal suficiente. Si offline falla y hay red, descartar la sesión y repetir online desde cero; nunca aceptar metadata expirada ni mezclar resultados.
 - [ ] Mantener cualquier modo histórico de metadata expirada separado, solo de auditoría y sin autorizar instalación/ejecución.
