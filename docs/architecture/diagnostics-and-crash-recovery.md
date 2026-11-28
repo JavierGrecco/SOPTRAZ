@@ -19,11 +19,12 @@ La CLI utiliza la carpeta de caché local del usuario:
 
 Subcarpeta: `SOPTRAZ/diagnostics`.
 
-Cada ejecución que produce un incidente deja un archivo `soptraz-run-*.txt`. Se aplican permisos restrictivos donde el sistema operativo los admite. Se conservan los últimos 30 informes; cada archivo está limitado a 4 MiB y cada registro a 64 KiB. Las ejecuciones normales sin eventos importantes eliminan su informe temporal al cerrar.
+Cada ejecución crea un informe temporal `soptraz-run-*.txt`; si termina normalmente sin errores importantes, el archivo se elimina al cerrar. Los informes con incidentes quedan en esa carpeta. Se conservan hasta 30 informes, protegiendo el que acaba de recuperarse durante el inicio actual. Los eventos estructurados se limitan a 64 KiB y 4 MiB por archivo; un volcado nativo excepcionalmente grande del runtime se recorta al siguiente inicio, preservando el inicio del informe y su marca de cierre o recuperación. Se aplican permisos restrictivos donde el sistema operativo los admite. Para encontrar la carpeta exacta en cualquier equipo, ejecutar `soptraz diagnostics-path`.
 
 ## Qué se registra
 
 - `ERROR`, `CRITICAL`, `FATAL` y `PANIC`.
+- El comando `soptraz diagnostics-path` para que el técnico localice los archivos sin conocer rutas específicas del sistema operativo.
 - Componente, operación, código, descripción y causa conocida.
 - Versión de SOPTRAZ, sistema operativo, arquitectura, runtime Go, PID y hora UTC.
 - Stack trace para panics recuperados.
@@ -36,7 +37,7 @@ Cada ejecución que produce un incidente deja un archivo `soptraz-run-*.txt`. Se
 
 Al comenzar, SOPTRAZ inspecciona informes de ejecuciones anteriores. Un lock de sistema operativo por archivo distingue una ejecución todavía activa de una que abandonó el proceso sin ejecutar `Close()`. Un lock adicional serializa la inspección y creación de informes entre varios procesos.
 
-Si falta la marca `CIERRE NORMAL`, SOPTRAZ añade al informe previo un evento `runtime.unexpected_shutdown` y lo vincula desde el informe de recuperación. La causa se deja expresamente como indeterminada: puede haber sido un `kill`, un panic/fatal, un corte de energía o una terminación del sistema.
+Si no existe `CIERRE NORMAL` ni una marca previa `RECUPERACIÓN REGISTRADA`, SOPTRAZ añade al informe anterior un evento `runtime.unexpected_shutdown` y una marca de recuperación. Así el mismo incidente se notifica una sola vez y no se presenta en cada inicio como un fallo nuevo. La causa se deja expresamente como indeterminada: puede haber sido un `kill`, un panic/fatal, un corte de energía o una terminación del sistema. El informe recuperado queda protegido frente a la limpieza de retención durante ese arranque.
 
 El lock del informe se libera automáticamente al terminar el proceso. Esta misma propiedad se usa en el catálogo TUF para permitir que el próximo inicio limpie stages huérfanos solo después de adquirir el lock exclusivo del repositorio.
 
@@ -44,7 +45,7 @@ El lock del informe se libera automáticamente al terminar el proceso. Esta mism
 
 - Un panic recuperable en el límite principal de la CLI se registra con su stack y termina con código de salida no cero.
 - `runtime/debug.SetCrashOutput` dirige el diagnóstico de panics no manejados y fallos fatales del runtime Go a un archivo adicional, además de stderr.
-- Un `kill -9`, un corte de energía o una detención del sistema no permiten ejecutar código de cierre. En esos casos se detecta la falta de cierre normal en el próximo inicio; no se inventa un stack ni una causa que el proceso no pudo guardar.
+- Un `kill -9`, un corte de energía o una detención del sistema no permiten ejecutar código de cierre. En esos casos se detecta la falta de cierre normal en el próximo inicio; no se inventa un stack ni una causa que el proceso no pudo guardar. La CLI muestra la ubicación de informes recuperados y `soptraz diagnostics-path` permite consultarla manualmente.
 - Un fallo de disco, permisos o espacio insuficiente puede impedir la escritura del informe. La aplicación continúa su operación y avisa por stderr; el registro no debe convertirse en requisito para poder arrancar.
 
 ## Privacidad y seguridad
@@ -57,4 +58,4 @@ El lock del informe se libera automáticamente al terminar el proceso. Esta mism
 
 ## Límites y evolución
 
-Esta primera capa cubre el ciclo de vida de la CLI y proporciona una API para registrar eventos críticos desde módulos. Todavía no es un servicio central de observabilidad para procesos auxiliares, UI Field/Hub ni agentes remotos. La exportación redactada, correlación por intervención, retención configurable y envío voluntario por el técnico requieren contratos y controles adicionales.
+Esta primera capa cubre el ciclo de vida de la CLI y proporciona una API para registrar eventos críticos desde módulos; el registro automático desde todos los módulos todavía debe integrarse explícitamente. Todavía no es un servicio central de observabilidad para procesos auxiliares, UI Field/Hub ni agentes remotos. La exportación redactada, correlación por intervención, retención configurable y envío voluntario por el técnico requieren contratos y controles adicionales.
