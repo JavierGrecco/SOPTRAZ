@@ -2,6 +2,9 @@
 package catalog
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -14,6 +17,9 @@ import (
 	"time"
 
 	"github.com/JavierGrecco/SOPTRAZ/internal/modules/artifact"
+	"github.com/JavierGrecco/SOPTRAZ/internal/storage/sqlitetuf"
+	"github.com/theupdateframework/go-tuf/v2/metadata"
+	"github.com/theupdateframework/go-tuf/v2/metadata/trustedmetadata"
 	tufconfig "github.com/theupdateframework/go-tuf/v2/metadata/config"
 	tufupdater "github.com/theupdateframework/go-tuf/v2/metadata/updater"
 )
@@ -43,15 +49,28 @@ type TUFClientConfig struct {
 
 // TUFClient wraps the official go-tuf Updater. The Updater is not safe for
 // concurrent use, so all refresh/lookup operations are serialized here.
+type persistentTUFTrust struct {
+	store         *sqlitetuf.Store
+	repositoryID  string
+	rootState     sqlitetuf.RootState
+	latestRootJSON []byte
+	capture       *rootMetadataCaptureTransport
+}
+
+// TUFClient wraps the official go-tuf Updater. The Updater is not safe for
+// concurrent use, so all refresh/lookup operations are serialized here.
 type TUFClient struct {
-	mu      sync.Mutex
-	config  *tufconfig.UpdaterConfig
-	updater *tufupdater.Updater
+	mu          sync.Mutex
+	config      *tufconfig.UpdaterConfig
+	updater     *tufupdater.Updater
+	persistence *persistentTUFTrust
 }
 
 // NewTUFClient builds a bounded production-mode TUF client from a previously
 // pinned TrustAnchor and completes one online TUF refresh before returning. The
-// verified metadata cache is enabled; UnsafeLocalMode is never enabled.
+// verified metadata cache is enabled; UnsafeLocalMode is never enabled. This
+// constructor keeps root rotations in memory only for compatibility; use
+// NewPersistentTUFClient when a durable root-chain store is available.
 func NewTUFClient(anchor *TrustAnchor, clientConfig TUFClientConfig) (*TUFClient, error) {
 	if anchor == nil {
 		return nil, fmt.Errorf("%w: ancla ausente", ErrInvalidTUFClientConfig)
@@ -59,6 +78,76 @@ func NewTUFClient(anchor *TrustAnchor, clientConfig TUFClientConfig) (*TUFClient
 	rootJSON, err := anchor.rootSnapshot()
 	if err != nil {
 		return nil, fmt.Errorf("%w: no se pudo obtener root.json confiable: %v", ErrInvalidTUFClientConfig, err)
+	}
+	return newTUFClientFromRoot(rootJSON, clientConfig, nil)
+}
+
+// NewPersistentTUFClient creates a client whose root trust survives process
+// restarts. The initial bootstrap pin remains authoritative: every persisted
+// rotation is replayed and reverified by go-tuf before it can seed a new
+// Updater. The caller owns store and must keep it open for the client's lifetime.
+func NewPersistentTUFClient(
+	anchor *TrustAnchor,
+	clientConfig TUFClientConfig,
+	store *sqlitetuf.Store,
+	repositoryID string,
+) (*TUFClient, error) {
+	if anchor == nil {
+		return nil, fmt.Errorf("%w: ancla ausente", ErrInvalidTUFClientConfig)
+	}
+	if store == nil {
+		return nil, fmt.Errorf("%w: almacén SQLite ausente", ErrInvalidTUFClientConfig)
+	}
+	if err := validateRepositoryURL(clientConfig.MetadataURL, clientConfig.AllowInsecureLoopbackHTTP); err != nil {
+		return nil, fmt.Errorf("%w: MetadataURL: %v", ErrInvalidTUFClientConfig, err)
+	}
+
+	bootstrapRootJSON, bootstrapState, err := anchor.initialRootSnapshot()
+	if err != nil {
+		return nil, fmt.Errorf("%w: no se pudo obtener el root bootstrap: %v", ErrInvalidTUFClientConfig, err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := store.RegisterRepository(ctx, sqlitetuf.RepositoryConfig{
+		ID:            repositoryID,
+		MetadataURL:   clientConfig.MetadataURL,
+		AnchorVersion: bootstrapState.Version,
+		AnchorSHA256:  bootstrapState.SHA256,
+	}); err != nil {
+		return nil, fmt.Errorf("%w: registrar el ancla persistente: %v", ErrInvalidTUFClientConfig, err)
+	}
+
+	records, storedState, err := store.LoadRootChain(ctx, repositoryID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: cargar la cadena de raíces persistida: %v", ErrInvalidTUFClientConfig, err)
+	}
+	currentRootJSON, replayedState, err := replayStoredRootChain(bootstrapRootJSON, bootstrapState, records)
+	if err != nil {
+		return nil, fmt.Errorf("%w: no se pudo autenticar la cadena de raíces persistida: %v", ErrInvalidTUFClientConfig, err)
+	}
+	if replayedState.Version != storedState.Version || replayedState.SHA256 != storedState.SHA256 {
+		return nil, fmt.Errorf("%w: el high-water persistido no coincide con la cadena autenticada", ErrInvalidTUFClientConfig)
+	}
+
+	persistence := &persistentTUFTrust{
+		store:          store,
+		repositoryID:   repositoryID,
+		rootState:      sqlitetuf.RootState{Version: replayedState.Version, SHA256: replayedState.SHA256},
+		latestRootJSON: append([]byte(nil), currentRootJSON...),
+	}
+	return newTUFClientFromRoot(currentRootJSON, clientConfig, persistence)
+}
+
+// newTUFClientFromRoot contains the common bounded updater configuration.
+// startRootJSON is already trusted by either the process-local anchor or a
+// full replay from the independently pinned bootstrap root.
+func newTUFClientFromRoot(
+	startRootJSON []byte,
+	clientConfig TUFClientConfig,
+	persistence *persistentTUFTrust,
+) (*TUFClient, error) {
+	if len(startRootJSON) == 0 || int64(len(startRootJSON)) > MaxRootMetadataBytes {
+		return nil, fmt.Errorf("%w: root.json de inicio inválido", ErrInvalidTUFClientConfig)
 	}
 	if err := validateRepositoryURL(clientConfig.MetadataURL, clientConfig.AllowInsecureLoopbackHTTP); err != nil {
 		return nil, fmt.Errorf("%w: MetadataURL: %v", ErrInvalidTUFClientConfig, err)
@@ -111,7 +200,7 @@ func NewTUFClient(anchor *TrustAnchor, clientConfig TUFClientConfig) (*TUFClient
 		return nil, fmt.Errorf("%w: las carpetas de metadata y targets deben ser independientes", ErrInvalidTUFClientConfig)
 	}
 
-	cfg, err := tufconfig.New(clientConfig.MetadataURL, rootJSON)
+	cfg, err := tufconfig.New(clientConfig.MetadataURL, startRootJSON)
 	if err != nil {
 		return nil, fmt.Errorf("%w: crear configuración go-tuf: %v", ErrInvalidTUFClientConfig, err)
 	}
@@ -140,6 +229,14 @@ func NewTUFClient(anchor *TrustAnchor, clientConfig TUFClientConfig) (*TUFClient
 			return http.ErrUseLastResponse
 		},
 	}
+	if persistence != nil {
+		capture, err := newRootMetadataCaptureTransport(clientConfig.MetadataURL, httpClient.Transport)
+		if err != nil {
+			return nil, fmt.Errorf("%w: configurar captura de rotación TUF: %v", ErrInvalidTUFClientConfig, err)
+		}
+		httpClient.Transport = capture
+		persistence.capture = capture
+	}
 	if err := cfg.SetDefaultFetcherHTTPClient(httpClient); err != nil {
 		return nil, fmt.Errorf("%w: configurar cliente HTTP TUF: %v", ErrInvalidTUFClientConfig, err)
 	}
@@ -147,7 +244,7 @@ func NewTUFClient(anchor *TrustAnchor, clientConfig TUFClientConfig) (*TUFClient
 		return nil, fmt.Errorf("%w: configurar reintentos TUF: %v", ErrInvalidTUFClientConfig, err)
 	}
 
-	client := &TUFClient{config: cfg}
+	client := &TUFClient{config: cfg, persistence: persistence}
 	if err := client.refreshLocked(); err != nil {
 		return nil, err
 	}
