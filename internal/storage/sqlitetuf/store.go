@@ -590,6 +590,7 @@ func (store *Store) LoadRootChain(ctx context.Context, repositoryID string) ([]R
 }
 
 func loadRootChainFromTx(ctx context.Context, tx *sql.Tx, repositoryID string) ([]RootRecord, RootState, error) {
+	var err error
 	var anchor RootState
 	var latest RootState
 	err = tx.QueryRowContext(ctx,
