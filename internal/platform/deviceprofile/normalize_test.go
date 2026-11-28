@@ -9,11 +9,11 @@ import (
 
 func TestNormalizePowerStatus(t *testing.T) {
 	tests := []struct {
-		name         string
-		ac            byte
-		batteryFlag  byte
-		wantBattery  moduleprofile.TriState
-		wantPower    moduleprofile.PowerSource
+		name        string
+		ac          byte
+		batteryFlag byte
+		wantBattery moduleprofile.TriState
+		wantPower   moduleprofile.PowerSource
 	}{
 		{name: "AC and battery present", ac: 1, batteryFlag: batteryFlagHigh, wantBattery: moduleprofile.Yes, wantPower: moduleprofile.PowerSourceAC},
 		{name: "running on battery", ac: 0, batteryFlag: batteryFlagCharging, wantBattery: moduleprofile.Yes, wantPower: moduleprofile.PowerSourceBattery},
