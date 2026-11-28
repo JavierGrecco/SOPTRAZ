@@ -52,7 +52,7 @@ M1.4 es la prioridad técnica actual y permanece **abierto**. El plan operativo,
 
 **Ya integrado en main:** cliente online oficial y fetcher acotado; root-chain persistente; generaciones inmutables y high-water por rol; captura/replay de metadata aceptada online; staging aislado por refresh; y lectura SQLite consistente de root-chain, high-water y generación activa (PR #49). Estos hitos no equivalen a un verificador offline.
 
-**Trabajo en curso:** PR #50 extrae el replay criptográfico compartido para que la captura online y el futuro verificador offline reutilicen go-tuf. Sigue en draft y no resuelve todavía la ruta delegada del target ni el descriptor final. PR #31 conserva una línea independiente de recuperación ante fallos, locks, diagnóstico local y POC temporal; por su divergencia frente a main debe descomponerse y revisarse por bloques, nunca integrarse masivamente.
+**Trabajo en curso:** PR #50 incorpora el replay criptográfico compartido y un resolver canónico de rutas delegadas que usa `Delegations.GetRolesForTarget` de go-tuf v2.5.0. Su recorrido se compara con `Updater.GetTargetInfo` y CI #377 aprobó 6/6 jobs sobre el head funcional. Sigue en draft: aún falta conectar el callback con un loader offline que autentique cada par rol/padre desde `LoadOfflineSnapshot`, aplicar ADR-0020 y validar el descriptor artifact v1 desde el flujo offline. PR #31 conserva una línea independiente de recuperación ante fallos, locks, diagnóstico local y POC temporal; por su divergencia frente a main debe descomponerse y revisarse por bloques, nunca integrarse masivamente.
 
 ## M1.5 — Supervisor seguro de procesos y registro de módulos
 
