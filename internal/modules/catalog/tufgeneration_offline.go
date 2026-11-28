@@ -126,7 +126,14 @@ func replayOfflineTargetMetadata(
 	}
 	// trustedmetadata.New initializes RefTime from time.Now(). Replace that
 	// implicit default before the first operation that can check expiration.
-	trusted.RefTime = referenceTime.UTC().Round(0)
+	referenceTime = referenceTime.UTC().Round(0)
+	trusted.RefTime = referenceTime
+	if trusted.Root == nil {
+		return offlineTargetReplay{}, fmt.Errorf("%w: root final ausente", ErrOfflineGenerationReplay)
+	}
+	if err := rejectMetadataExpiryAtOrBefore(metadata.ROOT, trusted.Root.Signed.Expires, referenceTime); err != nil {
+		return offlineTargetReplay{}, fmt.Errorf("%w: %w", ErrOfflineGenerationReplay, err)
+	}
 
 	timestampRole := rolesByName[metadata.TIMESTAMP]
 	timestamp, err := metadata.Timestamp().FromBytes(timestampRole.Metadata)
@@ -136,6 +143,9 @@ func replayOfflineTargetMetadata(
 	if timestamp.Signed.Version != timestampRole.Version ||
 		!timestamp.Signed.Expires.Equal(timestampRole.ExpiresAt) {
 		return offlineTargetReplay{}, fmt.Errorf("%w: campos de timestamp persistidos no coinciden con los bytes firmados", ErrOfflineGenerationReplay)
+	}
+	if err := rejectMetadataExpiryAtOrBefore(metadata.TIMESTAMP, timestamp.Signed.Expires, referenceTime); err != nil {
+		return offlineTargetReplay{}, fmt.Errorf("%w: %w", ErrOfflineGenerationReplay, err)
 	}
 	if _, err := trusted.UpdateTimestamp(timestampRole.Metadata); err != nil {
 		return offlineTargetReplay{}, fmt.Errorf("%w: verificar timestamp: %w", ErrOfflineGenerationReplay, err)
@@ -150,6 +160,9 @@ func replayOfflineTargetMetadata(
 		!snapshotMetadata.Signed.Expires.Equal(snapshotRole.ExpiresAt) {
 		return offlineTargetReplay{}, fmt.Errorf("%w: campos de snapshot persistidos no coinciden con los bytes firmados", ErrOfflineGenerationReplay)
 	}
+	if err := rejectMetadataExpiryAtOrBefore(metadata.SNAPSHOT, snapshotMetadata.Signed.Expires, referenceTime); err != nil {
+		return offlineTargetReplay{}, fmt.Errorf("%w: %w", ErrOfflineGenerationReplay, err)
+	}
 	if _, err := trusted.UpdateSnapshot(snapshotRole.Metadata, false); err != nil {
 		return offlineTargetReplay{}, fmt.Errorf("%w: verificar snapshot: %w", ErrOfflineGenerationReplay, err)
 	}
@@ -162,6 +175,9 @@ func replayOfflineTargetMetadata(
 	if targetsMetadata.Signed.Version != targetsRole.Version ||
 		!targetsMetadata.Signed.Expires.Equal(targetsRole.ExpiresAt) {
 		return offlineTargetReplay{}, fmt.Errorf("%w: campos de targets persistidos no coinciden con los bytes firmados", ErrOfflineGenerationReplay)
+	}
+	if err := rejectMetadataExpiryAtOrBefore(metadata.TARGETS, targetsMetadata.Signed.Expires, referenceTime); err != nil {
+		return offlineTargetReplay{}, fmt.Errorf("%w: %w", ErrOfflineGenerationReplay, err)
 	}
 	if _, err := trusted.UpdateTargets(targetsRole.Metadata); err != nil {
 		return offlineTargetReplay{}, fmt.Errorf("%w: verificar targets top-level: %w", ErrOfflineGenerationReplay, err)
@@ -194,6 +210,9 @@ func replayOfflineTargetMetadata(
 			if parsed.Signed.Version != role.Version ||
 				!parsed.Signed.Expires.Equal(role.ExpiresAt) {
 				return nil, fmt.Errorf("campos persistidos del rol %q no coinciden con los bytes firmados", roleName)
+			}
+			if err := rejectMetadataExpiryAtOrBefore(roleName, parsed.Signed.Expires, referenceTime); err != nil {
+				return nil, err
 			}
 			updated, err := trusted.UpdateDelegatedTargets(role.Metadata, roleName, parentRole)
 			if err != nil {
