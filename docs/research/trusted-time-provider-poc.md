@@ -1,7 +1,7 @@
 # POC de proveedores de tiempo confiable: evaluación y puertas de aceptación
 
 - Fecha de revisión: 2026-11-28.
-- Estado: investigación técnica; no se incorpora ninguna dependencia de producción.
+- Estado: POC aislada de Roughtime RFC 10049 v1 implementada en la rama draft del PR #31; NTS sigue en evaluación. La dependencia está fijada en esa rama, pero el adaptador no está conectado a la CLI, al binario de producción, al cliente TUF ni a la persistencia anti-rollback.
 - Relacionado: [ADR-0020](../decisions/ADR-0020-trusted-time-and-clock-recovery.md), [ADR-0021](../decisions/ADR-0021-os-time-diagnostics.md) y [contrato TrustedTimeProvider](../architecture/trusted-time-provider.md).
 - Objetivo: resolver el bootstrap cuando el reloj del equipo es incorrecto, sin desactivar la validación TLS, ampliar la vigencia de metadata TUF ni cambiar el reloj del sistema automáticamente.
 
@@ -12,7 +12,7 @@ La evaluación mantiene dos funciones separadas:
 1. **Roughtime RFC 10049** es candidato para obtener una primera referencia aproximada aun cuando el cliente no conoce la hora. La clave pública del servidor debe estar provisionada fuera de la respuesta. El protocolo aporta una respuesta firmada vinculada a un nonce fresco y un intervalo de incertidumbre; la seguridad real exige comparar operadores independientes y mantener una lista de claves gobernada por SOPTRAZ.
 2. **NTS (RFC 8915)** es candidato para consultas autenticadas posteriores, una vez que el reloj local permite validar normalmente los certificados TLS de NTS-KE. No resuelve por sí solo un primer contacto con un reloj gravemente incorrecto.
 
-No se selecciona todavía ninguna biblioteca ni servidor público. La primera etapa debe ser una POC aislada, con servidores de laboratorio controlados, claves fijadas y pruebas de interoperabilidad. No se debe modificar el updater go-tuf ni añadir excepciones de certificados.
+La evaluación produjo una POC aislada de Roughtime, no una selección de producción ni de servidores públicos. El adaptador usa servidores TCP/UDP de laboratorio y claves generadas por los tests; todavía faltan vectores oficiales e interoperabilidad con una implementación independiente. NTS permanece como candidato posterior. La POC no modifica el updater go-tuf, no añade excepciones de certificados y no habilita catálogo offline.
 
 ## Hallazgos de protocolo
 
@@ -26,18 +26,27 @@ Referencias:
 - [RFC 10049 — Roughtime: A Protocol for Rough Time Synchronization](https://www.rfc-editor.org/rfc/rfc10049.html).
 - [Datatracker — estado Experimental y fecha de publicación](https://datatracker.ietf.org/doc/html/rfc10049).
 
-### Implementación Go candidata: tannerryan/roughtime
+### Implementación Go evaluada: tannerryan/roughtime
 
-La revisión del branch `main` de [github.com/tannerryan/roughtime](https://github.com/tannerryan/roughtime) observó lo siguiente:
+La rama `fix/tuf-crash-stage-recovery` del PR #31 contiene una POC del paquete `internal/platform/trustedtime` basada en [github.com/tannerryan/roughtime](https://github.com/tannerryan/roughtime):
 
-- El `go.mod` declara Go 1.27.4, coincidente con la versión fijada por SOPTRAZ en esta revisión.
-- La API strict usa RFC 10049 v1 por defecto y ofrece paquetes de cliente y protocolo. El repositorio incluye además servidor y herramientas CLI; SOPTRAZ solo evaluaría los paquetes necesarios, no incorporaría binarios auxiliares.
-- La medición estricta de lista de servidores requiere al menos tres raíces distintas y tres grupos endpoint/dominio, consultados dos veces en el mismo orden aleatorio mediante una cadena causal. El agrupamiento por dominio es una heurística: nombres DNS diferentes no prueban operadores independientes.
-- El README pide elegir operadores realmente independientes. La POC debe verificar y documentar el operador administrativo de cada clave; no debe inferir independencia desde IP, DNS, ASN o proveedor de hosting solamente.
-- Las dependencias directas declaradas en `go.mod` son `go.uber.org/goleak`, `go.uber.org/zap`, `golang.org/x/net` y `golang.org/x/sys`; `go.uber.org/multierr` aparece como indirecta.
-- La licencia declarada es BSD-2-Clause.
+- Dependencia fijada: `github.com/tannerryan/roughtime v1.28.4`, tag resuelto al commit upstream `7454b45d337b413d3639da88acf5559d08d7af27`; licencia BSD-2-Clause; Go 1.27.4.
+- El adaptador usa exclusivamente el paquete `protocol`, RFC 10049 v1 strict y raíces Ed25519 provisionadas localmente. No activa `Flex`, Google-Roughtime ni extensiones experimentales ML-DSA.
+- La configuración exige entre tres y ocho testigos, operadores distintos, claves raíz distintas, `TrustAnchorID` distintos y huellas SHA-256 coherentes con `Source.KeyID`. La identidad y la independencia real de cada operador siguen siendo responsabilidad de la provisión/gobernanza, no las demuestra el protocolo.
+- Cada medición realiza dos pasadas secuenciales en el mismo orden aleatorio, con nonces frescos encadenados a la respuesta autenticada anterior. Cada respuesta se verifica antes de entrar en la cadena y la cadena completa se valida de nuevo para comprobar firmas, nonces y orden causal.
+- Se admiten endpoints UDP y TCP, con timeouts de intercambio y de medición, límites explícitos de incertidumbre y rechazo total del lote ante respuesta incompleta o inválida. No se devuelve evidencia parcial.
+- Los intervalos de la segunda pasada se proyectan al final de la medición usando tiempos transcurridos monotónicos y RTT; la hora de pared local no se usa como referencia confiable.
+- Los tests levantan servidores locales UDP y TCP y cubren dos pasadas, nonces únicos, firma incorrecta, replay, delegación firmada fuera de su ventana MINT/MAXT, tiempos causalmente decrecientes, radio excesivo, configuración duplicada y cancelación.
 
-La cantidad mínima y el flujo de dos pasadas son requisitos del modo estricto de esa implementación y un buen punto de partida para la POC; no equivalen a un quorum criptográfico universal ni sustituyen el modelo de amenazas. Se deberá revisar el código exacto fijado por commit, el manejo de claves, nonce, respuestas parciales, timeout, replay y reportes de contradicción antes de adoptarlo.
+La biblioteca también incluye servidor y herramientas CLI, pero SOPTRAZ no incorpora esos binarios. La dependencia figura en el `go.mod` de esta rama experimental; el proveedor no está conectado a la CLI, al binario de la aplicación, al `TUFClient` ni a la política persistente. La POC no constituye una selección de producción. CI #339 pasó 6/6 en Windows, macOS, Ubuntu, Race Detector, fuzzing e higiene de ramas.
+
+**Límites que no deben confundirse con una validación completa:**
+
+- Verificar `MIDP` dentro del intervalo firmado `MINT..MAXT` demuestra coherencia con la delegación, pero no compara esa delegación con un reloj local ni demuestra que la primera respuesta sea reciente. Varios operadores que acuerden una hora antigua pueden presentar una cadena causalmente coherente.
+- Claves distintas, OperatorID distintos y TrustAnchorID distintos son requisitos de configuración, no prueba independiente de que las organizaciones, infraestructuras o fuentes ascendentes no estén correlacionadas.
+- Los tests usan la misma biblioteca para generar y verificar las respuestas de laboratorio. Aún faltan vectores oficiales RFC 10049, interoperabilidad con otra implementación, revisión independiente de la dependencia y gobernanza operativa de provisión, rotación y revocación de raíces.
+- No existe persistencia de `LastAcceptedTrustedTime`, ni recuperación bootstrap con frescura demostrable ante un reloj inicial gravemente incorrecto, ni integración TUF. La POC no cambia el reloj del SO, no desactiva TLS, no extiende expiraciones y no habilita offline.
+
 
 ### NTS — RFC 8915 e implementación Go candidata
 
@@ -97,13 +106,13 @@ La cobertura actual contiene 18 tests específicos y CI #329 pasó 6/6 en Window
 
 ### POC Roughtime aislada
 
-- [ ] Fijar un commit upstream y revisar todo el código importado, licencia, dependencias directas/transitivas y advisories alcanzables.
-- [ ] Ejecutar al menos tres servidores de laboratorio con claves y operadores claramente identificados; incluir un escenario donde dos DNS apunten al mismo operador para comprobar que no se cuentan como independientes.
-- [ ] Verificar RFC 10049 v1 con vectores conocidos e interoperabilidad cliente/servidor; probar UDP, fallback TCP, timeouts y cancelación.
-- [ ] Rechazar firma incorrecta, clave desconocida, nonce repetido, respuesta de versión inesperada, delegación fuera de vigencia, radio excesivo, respuesta sobredimensionada y datos truncados.
-- [ ] Probar contradicción entre servidores, respuesta de un operador comprometido, mayoría insuficiente y orden causal incompleto.
-- [ ] Fuzzear parsers y verificadores; ejecutar Race Detector y CI Windows/macOS/Ubuntu.
-- [ ] Demostrar que no se realizan escrituras al reloj ni configuración local, y que no se persiste evidencia rechazada.
+- [x] Fijar el commit upstream `7454b45d337b413d3639da88acf5559d08d7af27` y registrar tag, licencia y versión Go en la POC; queda pendiente una revisión de seguridad independiente de todo el código importado, transitivas y advisories.
+- [x] Probar al menos tres servidores locales con raíces, operadores y TrustAnchorID distintos; la configuración rechaza IDs, operadores, raíces y anclas duplicados. La demostración de independencia organizativa real y de DNS/infraestructura compartidos sigue pendiente.
+- [x] Implementar y probar RFC 10049 v1 strict sobre UDP y TCP, dos pasadas causales, timeouts y cancelación con servidores locales construidos con la biblioteca fijada. [ ] Probar vectores oficiales RFC e interoperabilidad con una implementación independiente.
+- [x] Cubrir firma incorrecta, replay/nonce repetido, delegación cuyo MIDP queda fuera de MINT/MAXT, radio excesivo y configuración de claves/anclas duplicadas. [ ] Añadir casos dirigidos de clave desconocida, datagramas/respuestas truncadas y límites máximos de tamaño.
+- [x] Rechazar un lote con tiempos causalmente decrecientes y no devolver evidencia parcial. [ ] Profundizar escenarios de colusión, operador comprometido, mayoría insuficiente y contradicción con respuestas de otra implementación.
+- [x] Ejecutar Race Detector y CI Windows/macOS/Ubuntu (CI #339, 6/6). [ ] Añadir fuzzing específico del parser/proveedor Roughtime; el job fuzz actual del repositorio no equivale a fuzzear el protocolo.
+- [x] La API del proveedor no expone operaciones para cambiar reloj o configuración local y no persiste evidencia; el flujo sigue aislado y sin wiring productivo. [ ] Añadir prueba de no-mutación del estado del sistema y de ausencia de escrituras en integración.
 
 ### POC NTS posterior al bootstrap
 
@@ -124,4 +133,4 @@ La cobertura actual contiene 18 tests específicos y CI #329 pasó 6/6 en Window
 
 ## Decisión provisional
 
-**No añadir aún Roughtime ni NTS al binario principal.** La primera POC debe evaluar Roughtime RFC 10049 v1 como bootstrap con claves provisionadas fuera de banda. NTS queda como candidato posterior para observación autenticada continua después de disponer de hora suficiente para TLS. Esta recomendación es una hipótesis de laboratorio y no cierra M1.4, no habilita catálogo offline y no modifica la política de expiración.
+**No añadir aún Roughtime ni NTS al flujo de producción.** La POC Roughtime RFC 10049 v1 está implementada de forma aislada en el PR #31, con la dependencia fijada en esa rama. Sigue pendiente validar bootstrap/frescura, independencia operativa, vectores oficiales, interoperabilidad, rotación/revocación, persistencia anti-rollback y conexión con TUF. NTS queda como candidato posterior a un bootstrap temporal aceptable. Esta POC no cierra M1.4, no habilita catálogo offline y no modifica la política de expiración.

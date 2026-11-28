@@ -248,3 +248,17 @@ Estas pruebas validan el recorrido módulo→logger cuando el consumidor inyecta
 
 Las fallas fueron corregidas y verificadas en la ejecución #329. No se contó ninguna ejecución fallida o intermedia como aprobación. La política sigue siendo una capa determinista en memoria: los adaptadores criptográficos, frescura/replay, provisión de claves, persistencia SQLite v3 e integración TUF permanecen pendientes.
 
+
+### POC Roughtime RFC 10049 v1 en PR #31 — 2026-11-28
+
+| Run | Commit | Resultado | Causa o cobertura |
+|---|---|---|---|
+| [#332](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46163231266) | `6dfbfc1` | Falló en formato/dependencias | El runner detectó `gofmt` y la actualización transitiva requerida de `golang.org/x/sys`; se fijó `v0.50.0` y se añadieron los checksums verificados. |
+| [#333](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46163609877) | `fdf25b7` | Falló en tests | La prueba configuró `MeasurementTimeout` igual a `ExchangeTimeout`; el constructor rechazó correctamente esa jerarquía. Se corrigió el fixture, manteniendo contexto externo cancelable de 100 ms. |
+| [#334](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46163752596) | `6fd3e24` | **6/6 aprobados** | Primera POC estricta: firmas, nonces encadenados, dos pasadas, cancelación, límites; Windows/macOS/Ubuntu, Race Detector, fuzzing y branch hygiene. |
+| [#335](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46164034016) | `fc87579` | Falló en test fixture | La biblioteca no genera respuestas cuyo MIDP esté fuera de MINT/MAXT. Se reconstruyó un paquete de laboratorio con SREP y CERT firmados válidamente pero delegación incompatible; no se debilitó el verificador. |
+| [#337](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46164526420) | `647335d` | Falló en formato | Solo faltaba alinear campos del fake server; Race Detector, fuzzing e higiene pasaron. |
+| [#338](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46164614462) | `1db4434` | **6/6 aprobados** | Confirma formato y pruebas negativas de delegación/orden causal en Windows, macOS, Ubuntu, Race Detector, fuzzing e higiene. |
+| [#339](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46165009603) | `07c862d` | **6/6 aprobados** | Añade tres servidores TCP locales y verifica dos pasadas, nonces únicos, evidencias y el transporte TCP en Windows, macOS, Ubuntu, Race Detector, fuzzing e higiene. |
+
+Las fallas #332, #333, #335 y #337 se corrigieron antes de contar una aprobación; ninguna se presenta como CI verde. La POC usa la biblioteca fijada `github.com/tannerryan/roughtime v1.28.4` (upstream commit `7454b45d337b413d3639da88acf5559d08d7af27`). El proveedor está aislado en el PR draft: no tiene wiring productivo, NTS, bootstrap de frescura demostrable, rotación/revocación operativa, persistencia SQLite v3 ni integración TUF. La validación de MINT/MAXT acredita coherencia de delegación, no frescura absoluta de la primera hora.

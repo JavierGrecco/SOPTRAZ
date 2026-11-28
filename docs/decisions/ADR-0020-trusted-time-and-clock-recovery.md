@@ -1,6 +1,6 @@
 # ADR-0020: Fuente de tiempo confiable y recuperación ante relojes incorrectos
 
-- Estado: Aceptada como política de arquitectura; contrato puro y política de aceptación en memoria implementados; proveedores criptográficos, persistencia anti-rollback y conexión con TUF pendientes.
+- Estado: Aceptada como política de arquitectura; contrato puro y política de aceptación en memoria implementados; POC Roughtime RFC 10049 v1 strict aislada presente en PR #31; NTS, bootstrap de frescura, gobernanza de claves, persistencia anti-rollback e integración TUF pendientes.
 - Fecha: 2026-11-28
 - Relacionada: ADR-0015, ADR-0017, ADR-0019, Issue #5 (M1.4), Issue #4 (M1.5).
 - Alcance: establecer la hora de referencia para verificar expiración y frescura de metadata TUF. No cambia la firma de artefactos ni autoriza su ejecución.
@@ -235,13 +235,14 @@ Referencias: [Microsoft — Windows Time Service](https://learn.microsoft.com/en
 
 ### Selección de implementación
 
-La evaluación de repositorios y los criterios de aceptación para una POC aislada de Roughtime/NTS están registrados en [docs/research/trusted-time-provider-poc.md](../research/trusted-time-provider-poc.md). Esa revisión no agrega dependencias ni cierra M1.4.
+La evaluación y el estado de la POC están registrados en [docs/research/trusted-time-provider-poc.md](../research/trusted-time-provider-poc.md). El PR #31 incluye una implementación aislada Roughtime RFC 10049 v1 strict sobre `github.com/tannerryan/roughtime v1.28.4`, con clave, commit upstream y pruebas multiplataforma fijados. Esto no constituye aprobación de producción ni habilita el flujo TUF.
 
-1. Primera etapa: adaptar los proveedores del sistema operativo como clase `system`, solo para lectura/diagnóstico, sin cambiar el reloj ni elevar assurance por inferencia.
-2. Segunda etapa: auditar `beevik/nts` en una POC aislada después de definir el bootstrap temporal TLS; probar NTS con servidor de laboratorio propio/Chrony y, si se puede, un servidor público interoperable.
-3. Tercera etapa: probar Roughtime RFC 10049 v1 con vectores y servidores controlados; comparar al menos operadores realmente independientes antes de considerar fuentes públicas.
-4. No añadir ambos protocolos al binario principal hasta completar la revisión de dependencias, seguridad, licencia, mantenimiento, tamaño, builds Windows/macOS/Linux y política de rotación de claves.
-5. Ninguna prueba de laboratorio puede marcar M1.4 como cerrado por sí sola. Los resultados de tiempo quedan separados de la verificación TUF, y no se habilita offline ni se omite expiración.
+1. Mantener los proveedores del sistema operativo como clase `system`, solo para lectura/diagnóstico, sin cambiar el reloj ni elevar assurance por inferencia.
+2. Mantener Roughtime como POC aislada. Sus dos pasadas, firmas, nonces, delegación MINT/MAXT y orden causal se prueban en servidores locales UDP/TCP; no se toma la coherencia MINT/MAXT como prueba de frescura absoluta.
+3. Completar vectores oficiales RFC, interoperabilidad independiente, análisis de dependencia, provisión/rotación/revocación de raíces, independencia administrativa verificable y bootstrap de frescura antes de considerar producción.
+4. Auditar `beevik/nts` en una POC posterior al bootstrap TLS; el primer contacto NTS no debe saltarse validación X.509.
+5. No conectar Roughtime/NTS al binario principal ni al Updater TUF hasta completar política operativa, persistencia anti-rollback, referencia temporal consumible por go-tuf y pruebas offline/online dedicadas.
+6. Ninguna prueba de laboratorio puede marcar M1.4 como cerrado. No se habilita offline ni se omite expiración.
 
 ## Referencias
 
