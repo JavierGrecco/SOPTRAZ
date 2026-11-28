@@ -164,11 +164,11 @@ func TestTUFRepositoryLockHelperProcess(t *testing.T) {
 		os.Exit(94)
 	}
 
-	// Keep the lock and SQLite connection alive. The parent forcibly terminates
-	// this process to model kill/fatal shutdown without Close or Unlock.
+	// Keep the lock and SQLite connection reachable until the parent kills this process.
 	done := make(chan struct{})
 	<-done
 	runtime.KeepAlive(repositoryLock)
+	runtime.KeepAlive(store)
 }
 
 func TestTUFRepositoryLockAndOrphanCleanupAfterAbruptProcessExit(t *testing.T) {
