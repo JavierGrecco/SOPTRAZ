@@ -241,9 +241,9 @@ No se restaurará automáticamente una generación vieja para “hacer que el pr
 7. [ ] Implementar `TrustedTimeProvider` y la evidencia temporal estructurada definida en [ADR-0020](../decisions/ADR-0020-trusted-time-and-clock-recovery.md); auditar adaptadores NTS/Roughtime y el diagnóstico de tiempo nativo del SO, sin incorporar dependencias todavía.
 8. [ ] Implementar el verificador offline estricto según [ADR-0019](../decisions/ADR-0019-offline-tuf-catalog-verifier.md), con snapshot SQLite consistente, replay `trustedmetadata`, delegaciones y evidencia temporal suficiente. Si offline falla y hay red, descartar el intento y repetir el workflow online completo; no usar `UnsafeLocalMode` ni mezclar resultados.
 9. [ ] Mantener cualquier futura verificación histórica de metadata expirada separada y solo de auditoría, sin `VerifiedTarget` ni autorización de ejecución.
-8. [ ] Añadir ancla monotónica por plataforma o witness externo cuando esté disponible, manteniendo un nivel local explícito cuando no lo esté.
-9. [ ] Completar SBOM, avisos/licencias y política de actualización de go-tuf/Sigstore.
-10. [ ] Recién entonces revisar M1.4 como candidato a aceptación.
+10. [ ] Añadir ancla monotónica por plataforma o witness externo cuando esté disponible, manteniendo un nivel local explícito cuando no lo esté.
+11. [ ] Completar SBOM, avisos/licencias y política de actualización de go-tuf/Sigstore.
+12. [ ] Recién entonces revisar M1.4 como candidato a aceptación.
 
 ## 11. Referencias oficiales
 
