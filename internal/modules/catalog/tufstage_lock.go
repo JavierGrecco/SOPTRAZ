@@ -18,6 +18,11 @@ const (
 	tufRepositoryLockDir   = ".soptraz-locks"
 )
 
+func tufMetadataStagePrefixForRepository(repositoryID string) string {
+	digest := sha256.Sum256([]byte(repositoryID))
+	return tufMetadataStagePrefix + hex.EncodeToString(digest[:]) + "-"
+}
+
 // acquirePersistentTUFRepositoryLock serializes persistent clients across
 // processes and across different metadata-cache paths that share one SQLite
 // trust store. The lock file is stable: it is deliberately never unlinked,
@@ -90,13 +95,17 @@ func acquireTUFFileLock(lockPath string) (*flock.Flock, error) {
 // The caller must already hold the repository lock; this is what makes it safe
 // to distinguish an abandoned stage from a stage still being written by a
 // healthy process. Symlinks and unexpected file types fail closed.
-func cleanupOrphanedTUFStages(metadataCacheRoot string, lock *flock.Flock) (int, error) {
+func cleanupOrphanedTUFStages(metadataCacheRoot string, lock *flock.Flock, repositoryID string) (int, error) {
 	if lock == nil || !lock.Locked() {
 		return 0, fmt.Errorf("%w: se requiere el lock exclusivo del repositorio antes de limpiar stages", ErrTUFClientUnavailable)
 	}
 	if strings.TrimSpace(metadataCacheRoot) == "" {
 		return 0, fmt.Errorf("%w: carpeta de metadata ausente", ErrInvalidTUFClientConfig)
 	}
+	if strings.TrimSpace(repositoryID) == "" || len(repositoryID) > 128 {
+		return 0, fmt.Errorf("%w: repositoryID inválido para recuperar stages", ErrInvalidTUFClientConfig)
+	}
+	stagePrefix := tufMetadataStagePrefixForRepository(repositoryID)
 
 	rootInfo, err := os.Lstat(metadataCacheRoot)
 	if err != nil {
@@ -113,7 +122,7 @@ func cleanupOrphanedTUFStages(metadataCacheRoot string, lock *flock.Flock) (int,
 
 	removed := 0
 	for _, entry := range entries {
-		if !strings.HasPrefix(entry.Name(), tufMetadataStagePrefix) {
+		if !strings.HasPrefix(entry.Name(), stagePrefix) {
 			continue
 		}
 		if filepath.Base(entry.Name()) != entry.Name() {
