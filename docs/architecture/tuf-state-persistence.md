@@ -1,6 +1,6 @@
 # Modelo de persistencia, anti-rollback y recuperación del catálogo TUF
 
-- Estado: modelo de amenazas vigente; root-chain SQLite integrada en `main` (PR #22); integración persistente de `TUFClient` implementada en PR #23 y en revisión; generaciones completas y modo offline pendientes.
+- Estado: modelo de amenazas vigente; root-chain SQLite e integración persistente de `TUFClient` integradas en `main` (PR #22 y #23); generaciones completas y modo offline pendientes.
 - Fecha: 2026-11-28
 - Relacionado: ADR-0015, ADR-0017, Issue #5 (M1.4), Issue #4 (M1.5).
 - Alcance: metadata de confianza y caché del catálogo; no targets ejecutables.
@@ -25,7 +25,7 @@ No se habilita el modo offline de producción ni se declara cerrado M1.4 con est
 ### 2.1 SOPTRAZ hoy
 
 - `NewTUFClient` recibe un `TrustAnchor` ya fijado; no hace bootstrap de una raíz desconocida.
-- `NewPersistentTUFClient` (PR #23, en revisión) recibe un almacén SQLite abierto, registra el origen/pin y reproduce la cadena histórica desde el root bootstrap inmutable con `trustedmetadata.UpdateRoot` antes de crear el updater online.
+- `NewPersistentTUFClient` (PR #23, integrado) recibe un almacén SQLite abierto, registra el origen/pin y reproduce la cadena histórica desde el root bootstrap inmutable con `trustedmetadata.UpdateRoot` antes de crear el updater online.
 - En modo persistente, un transporte captura únicamente respuestas `N.root.json` del mismo origen y reenvía exactamente esos bytes al fetcher de go-tuf. La capa catalog verifica de nuevo el prefijo y exige que su versión final coincida con la versión aceptada por el updater oficial antes del commit SQLite.
 - Los roots validados se comprometen aun cuando una etapa posterior del refresh falle; el updater queda invalidado y una nueva instancia puede continuar desde el root durable. El constructor legacy `NewTUFClient` conserva el comportamiento de persistencia solo en memoria.
 - El cliente crea el `Updater` oficial, ejecuta un refresh online, usa HTTPS excepto loopback explícito de tests y desactiva redirects.
@@ -232,7 +232,7 @@ No se restaurará automáticamente una generación vieja para “hacer que el pr
 1. Mantener la implementación online actual como prototipo; no marcarla como production-ready/offline.
 2. Añadir tests que caractericen exactamente cómo go-tuf v2.5.0 lee/persiste root y roles, incluidas delegaciones y recuperación tras fallo.
 3. [x] Seleccionar almacenamiento SQLite separado y contrato de root chain/generaciones/high-water mediante ADR-0017.
-4. [x] Implementar el store aislado para root-chain (PR #22) y conectar el replay/commit persistente con `TUFClient` (PR #23, en revisión). [ ] Completar el store de generaciones, high-water por rol, commits atómicos y tests de crash/restart.
+4. [x] Implementar el store aislado para root-chain (PR #22) y conectar el replay/commit persistente con `TUFClient` (PR #23, integrado). [ ] Completar el store de generaciones, high-water por rol, commits atómicos y tests de crash/restart.
 5. Implementar loader online basado en staging temporal e importar al store solo después de validar completamente.
 6. Implementar el verificador offline local usando trustedmetadata y validación de delegaciones; no usar UnsafeLocalMode.
 7. Añadir ancla monotónica por plataforma o witness externo cuando esté disponible, manteniendo un nivel local explícito cuando no lo esté.
@@ -248,14 +248,14 @@ No se restaurará automáticamente una generación vieja para “hacer que el pr
 - [go-tuf v2.5.0 updater.go](https://github.com/theupdateframework/go-tuf/blob/v2.5.0/metadata/updater/updater.go) — flujo del updater, refresh, UnsafeLocalMode y persistencia individual de metadata.
 - [TUF security scope](https://github.com/theupdateframework/specification/blob/master/governance/02-scope.md) — amenazas cubiertas como rollback, freeze y mix-and-match.
 
-Este documento registra el diseño de seguridad y las decisiones que faltan. No introduce todavía almacenamiento durable, modo offline ni una garantía hardware anti-rollback.
+Este documento registra el diseño de seguridad y las decisiones que faltan. La persistencia durable de root-chain ya está implementada; este documento no habilita todavía el modo offline ni una garantía hardware anti-rollback.
 
 
 ## 12. Estado de implementación tras PR #20, PR #22 y PR #23
 
 - PR #20 integrado como `1bf7e13`: el último root TUF verificado se conserva entre refreshes de la misma instancia y sobrevive a un fallo posterior de timestamp/snapshot/targets.
 - PR #22 integrado en `main`: el paquete `internal/storage/sqlitetuf` persiste la cadena histórica de root en un SQLite separado, con ancla/origen fijados, hashes exactos, enlaces consecutivos, append-only, CAS transaccional y lectura consistente.
-- PR #23 añade `NewPersistentTUFClient`: replay de cada root desde el pin bootstrap inmutable, captura acotada de las respuestas versionadas y commit durable únicamente si go-tuf alcanzó la misma versión. Conserva raíces válidas aunque falle metadata posterior y las recupera con una nueva instancia/caché vacía. El PR está en revisión; no se ha integrado en `main`.
-- La matriz de PR #23 pasó 5/5 en [run 46093144315](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46093144315) para el commit `cba47e44cd5380ebcab3569e20f897f4cce5a7d5`: Windows, macOS, Ubuntu, Race Detector y fuzzing.
+- PR #23 integrado como `1988db9` añade `NewPersistentTUFClient`: replay de cada root desde el pin bootstrap inmutable, captura acotada de las respuestas versionadas y commit durable únicamente si go-tuf alcanzó la misma versión. Conserva raíces válidas aunque falle metadata posterior y las recupera con una nueva instancia/caché vacía.
+- La matriz definitiva pre-merge pasó 5/5 en [run 46093570302](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46093570302) para el commit `c75ec36e8891bec608d276883c70b04b4c321229`: Windows, macOS, Ubuntu, Race Detector y fuzzing. El CI post-merge también pasó 5/5 en [run 46093718592](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46093718592) sobre `main` (`1988db9`).
 - Persistencia de timestamp/snapshot/targets/delegaciones por generación, high-water por rol, staging, `active_generation`, recuperación tras terminación abrupta y validador offline siguen pendientes. No se habilita `UnsafeLocalMode`.
 - El nivel de assurance local no protege frente a restauración integral de una imagen antigua del mismo disco sin TPM/contador monotónico o witness externo; el bootstrap/custodia de claves para producción sigue pendiente.
