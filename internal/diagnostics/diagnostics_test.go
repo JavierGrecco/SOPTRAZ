@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestOpenCreatesPrivatePlainTextReportAndCleanCloseMarker(t *testing.T) {
@@ -116,6 +117,7 @@ func TestDiagnosticsAbruptExitHelper(t *testing.T) {
 		return
 	}
 	directory := os.Getenv("SOPTRAZ_DIAGNOSTICS_DIR")
+	readyPath := os.Getenv("SOPTRAZ_DIAGNOSTICS_READY")
 	logger, err := Open(directory, "helper-version")
 	if err != nil {
 		os.Exit(91)
@@ -128,21 +130,50 @@ func TestDiagnosticsAbruptExitHelper(t *testing.T) {
 	}); err != nil {
 		os.Exit(92)
 	}
-	// Deliberately bypass Close() to simulate a hard process termination.
-	os.Exit(0)
+	if err := os.WriteFile(readyPath, []byte(logger.Path()), 0o600); err != nil {
+		os.Exit(93)
+	}
+	// The parent forcibly kills this process; Close() and deferred cleanup never run.
+	select {}
+	runtime.KeepAlive(logger)
 }
 
 func TestNextStartupDetectsAbruptProcessTermination(t *testing.T) {
 	directory := t.TempDir()
+	readyPath := filepath.Join(t.TempDir(), "ready")
 	command := exec.Command(os.Args[0], "-test.run=^TestDiagnosticsAbruptExitHelper$")
 	command.Env = append(os.Environ(),
 		"SOPTRAZ_DIAGNOSTICS_HELPER=1",
 		"SOPTRAZ_DIAGNOSTICS_DIR="+directory,
+		"SOPTRAZ_DIAGNOSTICS_READY="+readyPath,
 	)
-	output, err := command.CombinedOutput()
-	if err != nil {
-		t.Fatalf("abrupt-exit helper failed: %v; output=%s", err, output)
+	if err := command.Start(); err != nil {
+		t.Fatalf("start abrupt-exit helper: %v", err)
 	}
+	processExited := false
+	defer func() {
+		if !processExited {
+			_ = command.Process.Kill()
+			_ = command.Wait()
+		}
+	}()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if _, err := os.Stat(readyPath); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("diagnostics helper did not create its run report in time")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err := command.Process.Kill(); err != nil {
+		t.Fatalf("kill diagnostics helper: %v", err)
+	}
+	if err := command.Wait(); err == nil {
+		t.Fatal("forcibly terminated diagnostics helper exited successfully")
+	}
+	processExited = true
 
 	logger, err := Open(directory, "recovery-version")
 	if err != nil {
@@ -248,42 +279,23 @@ func TestPanicReportIncludesStack(t *testing.T) {
 
 func TestRetentionDoesNotDeleteReportsRecoveredDuringCurrentStartup(t *testing.T) {
 	directory := t.TempDir()
-	var recoveredPath string
-	for index := 0; index < maxRunReports+2; index++ {
-		logger, err := Open(directory, "retention-test")
-		if err != nil {
-			t.Fatalf("Open() run %d: %v", index, err)
-		}
-		if index == 0 {
-			recoveredPath = logger.Path()
-		}
-		if err := logger.Record(Event{
-			Severity: SeverityCritical,
-			Component: "test.retention",
-			Code: "test.retention",
-			Message: "retention fixture",
-		}); err != nil {
-			t.Fatalf("Record() run %d: %v", index, err)
-		}
-		if index == 0 {
-			// Leave the first report without a clean-shutdown marker.
-			logger.mu.Lock()
-			if err := logger.runLock.Unlock(); err != nil {
-				logger.mu.Unlock()
-				t.Fatalf("unlock crash fixture: %v", err)
-			}
-			if err := logger.file.Close(); err != nil {
-				logger.mu.Unlock()
-				t.Fatalf("close crash fixture: %v", err)
-			}
-			logger.closed = true
-			logger.mu.Unlock()
-			continue
-		}
-		if err := logger.Close(); err != nil {
-			t.Fatalf("Close() run %d: %v", index, err)
+	recoveredPath := filepath.Join(directory, runLogPrefix+"00-interrupted.txt")
+	if err := os.WriteFile(recoveredPath,
+		[]byte("SOPTRAZ — INFORME TÉCNICO DE EJECUCIÓN\n[CRITICAL] simulated prior crash\n"),
+		0o600,
+	); err != nil {
+		t.Fatalf("create interrupted report: %v", err)
+	}
+	for index := 0; index < maxRunReports-1; index++ {
+		path := filepath.Join(directory, fmt.Sprintf("%s%02d-clean.txt", runLogPrefix, index+1))
+		if err := os.WriteFile(path,
+			[]byte("SOPTRAZ — INFORME TÉCNICO DE EJECUCIÓN\nCIERRE NORMAL: fixture\n"),
+			0o600,
+		); err != nil {
+			t.Fatalf("create clean report %d: %v", index, err)
 		}
 	}
+
 	logger, err := Open(directory, "recovery-retention-test")
 	if err != nil {
 		t.Fatalf("Open() recovery: %v", err)
