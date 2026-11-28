@@ -56,7 +56,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return runTimeStatus(args, stdout, stderr)
 	case "validate":
 		if len(args) != 3 {
-			fmt.Fprintln(stderr, "uso: soptraz validate <manifest|action|intervention|event|checkpoint|artifact> <archivo.json>")
+			fmt.Fprintln(stderr, "uso: soptraz validate <manifest|action|intervention|event|checkpoint|artifact|process-profile> <archivo.json>")
 			return 2
 		}
 		raw, err := readContractFile(args[2])

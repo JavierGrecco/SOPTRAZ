@@ -77,6 +77,9 @@ Runtime Go, registro local, IDs, acciones tipadas, permisos/riesgo, cancelación
 
 ## M1.5 — Supervisor seguro de procesos y registro de módulos
 
+- [x] Definir contrato versionado para perfiles declarativos de procesos de solo lectura, con argv fijo, sin campos de ruta ejecutable, shell, entorno arbitrario ni directorio de trabajo.
+- [x] Validar semánticamente límites de tiempo, argumentos, cuotas de salida, formatos y códigos de salida; rechazar elevación, aprobación, red y modos distintos de direct-argv.
+- [ ] Implementar runner multiplataforma; validar antes cada artefacto contra targets autenticados TUF y bytes instalados.
 - [x] Resolver artefactos instalados desde una raíz administrada con plataforma/arquitectura reales exactas, tamaño declarado exacto y SHA-256.
 - [x] Rechazar traversal, symlinks y componentes no portables/reservados de Windows.
 - [ ] Consumir únicamente targets autenticados del catálogo TUF (Issue #5).

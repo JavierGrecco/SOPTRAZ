@@ -3,12 +3,14 @@ package contracts
 import (
 	"bytes"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"sync"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
 	"github.com/JavierGrecco/SOPTRAZ/internal/strictjson"
+	"github.com/JavierGrecco/SOPTRAZ/internal/modules/supervisor"
 )
 
 //go:embed schemas/*.schema.json
@@ -22,7 +24,8 @@ var schemaFiles = map[string]string{
 	"intervention": "schemas/intervention.schema.json",
 	"event":        "schemas/intervention-event.schema.json",
 	"checkpoint":   "schemas/audit-checkpoint.schema.json",
-	"artifact":     "schemas/artifact-descriptor.schema.json",
+	"artifact":        "schemas/artifact-descriptor.schema.json",
+	"process-profile": "schemas/process-profile.schema.json",
 }
 
 var (
@@ -88,7 +91,7 @@ func ValidateDocument(kind string, raw []byte) error {
 	}
 	schema, ok := compiledSchemas[kind]
 	if !ok {
-		return fmt.Errorf("tipo de contrato desconocido %q (válidos: manifest, action, intervention, event, checkpoint, artifact)", kind)
+		return fmt.Errorf("tipo de contrato desconocido %q (válidos: manifest, action, intervention, event, checkpoint, artifact, process-profile)", kind)
 	}
 
 	document, err := strictjson.Decode(raw)
@@ -102,6 +105,19 @@ func ValidateDocument(kind string, raw []byte) error {
 	if kind == "action" {
 		if err := validateActionParameterSchemas(document); err != nil {
 			return fmt.Errorf("esquema de parámetros/respuesta inválido: %w", err)
+		}
+	}
+	if kind == "process-profile" {
+		rawDocument, err := json.Marshal(document)
+		if err != nil {
+			return fmt.Errorf("serializar perfil de proceso validado: %w", err)
+		}
+		var profile supervisor.ProcessProfile
+		if err := json.Unmarshal(rawDocument, &profile); err != nil {
+			return fmt.Errorf("decodificar perfil de proceso: %w", err)
+		}
+		if err := profile.Validate(); err != nil {
+			return err
 		}
 	}
 	return nil

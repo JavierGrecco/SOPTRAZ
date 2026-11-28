@@ -28,6 +28,7 @@ func TestExampleContractsValidate(t *testing.T) {
 		{"event", "intervention-event.example.json"},
 		{"checkpoint", "audit-checkpoint.example.json"},
 		{"artifact", "artifact-descriptor.example.json"},
+		{"process-profile", "process-profile.example.json"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.kind, func(t *testing.T) {
@@ -202,5 +203,32 @@ func TestValidateDocumentRejectsInvalidUTF8(t *testing.T) {
 	err := ValidateDocument("manifest", raw)
 	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "utf-8") {
 		t.Fatalf("ValidateDocument() error = %v, want invalid UTF-8 rejection", err)
+	}
+}
+
+
+func TestProcessProfileRejectsShellAndUnknownExecutionFields(t *testing.T) {
+	raw := string(readExample(t, "process-profile.example.json"))
+	for _, candidate := range []string{
+		strings.Replace(raw, `"executionMode": "direct_argv"`, `"executionMode": "shell"`, 1),
+		strings.Replace(raw, `"networkAccess": "none"`, `"networkAccess": "read"`, 1),
+		strings.Replace(raw, `"artifactId": "soptraz.osquery"`, `"artifactId": "../osquery"`, 1),
+		strings.Replace(raw, `"fixedArguments": [`, `"command": "sh -c", "fixedArguments": [`, 1),
+	} {
+		if err := ValidateDocument("process-profile", []byte(candidate)); err == nil {
+			t.Errorf("unsafe process profile was accepted: %s", candidate)
+		}
+	}
+}
+
+func TestProcessProfileRejectsControlCharactersAndExitCodeWithoutSuccess(t *testing.T) {
+	raw := string(readExample(t, "process-profile.example.json"))
+	control := strings.Replace(raw, `"SELECT name, version, build FROM os_version;"`, "SELECT name,\\n version FROM os_version;", 1)
+	if err := ValidateDocument("process-profile", []byte(control)); err == nil {
+		t.Fatal("process profile must reject control characters in fixed arguments")
+	}
+	noSuccess := strings.Replace(raw, `"acceptedExitCodes": [0]`, `"acceptedExitCodes": [1]`, 1)
+	if err := ValidateDocument("process-profile", []byte(noSuccess)); err == nil {
+		t.Fatal("process profile must include exit code zero")
 	}
 }
