@@ -11,7 +11,7 @@ El inicializador del trust store resuelve los alias del directorio padre una sol
 
 ## Windows
 
-- Se recorren todos los directorios desde la raíz del volumen y cada uno se abre con `FILE_FLAG_OPEN_REPARSE_POINT`; se rechazan reparse points, componentes que no sean directorios y DACLs que otorguen escritura a grupos amplios conocidos.
+- Se recorren todos los directorios desde la raíz del volumen y cada uno se abre con `FILE_FLAG_OPEN_REPARSE_POINT`; se rechazan reparse points y componentes que no sean directorios. En ancestros se rechazan permisos de borrado/reemplazo o cambio de ACL/owner otorgados a grupos amplios; permitir crear un nuevo hermano no se confunde con poder reemplazar un componente existente. En el archivo SQLite se conserva una comprobación de escritura más estricta.
 - La DACL se consulta desde el handle abierto, no mediante una inspección textual del path.
 - Se rechazan ACEs de escritura para Everyone, Authenticated Users, Builtin Users/Guests, Interactive, Network y Anonymous.
 - Los ACEs extendidos/objeto/callback no soportados se rechazan de forma cerrada, en lugar de ignorarlos.
@@ -25,4 +25,4 @@ La comprobación de Windows cubre SIDs amplios conocidos; una instalación con g
 
 ## Pruebas
 
-Se añadieron pruebas para rechazar un archivo DB symlink y una carpeta en la ruta de DB, resolver alias del directorio padre y comprobar identidad del archivo sin depender de la forma textual de la ruta. En Unix se prueban directorios escribibles no protegidos y sticky-bit. En Windows se fuerza una DACL que concede escritura a Everyone en el directorio inmediato y en un ancestro de un directorio privado; ambas rutas deben fallar cerradas.
+Se añadieron pruebas para rechazar un archivo DB symlink y una carpeta en la ruta de DB, resolver alias del directorio padre y comprobar identidad del archivo sin depender de la forma textual de la ruta. En Unix se prueban directorios escribibles no protegidos y sticky-bit. En Windows se fuerza una DACL que concede control total a Everyone en el directorio inmediato y en un ancestro de un directorio privado; ambas rutas deben fallar cerradas. También se verifica que un ACE de creación de nuevos hermanos, sin derechos de borrado/reemplazo, no bloquee un perfil estándar.

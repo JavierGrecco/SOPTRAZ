@@ -65,7 +65,7 @@ func validateWindowsTrustDirectory(path string) error {
 		info.FileAttributes&windows.FILE_ATTRIBUTE_DIRECTORY == 0 {
 		return fmt.Errorf("debe ser un directorio real, no un reparse point")
 	}
-	return rejectBroadWritableDACL(handle, path)
+	return rejectBroadWritableDirectoryDACL(handle, path)
 }
 
 func prepareTrustStoreFile(path string) error {
@@ -100,7 +100,27 @@ func prepareTrustStoreFile(path string) error {
 // rejectBroadWritableDACL rejects write-capable allow ACEs granted to broad
 // built-in principals. It deliberately does not mutate inherited or user-managed
 // ACLs; the caller can choose a more restrictive data directory when this fails.
+func rejectBroadWritableDirectoryDACL(handle windows.Handle, objectPath string) error {
+	// Directories need a narrower test than regular files. FILE_WRITE_DATA and
+	// FILE_APPEND_DATA map to FILE_ADD_FILE/FILE_ADD_SUBDIRECTORY for directories:
+	// allowing creation of a new sibling does not let a principal replace an
+	// existing protected child. Deletion, delete-child and ACL/owner changes do.
+	const fileDeleteChild = 0x00000040
+	writeMask := windows.ACCESS_MASK(
+		windows.GENERIC_ALL |
+			windows.DELETE |
+			windows.WRITE_DAC |
+			windows.WRITE_OWNER |
+			fileDeleteChild,
+	)
+	return rejectBroadDACL(handle, objectPath, writeMask)
+}
+
 func rejectBroadWritableDACL(handle windows.Handle, objectPath string) error {
+	return rejectBroadDACL(handle, objectPath, writeMask)
+}
+
+func rejectBroadDACL(handle windows.Handle, objectPath string, writeMask windows.ACCESS_MASK) error {
 	descriptor, err := windows.GetSecurityInfo(handle, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
 	if err != nil {
 		return fmt.Errorf("leer DACL de %q: %w", objectPath, err)
