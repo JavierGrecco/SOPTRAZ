@@ -161,11 +161,16 @@ func replayVerifiedGeneration(
 		return nil, fmt.Errorf("%w: faltan timestamp, snapshot o targets top-level", ErrGenerationReplay)
 	}
 
-	for roleName, parents := range roleParents {
+	roleNames := make([]string, 0, len(roleParents))
+	for roleName := range roleParents {
+		roleNames = append(roleNames, roleName)
+	}
+	sort.Strings(roleNames)
+	for _, roleName := range roleNames {
 		if roleName == metadata.TIMESTAMP || roleName == metadata.SNAPSHOT || roleName == metadata.TARGETS {
 			continue
 		}
-		for _, parent := range parents {
+		for _, parent := range roleParents[roleName] {
 			if parent == metadata.TIMESTAMP || parent == metadata.SNAPSHOT {
 				return nil, fmt.Errorf("%w: solo un rol targets puede delegar metadata targets", ErrGenerationReplay)
 			}
