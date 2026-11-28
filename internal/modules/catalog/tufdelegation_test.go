@@ -78,6 +78,15 @@ func TestResolveTargetPathMatchesOfficialGoTUFUpdater(t *testing.T) {
 		resolved.visited[1].parent != metadata.TARGETS {
 		t.Fatalf("unexpected canonical delegation walk: %#v", resolved.visited)
 	}
+
+	parents, selected, err := collectResolvedDelegations(trusted, []string{fixture.targetPath}, 4)
+	if err != nil {
+		t.Fatalf("collectResolvedDelegations(): %v", err)
+	}
+	if !selected[metadata.TARGETS] || !selected["osquery"] ||
+		!reflect.DeepEqual(parents["osquery"], []string{metadata.TARGETS}) {
+		t.Fatalf("generation capture did not retain the exact authenticated delegation path: selected=%#v parents=%#v", selected, parents)
+	}
 }
 
 func TestResolveTargetPathUsesGoTUFPathHashPrefixesAndSignedOrder(t *testing.T) {
