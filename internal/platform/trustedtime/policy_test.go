@@ -296,7 +296,6 @@ func TestAcceptancePolicyRejectsInvalidConfiguration(t *testing.T) {
 	}
 }
 
-
 func TestAcceptancePolicySelectsUniqueMaximumOverlapAgainstOneOutlier(t *testing.T) {
 	start := policyTestStart()
 	a := policyTestSource("source-a", "operator-a")
