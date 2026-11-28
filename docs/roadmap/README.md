@@ -62,11 +62,14 @@ Runtime Go, registro local, IDs, acciones tipadas, permisos/riesgo, cancelación
 - [ ] Completar resiliencia: terminación abrupta real y limpieza segura de stages huérfanos, recuperación tras caída en cada etapa, disco lleno, lock y escritores multi-proceso, y política de actualización de metadata no-root cacheada.
 - [x] Definir el contrato puro `internal/platform/trustedtime`: intervalo de incertidumbre, procedencia, ancla, identidad de clave y SHA-256 de la atestación, sin I/O ni dependencias externas.
 - [x] Definir el DTO puro `SystemTimeDiagnostics` separado de `Evidence`, con estados independientes de servicio/sincronización, unknown explícito y timestamps UTC canónicos.
+- [x] Implementar política pura de aceptación en memoria: allowlist exacta, operadores únicos, límites de incertidumbre, intersección común máxima y piso anti-rollback; conserva evidencia seleccionada sin I/O.
+- [ ] Integrar la política con adaptadores Roughtime/NTS autenticados, frescura/replay, provisión/rotación de anclas y persistencia SQLite v3.
 - [x] Implementar el lector Linux read-only del estado del kernel con `golang.org/x/sys/unix.Adjtimex` y `Modes=0`; probar mapeo de estados, contexto cancelado, errores sanitizados y que el código no solicita ajustes. No se obtiene identidad de servidor ni hora de última sincronización.
 - [x] Implementar consulta read-only del estado de W32Time mediante Service Control Manager con SC_MANAGER_CONNECT y SERVICE_QUERY_STATUS; sin elevación, UAC, w32tm ni controles sobre el servicio.
 - [ ] Mantener SynchronizationState=unknown en Windows hasta disponer de una señal no privilegiada y fiable de sincronización efectiva; no inferirla del estado activo de W32Time.
 - [ ] Implementar diagnóstico macOS timed sin leer estado cacheado privado; sincronización unknown hasta disponer de API pública verificable.
-- [ ] Auditar POC aisladas de NTS/Roughtime, política de operadores independientes, anclas y rotación antes de seleccionar dependencias.
+- [x] Implementar POC aislada Roughtime RFC 10049 v1 en PR #31: raíces/operadores/anclas distintas, dos pasadas causales, UDP/TCP, rechazo de replay, firma inválida, ventana de delegación, radio y causalidad; CI #339 pasó 6/6. No está conectada al flujo productivo.
+- [ ] Completar vectores RFC oficiales e interoperabilidad independiente, revisión de advisories, bootstrap de frescura, gobernanza y rotación/revocación de claves; auditar NTS después del bootstrap TLS.
 - [ ] Integrar evidencia aceptada con la política de recuperación online, persistencia SQLite v3 y un mecanismo de referencia temporal compatible con go-tuf.
 - [ ] Implementar modo offline estricto que revalide metadata cacheada, vigente y anti-rollback con evidencia temporal suficiente. Si offline falla y hay red, descartar la sesión y repetir online desde cero; nunca aceptar metadata expirada ni mezclar resultados.
 - [ ] Mantener cualquier modo histórico de metadata expirada separado, solo de auditoría y sin autorizar instalación/ejecución.

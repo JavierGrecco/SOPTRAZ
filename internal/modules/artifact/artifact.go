@@ -18,6 +18,8 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+
+	"github.com/JavierGrecco/SOPTRAZ/internal/diagnostics"
 )
 
 var artifactVersionPattern = regexp.MustCompile("^(0|[1-9][0-9]*)[.](0|[1-9][0-9]*)[.](0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?([+][0-9A-Za-z.-]+)?$")
@@ -165,23 +167,41 @@ type ResolvedArtifact struct {
 // Resolver verifies artifacts under one application-managed directory.
 // It does not trust PATH, search other locations or fall back to another build.
 type Resolver struct {
-	root     *os.Root
-	rootPath string
-	platform Platform
-	maxBytes int64
+	root        *os.Root
+	rootPath    string
+	platform    Platform
+	maxBytes    int64
+	diagnostics DiagnosticRecorder
 
 	mu       sync.RWMutex
 	closed   bool
 	closeErr error
 }
 
+// DiagnosticRecorder receives security-relevant resolver incidents. Implementations
+// must be safe for concurrent calls. Reporting is best-effort and never changes
+// the result of artifact resolution.
+type DiagnosticRecorder interface {
+	Record(diagnostics.Event) error
+}
+
 // NewResolver binds artifact lookup to the platform on which SOPTRAZ is running.
 // Callers cannot spoof a target platform to resolve a different OS binary.
 func NewResolver(root string) (*Resolver, error) {
-	return newResolver(root, CurrentPlatform(), DefaultMaxArtifactBytes)
+	return NewResolverWithDiagnostics(root, nil)
+}
+
+// NewResolverWithDiagnostics enables explicit, local reporting of security-relevant
+// integrity and path-substitution failures. A nil recorder keeps the resolver silent.
+func NewResolverWithDiagnostics(root string, recorder DiagnosticRecorder) (*Resolver, error) {
+	return newResolverWithDiagnostics(root, CurrentPlatform(), DefaultMaxArtifactBytes, recorder)
 }
 
 func newResolver(root string, platform Platform, maxBytes int64) (*Resolver, error) {
+	return newResolverWithDiagnostics(root, platform, maxBytes, nil)
+}
+
+func newResolverWithDiagnostics(root string, platform Platform, maxBytes int64, recorder DiagnosticRecorder) (*Resolver, error) {
 	if err := platform.Validate(); err != nil {
 		return nil, err
 	}
@@ -209,7 +229,7 @@ func newResolver(root string, platform Platform, maxBytes int64) (*Resolver, err
 		return nil, fmt.Errorf("%w: la raíz no es un directorio", ErrArtifactPath)
 	}
 	return &Resolver{
-		root: rootHandle, rootPath: resolvedRoot, platform: platform, maxBytes: maxBytes,
+		root: rootHandle, rootPath: resolvedRoot, platform: platform, maxBytes: maxBytes, diagnostics: recorder,
 	}, nil
 }
 
@@ -229,6 +249,22 @@ func (resolver *Resolver) Close() error {
 		resolver.closeErr = resolver.root.Close()
 	}
 	return resolver.closeErr
+}
+
+func (resolver *Resolver) recordIncident(descriptor Descriptor, code, message string) {
+	if resolver.diagnostics == nil {
+		return
+	}
+	// Do not include absolute paths, source URLs, or raw filesystem errors in a
+	// report. Descriptor IDs have already passed strict validation at this point.
+	_ = resolver.diagnostics.Record(diagnostics.Event{
+		Severity:  diagnostics.SeverityCritical,
+		Component: "artifact",
+		Operation: "resolve",
+		Code:      code,
+		Message:   message,
+		Cause:     "artefacto=" + descriptor.ID,
+	})
 }
 
 // Resolve accepts only an exact platform match and verifies the bytes on disk.
@@ -258,13 +294,16 @@ func (resolver *Resolver) Resolve(descriptor Descriptor) (ResolvedArtifact, erro
 			return ResolvedArtifact{}, fmt.Errorf("localizar artefacto %q bajo raíz confinada: %w", descriptor.ID, err)
 		}
 		if info.Mode()&(os.ModeSymlink|os.ModeIrregular) != 0 {
+			resolver.recordIncident(descriptor, "artifact.path_rejected", "La ruta del artefacto contiene un enlace o reparse point no permitido.")
 			return ResolvedArtifact{}, fmt.Errorf("%w: no se permiten symlinks ni reparse points en la ruta del artefacto", ErrArtifactPath)
 		}
 		if index < len(parts)-1 && !info.IsDir() {
+			resolver.recordIncident(descriptor, "artifact.path_rejected", "Un componente intermedio de la ruta no es un directorio.")
 			return ResolvedArtifact{}, fmt.Errorf("%w: un componente intermedio no es directorio", ErrArtifactPath)
 		}
 		if index == len(parts)-1 {
 			if !info.Mode().IsRegular() {
+				resolver.recordIncident(descriptor, "artifact.path_rejected", "El destino del artefacto no es un archivo regular.")
 				return ResolvedArtifact{}, fmt.Errorf("%w: el artefacto debe ser un archivo regular", ErrArtifactPath)
 			}
 			finalInfo = info
@@ -278,37 +317,50 @@ func (resolver *Resolver) Resolve(descriptor Descriptor) (ResolvedArtifact, erro
 	}
 	defer file.Close()
 	openedInfo, err := file.Stat()
-	if err != nil || !openedInfo.Mode().IsRegular() || !os.SameFile(finalInfo, openedInfo) {
+	if err != nil {
+		return ResolvedArtifact{}, fmt.Errorf("%w: no se pudo inspeccionar el archivo abierto: %v", ErrArtifactPath, err)
+	}
+	if !openedInfo.Mode().IsRegular() || !os.SameFile(finalInfo, openedInfo) {
+		resolver.recordIncident(descriptor, "artifact.path_substituted", "El archivo cambió entre la inspección y la apertura.")
 		return ResolvedArtifact{}, fmt.Errorf("%w: el archivo cambió entre la inspección y la apertura", ErrArtifactPath)
 	}
 	if openedInfo.Size() > resolver.maxBytes {
 		return ResolvedArtifact{}, fmt.Errorf("%w: el tamaño del artefacto supera el límite", ErrInvalidDescriptor)
 	}
 	if openedInfo.Size() != descriptor.SizeBytes {
+		resolver.recordIncident(descriptor, "artifact.integrity_mismatch", "El tamaño del archivo instalado no coincide con el descriptor confiable.")
 		return ResolvedArtifact{}, ErrArtifactIntegrity
 	}
 
 	hasher := sha256.New()
 	bytesRead, err := io.Copy(hasher, io.LimitReader(file, resolver.maxBytes+1))
 	if err != nil {
+		resolver.recordIncident(descriptor, "artifact.read_failed", "No se pudo leer el archivo para verificar su integridad.")
 		return ResolvedArtifact{}, fmt.Errorf("calcular SHA-256 del artefacto: %w", err)
 	}
 	if bytesRead > resolver.maxBytes {
 		return ResolvedArtifact{}, fmt.Errorf("%w: el archivo excede el límite de lectura", ErrInvalidDescriptor)
 	}
 	if bytesRead != descriptor.SizeBytes {
+		resolver.recordIncident(descriptor, "artifact.integrity_mismatch", "La cantidad de bytes leídos no coincide con el descriptor confiable.")
 		return ResolvedArtifact{}, ErrArtifactIntegrity
 	}
 	if hex.EncodeToString(hasher.Sum(nil)) != descriptor.SHA256 {
+		resolver.recordIncident(descriptor, "artifact.integrity_mismatch", "El SHA-256 del archivo instalado no coincide con el descriptor confiable.")
 		return ResolvedArtifact{}, ErrArtifactIntegrity
 	}
 
 	finalOpenedInfo, err := file.Stat()
-	if err != nil || !os.SameFile(openedInfo, finalOpenedInfo) || openedInfo.Size() != finalOpenedInfo.Size() || !openedInfo.ModTime().Equal(finalOpenedInfo.ModTime()) {
+	if err != nil {
+		return ResolvedArtifact{}, fmt.Errorf("%w: no se pudo reinspeccionar el archivo abierto: %v", ErrArtifactPath, err)
+	}
+	if !os.SameFile(openedInfo, finalOpenedInfo) || openedInfo.Size() != finalOpenedInfo.Size() || !openedInfo.ModTime().Equal(finalOpenedInfo.ModTime()) {
+		resolver.recordIncident(descriptor, "artifact.path_substituted", "El archivo cambió durante la verificación de integridad.")
 		return ResolvedArtifact{}, fmt.Errorf("%w: el archivo cambió durante la verificación", ErrArtifactPath)
 	}
 	finalPathInfo, err := resolver.root.Lstat(relativePath)
 	if err != nil || finalPathInfo.Mode()&(os.ModeSymlink|os.ModeIrregular) != 0 || !finalPathInfo.Mode().IsRegular() || !os.SameFile(finalOpenedInfo, finalPathInfo) {
+		resolver.recordIncident(descriptor, "artifact.path_substituted", "La ruta del artefacto fue sustituida durante la verificación.")
 		return ResolvedArtifact{}, fmt.Errorf("%w: la ruta fue sustituida durante la verificación", ErrArtifactPath)
 	}
 

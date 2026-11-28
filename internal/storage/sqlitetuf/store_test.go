@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -263,5 +264,92 @@ func TestOpenCreatesPrivateParentDirectoryWhereSupported(t *testing.T) {
 	}
 	if info.Mode().Perm()&0o077 != 0 {
 		t.Fatalf("trust-store directory permissions = %o, want no group/other access where supported", info.Mode().Perm())
+	}
+}
+
+func TestDatabasePathReturnsAbsoluteResolvedPath(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "nested", "catalog-trust.sqlite")
+	store, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer store.Close()
+
+	got := store.DatabasePath()
+	canonicalParent, err := filepath.EvalSymlinks(filepath.Dir(path))
+	if err != nil {
+		t.Fatalf("EvalSymlinks() parent error = %v", err)
+	}
+	want := filepath.Join(canonicalParent, filepath.Base(path))
+	gotInfo, err := os.Stat(got)
+	if err != nil {
+		t.Fatalf("stat DatabasePath(): %v", err)
+	}
+	wantInfo, err := os.Stat(want)
+	if err != nil {
+		t.Fatalf("stat expected database path: %v", err)
+	}
+	if !os.SameFile(gotInfo, wantInfo) {
+		t.Fatalf("DatabasePath() = %q, want a path to the same file as %q", got, want)
+	}
+}
+
+func TestTrustStoreUsesExtraSynchronousRollbackJournal(t *testing.T) {
+	store, _ := openTestStore(t)
+	ctx := context.Background()
+
+	var journalMode string
+	if err := store.db.QueryRowContext(ctx, "PRAGMA journal_mode").Scan(&journalMode); err != nil {
+		t.Fatalf("read journal_mode: %v", err)
+	}
+	if !strings.EqualFold(journalMode, "delete") {
+		t.Fatalf("journal_mode = %q, want DELETE", journalMode)
+	}
+
+	var synchronous int
+	if err := store.db.QueryRowContext(ctx, "PRAGMA synchronous").Scan(&synchronous); err != nil {
+		t.Fatalf("read synchronous: %v", err)
+	}
+	if synchronous != 3 {
+		t.Fatalf("synchronous = %d, want 3 (EXTRA)", synchronous)
+	}
+}
+
+func TestCommitVerifiedRootsRollsBackWhenLatestRootUpdateFails(t *testing.T) {
+	ctx := context.Background()
+	store, _ := openTestStore(t)
+	_, anchor := registerTestRepository(t, store)
+
+	if _, err := store.db.ExecContext(ctx,
+		"CREATE TRIGGER reject_latest_root_update "+
+			"BEFORE UPDATE OF latest_root_version, latest_root_sha256 ON repositories "+
+			"BEGIN SELECT RAISE(ABORT, 'simulated latest-root pointer failure'); END",
+	); err != nil {
+		t.Fatalf("create latest-root failure trigger: %v", err)
+	}
+
+	_, err := store.CommitVerifiedRoots(ctx, "soptraz-tools", anchor, []VerifiedRoot{{
+		Version:        anchor.Version + 1,
+		PreviousSHA256: anchor.SHA256,
+		Metadata:       []byte("verified-root-v2"),
+	}})
+	if err == nil {
+		t.Fatal("CommitVerifiedRoots() succeeded despite forced latest-root update failure")
+	}
+
+	state, err := store.RootState(ctx, "soptraz-tools")
+	if err != nil {
+		t.Fatalf("RootState() after failed commit: %v", err)
+	}
+	if state != anchor {
+		t.Fatalf("root state after failed commit = %#v, want bootstrap anchor %#v", state, anchor)
+	}
+	chain, loadedState, err := store.LoadRootChain(ctx, "soptraz-tools")
+	if err != nil {
+		t.Fatalf("LoadRootChain() after failed commit: %v", err)
+	}
+	if len(chain) != 0 || loadedState != anchor {
+		t.Fatalf("partial root rotation escaped rollback: chain=%d state=%#v", len(chain), loadedState)
 	}
 }

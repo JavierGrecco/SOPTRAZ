@@ -17,7 +17,7 @@ Field y Hub son dos composiciones del mismo producto, no dos bases de código de
 3. Dominio: reglas, estados, riesgos, permisos y contratos.
 4. Adaptadores: Windows, macOS, Linux, herramientas OEM y proyectos externos.
 5. Persistencia: SQLite en Field; PostgreSQL en Hub.
-6. Servicios transversales: auditoría, políticas, configuración, AI Gateway y actualizaciones.
+6. Servicios transversales: auditoría, diagnósticos técnicos, políticas, configuración, AI Gateway y actualizaciones.
 
 La presentación no contiene lógica de reparación ni cálculos analíticos autoritativos.
 
@@ -30,7 +30,8 @@ Cada paso produce eventos correlacionables mediante un ID de intervención. Los 
 ## Módulos
 
 - Core/Runtime: ciclo de vida, configuración, capacidades y dispatch.
-- Diagnostics: recopilación de evidencia y hallazgos.
+- Diagnostics: recopilación de evidencia y hallazgos del equipo.
+- Crash Reports: informes TXT locales de fallos importantes, panics, errores fatales del runtime y cierres inesperados; sin envío automático.
 - Inventory: activos, hardware y software detectado.
 - Driver Intelligence: diagnóstico y paquetes OEM en Windows.
 - Windows Optimization: baseline, mantenimiento y perfiles de ajustes declarativos con verificación/rollback; la ejecución depende del catálogo TUF y del supervisor seguro.

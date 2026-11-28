@@ -12,8 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"os"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -79,13 +77,20 @@ type RootRecord struct {
 // data. The SQLite file is a local durability boundary, not a hardware-backed
 // anti-rollback anchor.
 type Store struct {
-	db *sql.DB
+	db   *sql.DB
+	path string
 }
 
 // Open creates or opens a dedicated catalog-trust SQLite database. It uses a
 // single connection and rollback journaling so the trust-store transaction
 // semantics stay simple and portable across Windows, macOS and Linux.
 func Open(ctx context.Context, path string) (*Store, error) {
+	return openWithVFS(ctx, path, "")
+}
+
+// openWithVFS is a package-private seam used by deterministic storage-fault tests.
+// Production always uses SQLite's default OS VFS through Open.
+func openWithVFS(ctx context.Context, path, vfsName string) (*Store, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("%w: el contexto no puede ser nil", ErrInvalidTrustStore)
 	}
@@ -93,22 +98,19 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		return nil, fmt.Errorf("%w: se requiere una ruta de archivo local", ErrInvalidTrustStore)
 	}
 
-	absolutePath, err := filepath.Abs(path)
+	absolutePath, err := prepareTrustStorePath(path)
 	if err != nil {
-		return nil, fmt.Errorf("%w: resolver la ruta: %v", ErrInvalidTrustStore, err)
-	}
-	if err := os.MkdirAll(filepath.Dir(absolutePath), 0o700); err != nil {
-		return nil, fmt.Errorf("%w: crear el directorio: %v", ErrInvalidTrustStore, err)
+		return nil, err
 	}
 
-	db, err := sql.Open("sqlite", sqliteDSN(absolutePath))
+	db, err := sql.Open("sqlite", sqliteDSNWithVFS(absolutePath, vfsName))
 	if err != nil {
 		return nil, fmt.Errorf("%w: abrir SQLite: %v", ErrInvalidTrustStore, err)
 	}
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 
-	store := &Store{db: db}
+	store := &Store{db: db, path: absolutePath}
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("%w: conectar con SQLite: %v", ErrInvalidTrustStore, err)
@@ -125,6 +127,10 @@ func Open(ctx context.Context, path string) (*Store, error) {
 }
 
 func sqliteDSN(path string) string {
+	return sqliteDSNWithVFS(path, "")
+}
+
+func sqliteDSNWithVFS(path, vfsName string) string {
 	if runtime.GOOS == "windows" {
 		path = strings.ReplaceAll(path, "\\", "/")
 		if hasDriveLetter(path) {
@@ -134,6 +140,9 @@ func sqliteDSN(path string) string {
 	fileURL := url.URL{Scheme: "file", Path: path}
 	query := fileURL.Query()
 	query.Set("_txlock", "immediate")
+	if vfsName != "" {
+		query.Set("vfs", vfsName)
+	}
 	fileURL.RawQuery = query.Encode()
 	return fileURL.String()
 }
@@ -153,9 +162,11 @@ func (store *Store) configure(ctx context.Context) error {
 	pragmas := []string{
 		"PRAGMA foreign_keys = ON",
 		fmt.Sprintf("PRAGMA busy_timeout = %d", busyTimeoutMS),
-		"PRAGMA synchronous = FULL",
 		"PRAGMA trusted_schema = OFF",
 		"PRAGMA journal_mode = DELETE",
+		// EXTRA adds a directory sync after DELETE-mode rollback journal removal.
+		// This narrows the power-loss window immediately after a committed write.
+		"PRAGMA synchronous = EXTRA",
 	}
 	for _, statement := range pragmas {
 		if _, err := store.db.ExecContext(ctx, statement); err != nil {
@@ -648,6 +659,16 @@ func (store *Store) LoadRootChain(ctx context.Context, repositoryID string) ([]R
 		return nil, RootState{}, fmt.Errorf("%w: confirmar lectura consistente: %v", ErrInvalidTrustStore, err)
 	}
 	return chain, latest, nil
+}
+
+// DatabasePath returns the absolute path used to open this store. It is exposed
+// so higher-level repository coordination can place a stable OS-level lock
+// beside the trust database without taking ownership of SQLite itself.
+func (store *Store) DatabasePath() string {
+	if store == nil {
+		return ""
+	}
+	return store.path
 }
 
 // Close releases the underlying SQLite connection.

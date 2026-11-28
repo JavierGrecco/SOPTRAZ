@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/JavierGrecco/SOPTRAZ/internal/diagnostics"
 )
 
 func writeArtifact(t *testing.T, root, relative string, content []byte) string {
@@ -346,5 +348,110 @@ func TestResolveRejectsSymlinkedArtifactPath(t *testing.T) {
 	_, err := resolver.Resolve(value)
 	if !errors.Is(err, ErrArtifactPath) {
 		t.Fatalf("Resolve() error = %v, want ErrArtifactPath", err)
+	}
+}
+
+type recordingDiagnosticRecorder struct {
+	mu     sync.Mutex
+	events []diagnostics.Event
+	err    error
+}
+
+func (recorder *recordingDiagnosticRecorder) Record(event diagnostics.Event) error {
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+	recorder.events = append(recorder.events, event)
+	return recorder.err
+}
+
+func (recorder *recordingDiagnosticRecorder) snapshot() []diagnostics.Event {
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+	return append([]diagnostics.Event(nil), recorder.events...)
+}
+
+func newTestResolverWithDiagnostics(t *testing.T, root string, platform Platform, recorder DiagnosticRecorder) *Resolver {
+	t.Helper()
+	resolver, err := newResolverWithDiagnostics(root, platform, DefaultMaxArtifactBytes, recorder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := resolver.Close(); err != nil {
+			t.Errorf("close artifact resolver: %v", err)
+		}
+	})
+	return resolver
+}
+
+func TestResolveReportsOnlySecurityRelevantIntegrityIncidents(t *testing.T) {
+	root := t.TempDir()
+	writeArtifact(t, root, "osquery/5.24.1/linux-amd64/osqueryi", []byte("tampered bytes"))
+	recorder := &recordingDiagnosticRecorder{err: errors.New("diagnostic disk unavailable")}
+	resolver := newTestResolverWithDiagnostics(t, root, Platform{OS: "linux", Architecture: "amd64"}, recorder)
+
+	_, err := resolver.Resolve(testDescriptor([]byte("original bytes")))
+	if !errors.Is(err, ErrArtifactIntegrity) {
+		t.Fatalf("Resolve() error = %v, want ErrArtifactIntegrity", err)
+	}
+	events := recorder.snapshot()
+	if len(events) != 1 {
+		t.Fatalf("diagnostic event count = %d, want 1", len(events))
+	}
+	event := events[0]
+	if event.Severity != diagnostics.SeverityCritical || event.Component != "artifact" || event.Operation != "resolve" || event.Code != "artifact.integrity_mismatch" {
+		t.Fatalf("unexpected diagnostic event: %#v", event)
+	}
+	if strings.Contains(event.Message, root) || strings.Contains(event.Cause, root) {
+		t.Fatalf("diagnostic event exposed an absolute filesystem path: %#v", event)
+	}
+}
+
+func TestResolveDoesNotReportExpectedDescriptorOrPlatformErrors(t *testing.T) {
+	root := t.TempDir()
+	content := []byte("trusted bytes")
+	writeArtifact(t, root, "osquery/5.24.1/linux-amd64/osqueryi", content)
+	recorder := &recordingDiagnosticRecorder{}
+	resolver := newTestResolverWithDiagnostics(t, root, Platform{OS: "windows", Architecture: "amd64"}, recorder)
+
+	invalid := testDescriptor(content)
+	invalid.Version = "not-semver"
+	if _, err := resolver.Resolve(invalid); err == nil {
+		t.Fatal("Resolve() accepted an invalid descriptor")
+	}
+	if _, err := resolver.Resolve(testDescriptor(content)); !errors.Is(err, ErrUnsupportedPlatform) {
+		t.Fatalf("Resolve() error = %v, want ErrUnsupportedPlatform", err)
+	}
+	if events := recorder.snapshot(); len(events) != 0 {
+		t.Fatalf("expected input errors created diagnostics: %#v", events)
+	}
+}
+
+func TestResolveReportsRejectedSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("la creación de symlinks puede requerir Developer Mode o privilegios en Windows")
+	}
+	root := t.TempDir()
+	content := []byte("trusted artifact")
+	target := writeArtifact(t, root, "payloads/osqueryi", content)
+	if err := os.MkdirAll(filepath.Join(root, "osquery"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(root, "osquery", "osqueryi")); err != nil {
+		t.Fatalf("create artifact symlink: %v", err)
+	}
+	value := testDescriptor(content)
+	value.RelativePath = "osquery/osqueryi"
+	recorder := &recordingDiagnosticRecorder{}
+	resolver := newTestResolverWithDiagnostics(t, root, Platform{OS: "linux", Architecture: "amd64"}, recorder)
+	if _, err := resolver.Resolve(value); !errors.Is(err, ErrArtifactPath) {
+		t.Fatalf("Resolve() error = %v, want ErrArtifactPath", err)
+	}
+	events := recorder.snapshot()
+	if len(events) != 1 || events[0].Code != "artifact.path_rejected" || events[0].Severity != diagnostics.SeverityCritical {
+		t.Fatalf("unexpected diagnostic events: %#v", events)
+	}
+	if strings.Contains(events[0].Message, root) || strings.Contains(events[0].Cause, root) {
+		t.Fatalf("diagnostic event exposed an absolute filesystem path: %#v", events[0])
 	}
 }

@@ -1,6 +1,6 @@
 # ADR-0017: Almacén durable de confianza TUF en SQLite
 
-- Estado: Aceptada. Root-chain persistente (PR #22/#23), store de generaciones SQLite v2 (PR #25), captura/revalidación online desde `TUFClient` (PR #27) y staging privado rehidratado desde SQLite (PR #29) están integrados en `main`. La generación se compromete después de resolver descriptores y solo incluye roles delegados realmente recorridos. Siguen pendientes cleanup tras crash, concurrencia multi-proceso, fallos físicos, modo offline, bootstrap de producción y ancla anti-rollback externa.
+- Estado: Aceptada. Root-chain persistente (PR #22/#23), store de generaciones SQLite v2 (PR #25), captura/revalidación online desde `TUFClient` (PR #27), staging privado (PR #29) y lock OS por repositorio con recuperación de stages huérfanos (PR #31) están implementados en esta rama. La generación se compromete después de resolver descriptores y solo incluye roles delegados realmente recorridos. Siguen pendientes resiliencia ante fallos físicos, modo offline, bootstrap de producción y ancla anti-rollback externa.
 - Fecha: 2026-11-28
 - Relacionada: ADR-0011, ADR-0015, Issue #5 (M1.4), Issue #4 (M1.5).
 - Alcance: estado de confianza, metadata TUF autenticada, high-water marks y generaciones del catálogo. No incluye targets ejecutables.
@@ -9,9 +9,9 @@
 
 La primera capa online TUF ya utiliza el `updater.Updater` oficial de go-tuf v2.5.0 y resuelve roles delegados. PR #20 corrigió la recreación del updater para que un root que ya fue verificado se conserve entre refrescos dentro del mismo proceso, incluso si después falla timestamp/snapshot/targets.
 
-Ese arreglo no era persistencia durable: `TUFClient.config.LocalTrustedRoot` vivía en memoria. PR #23 añade `NewPersistentTUFClient`, que conserva la cadena de roots en SQLite y la reproduce desde el pin bootstrap antes de inicializar el updater. PR #25 añade `CommitGeneration` y `LoadActiveGeneration`. PR #27 conecta la captura al flujo de `TUFClient`: tras resolver un descriptor firmado, compara los bytes originales de la caché de go-tuf con los objetos confiables en memoria, reproduce timestamp/snapshot/targets y las delegaciones recorridas con `trustedmetadata`, y compromete el conjunto mediante una transacción SQLite. PR #29 completa el aislamiento del espacio de trabajo online: restaura los roles de la generación activa compatible en un directorio privado por refresh, deja que go-tuf ejecute su verificación online normal y elimina el stage si el intento falla; el store sigue siendo la autoridad. No habilita consultas offline y un cierre abrupto todavía puede dejar stages huérfanos.
+Ese arreglo no era persistencia durable: `TUFClient.config.LocalTrustedRoot` vivía en memoria. PR #23 añade `NewPersistentTUFClient`, que conserva la cadena de roots en SQLite y la reproduce desde el pin bootstrap antes de inicializar el updater. PR #25 añade `CommitGeneration` y `LoadActiveGeneration`. PR #27 conecta la captura al flujo de `TUFClient`: tras resolver un descriptor firmado, compara los bytes originales de la caché de go-tuf con los objetos confiables en memoria, reproduce timestamp/snapshot/targets y las delegaciones recorridas con `trustedmetadata`, y compromete el conjunto mediante una transacción SQLite. PR #29 completa el aislamiento del espacio de trabajo online: restaura los roles de la generación activa compatible en un directorio privado por refresh, deja que go-tuf ejecute su verificación online normal y elimina el stage si el intento falla; el store sigue siendo la autoridad. PR #31 añade lock OS por repositorio y recolección segura de stages huérfanos después de adquirir exclusividad, incluida la recuperación ante terminación abrupta. No habilita consultas offline.
 
-SOPTRAZ ya usa `modernc.org/sqlite` sin CGO en Field. El adaptador de auditoría aporta convenciones que podemos reutilizar: una conexión, transacciones inmediatas, `busy_timeout`, `foreign_keys`, `synchronous=FULL`, migraciones versionadas y tests de recuperación. El estado del catálogo debe permanecer separado de `audit.sqlite`: sus ciclos de vida, políticas de backup y superficies de acceso no son los mismos.
+SOPTRAZ ya usa `modernc.org/sqlite` sin CGO en Field. El adaptador de auditoría aporta convenciones que podemos reutilizar: una conexión, transacciones inmediatas, `busy_timeout`, `foreign_keys`, `synchronous=EXTRA`, migraciones versionadas y tests de recuperación. El estado del catálogo debe permanecer separado de `audit.sqlite`: sus ciclos de vida, políticas de backup y superficies de acceso no son los mismos.
 
 ## Alternativas
 
@@ -79,10 +79,10 @@ Un cambio de ancla de enrolamiento tras una actualización de SOPTRAZ requiere u
 
 ### 5. Política SQLite
 
-- Archivo separado bajo el directorio local de datos de SOPTRAZ; directorio con permisos mínimos y control de ACL nativo en Windows.
+- Archivo separado bajo el directorio local de datos de SOPTRAZ. El resolvedor valida toda la cadena de ancestros y el archivo final antes de SQLite, sin cambiar ACLs o permisos existentes. En Unix recorre descriptores desde `/` con `openat`/`O_NOFOLLOW`, rechaza ancestros escribibles por grupo/otros salvo sticky-bit y protege el DB con `0600`. En Windows inspecciona cada ancestro con `FILE_FLAG_OPEN_REPARSE_POINT`; en directorios rechaza permisos amplios de borrado/reemplazo y cambio de ACL/owner, mientras que en el archivo DB rechaza permisos amplios de escritura. Un permiso no heredable para crear un hermano no bloquea por sí solo la ruta, pero los permisos heredables que dejen el archivo DB escribible sí se rechazan. Los grupos de dominio personalizados y los propietarios de directorios en equipos administrados requieren revisión manual.
 - Driver `modernc.org/sqlite`, sin CGO.
 - Una conexión de escritura por store y transacciones `BEGIN IMMEDIATE` para serializar commits.
-- `PRAGMA foreign_keys=ON`, `busy_timeout` acotado, `synchronous=FULL`, `trusted_schema=OFF` y journaling rollback `DELETE` explícito inicialmente. No se introduce WAL hasta medir y probar su recuperación y sidecars en las tres plataformas.
+- `PRAGMA foreign_keys=ON`, `busy_timeout` acotado, `synchronous=EXTRA`, `trusted_schema=OFF` y journaling rollback `DELETE` explícito inicialmente. No se introduce WAL hasta medir y probar su recuperación y sidecars en las tres plataformas.
 - No combinar transacciones SQLite con un puntero de filesystem suponiendo que existe una transacción distribuida.
 - Tamaño máximo por metadata, total de blobs por generación, cantidad de roles y número de generaciones retenidas.
 - La limpieza elimina generaciones antiguas solo cuando no son activas ni necesarias para auditoría; no borra la cadena histórica de roots que conecta el ancla al root actual.
@@ -129,8 +129,8 @@ Esta ADR no habilita el modo offline. El almacén hace posible implementar un ve
 4. [x] Implementar el esquema de generaciones SQLite v2, migración sin pérdida de root-chain v1, metadata por rol/delegación, manifiesto SHA-256 y high-water con procedencia inmutable (PR #25).
 5. [x] Implementar `CommitGeneration`/`LoadActiveGeneration` con root binding, CAS, guardas de rollback/equivocation, commit atómico y validación de integridad de metadata y evidencia histórica (PR #25).
 6. [x] Conectar `TUFClient` con la captura de bytes exactos de go-tuf, revalidación mediante `trustedmetadata` y `CommitGeneration` después de resolver descriptores (PR #27).
-7. [ ] Implementar staging aislado antes del refresh y restauración validada desde SQLite; no confundir la caché online del updater con una generación durable.
-8. [ ] Añadir tests de terminación abrupta real, crash/restart, corrupción, rollback, disco lleno y concurrencia entre procesos en Windows/macOS/Linux.
+7. [x] Implementar staging aislado antes del refresh y restauración validada desde SQLite; no confundir la caché online del updater con una generación durable (PR #29).
+8. [x] Añadir coordinación de procesos, recuperación de stages tras terminación abrupta, fallos tardíos de commit y `SQLITE_FULL` mediante límite de páginas con rollback completo (PR #31 y pruebas transaccionales). [ ] Añadir ENOSPC del filesystem y fallos de sync/journal en Windows/macOS/Linux.
 9. [ ] Implementar el validador offline explícito y su reporte de assurance.
 10. [ ] Completar SBOM, avisos/licencias y política de actualización de go-tuf/Sigstore.
 La implementación no se considera production-ready hasta que todas las pruebas de recuperación y anti-rollback estén verdes y el procedimiento de bootstrap/custodia de root esté aprobado.
@@ -175,6 +175,15 @@ La implementación no se considera production-ready hasta que todas las pruebas 
 - Descarta el stage cuando falla la creación del updater o el refresh; `TUFClient.Close()` limpia el workspace en cierres ordenados.
 - Los tests verifican aislamiento, descarte ante fallo, conservación de la generación activa y reconstrucción después de cerrar/reabrir SQLite. No simulan un `kill -9` del proceso.
 
+### PR #31 — Locks TUF, rutas SQLite y diagnósticos
+
+- Los locks TUF se coordinan por store/repositorio, se inspeccionan desde el handle abierto y se liberan por el kernel tras la salida del proceso.
+- `prepareTrustStorePath` canonicaliza el directorio padre y valida cada ancestro antes de abrir SQLite. Linux/macOS usan `openat`/ `O_NOFOLLOW` sobre descriptores encadenados; el archivo DB se exige regular y se protege con `0600`.
+- Windows recorre todos los ancestros con `FILE_FLAG_OPEN_REPARSE_POINT`. En directorios rechaza DACLs amplias que permiten borrar/reemplazar componentes o cambiar ACL/owner; los permisos de creación de hermanos no heredables se toleran porque no sustituyen un componente. En el archivo DB se rechaza escritura amplia, incluidos los ACEs heredados.
+- No se reescriben permisos. Grupos de dominio personalizados, propietarios de directorios en equipos administrados y la segunda apertura independiente que SQLite hace por path permanecen como límites para revisión de despliegue.
+- Los tests cubren ancestor no-sticky writable en Unix, ancestor Everyone full-control y create-only no heredable en Windows, DB symlink/directorio, aliases, sticky-bit y rollback SQLite.
+- CI completa: [run 227, 6/6](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46107866060).
+
 ### Evidencia de CI
 
 - PR #25: matriz pre-merge 5/5 en [run 46095086164](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46095086164); CI post-merge 5/5 en [run 46095255858](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46095255858).
@@ -182,9 +191,9 @@ La implementación no se considera production-ready hasta que todas las pruebas 
 
 ## Límites y siguientes hitos
 
-- El updater online usa un stage privado reconstruido desde SQLite en vez de escribir en la carpeta base de caché. El stage no es el registro autoritativo y no se conserva automáticamente tras un cierre abrupto.
+- El updater online usa un stage privado reconstruido desde SQLite en vez de escribir en la carpeta base de caché. Un lock OS por repositorio impide que dos procesos lo manipulen a la vez; tras un kill, el siguiente proceso adquiere el lock y elimina los stages huérfanos de ese repositorio.
 - No existe todavía un verificador offline explícito que consuma una generación revalidada sin red. La reconstrucción del stage se usa únicamente como caché del updater online. `UnsafeLocalMode` permanece deshabilitado.
 - La generación contiene metadata top-level y roles delegados recorridos por los descriptores resueltos; los roles nunca consultados no se presentan como verificados ni como parte de un grafo completo.
-- La re-apertura de SQLite y reconstrucción de un nuevo stage están cubiertas. Faltan pruebas de terminación abrupta entre etapas, limpieza segura de stages huérfanos, disco lleno, errores de fsync/sidecar y escritores concurrentes en procesos distintos.
+- La re-apertura de SQLite, reconstrucción de stage y recuperación tras terminación de un proceso con lock activo están cubiertas por pruebas de proceso hijo; la prueba de lock TUF ahora termina al propietario mediante `Process.Kill()` desde el padre y verifica la liberación del lock y la limpieza exclusiva del repositorio. También hay inyección de fallos al insertar metadata y activar la generación, al actualizar el high-water root y un caso `SQLITE_FULL` reproducible mediante `max_page_count`; la generación no deja filas parciales. PR #31 agrega además un VFS de prueba que inyecta `vfs.ErrFull` en una escritura de rollback journal y un error de `File.Sync`, y verifica rollback completo tanto al comprometer la cadena de roots como al activar una generación: no se conservan roots, metadata, high-water, ni punteros `active_generations` parciales. Es fault injection controlado, no ENOSPC físico: siguen pendientes llenar un volumen real, probar la durabilidad del sync del directorio por filesystem y ensayos de corte de energía/hardware. Las rutas del trust store recorren ancestros con no-follow y rechazan sustitución de directorios; Windows separa permisos de creación de hermanos de permisos de borrado/reemplazo y mantiene DACL estricta sobre el archivo DB. Siguen pendientes grupos de dominio personalizados y revisión de propietarios/ACL en equipos gestionados.
 - El estado SQLite local no protege frente a restaurar una imagen completa antigua del mismo disco. Sigue pendiente un TPM/contador monotónico o witness externo para elevar el assurance anti-rollback.
 - El bootstrap de confianza y la custodia/rotación de claves de producción siguen abiertos. No se declara M1.4 cerrado hasta completar recuperación, bootstrap y verificación offline.

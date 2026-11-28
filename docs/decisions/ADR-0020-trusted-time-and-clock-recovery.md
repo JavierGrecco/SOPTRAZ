@@ -1,6 +1,6 @@
 # ADR-0020: Fuente de tiempo confiable y recuperación ante relojes incorrectos
 
-- Estado: Aceptada como política de arquitectura; implementación pendiente.
+- Estado: Aceptada como política de arquitectura; contrato puro y política de aceptación en memoria implementados; POC Roughtime RFC 10049 v1 strict aislada presente en PR #31; NTS, bootstrap de frescura, gobernanza de claves, persistencia anti-rollback e integración TUF pendientes.
 - Fecha: 2026-11-28
 - Relacionada: ADR-0015, ADR-0017, ADR-0019, Issue #5 (M1.4), Issue #4 (M1.5).
 - Alcance: establecer la hora de referencia para verificar expiración y frescura de metadata TUF. No cambia la firma de artefactos ni autoriza su ejecución.
@@ -67,6 +67,23 @@ Referencias y límites:
 - **NTP sin autenticación** puede servir a la sincronización ordinaria del sistema, pero no se tratará como atestación criptográfica propia de SOPTRAZ.
 
 La política concreta de fuentes, independencia, cantidad mínima de respuestas coincidentes, dispersión geográfica, incertidumbre máxima y rotación de claves debe quedar definida y probada antes de calificar una muestra como `authenticated`. No se fijará un quorum numérico sin especificar esas condiciones.
+
+### Primera implementación de la política pura de aceptación
+
+El paquete `internal/platform/trustedtime` incorpora `AcceptancePolicy` y `AcceptedTime` como una primera capa determinista, sin I/O:
+
+- La allowlist compara exactamente el `Source` provisionado: ID, operador, tipo, assurance, trust anchor y KeyID. El proveedor no puede autodeclarar una identidad distinta.
+- Solo se aceptan muestras `authenticated` o `attested`. Las señales `system` se conservan para diagnóstico y no pueden establecer esta política.
+- Cada lote cuenta como máximo una observación por OperatorID. Un segundo hostname, dirección o SourceID del mismo operador no suma independencia.
+- Se validan límites máximos de incertidumbre por muestra y sobre la intersección final.
+- Se selecciona el grupo de intervalos con mayor intersección común. Solo se acepta cuando ese grupo máximo es único y alcanza `MinDistinctOperators`; los grupos máximos empatados y disjuntos se rechazan. No se promedian tiempos ni se elige una rama de forma arbitraria.
+- El último límite inferior previamente aceptado actúa como piso monotónico: si el nuevo intervalo termina antes, se rechaza; si cruza el piso, se recorta sin ampliar su límite superior.
+- El resultado conserva las evidencias y los digest de respuesta de cada fuente seleccionada, además del intervalo conservador.
+
+Esta función **no** verifica firmas, anclas, nonces, frescura ni replay. Tampoco decide si los operadores son realmente independientes: esa relación debe venir de la configuración de confianza. Cada adaptador debe autenticar el protocolo antes de devolver Evidence. La política no lee `time.Now()`, no persiste y no corrige el reloj del sistema.
+
+La implementación y sus límites están descritos en [trusted-time-provider.md](../architecture/trusted-time-provider.md). Las pruebas cubren fuentes no autorizadas, identidad alterada, duplicidad de operador, intervalos disjuntos o ambiguos, outlier, límites de incertidumbre, NTS/Roughtime, piso anti-rollback y lotes sobredimensionados.
+
 
 ### Bootstrap temporal: resolver la dependencia circular de NTS
 
@@ -218,11 +235,14 @@ Referencias: [Microsoft — Windows Time Service](https://learn.microsoft.com/en
 
 ### Selección de implementación
 
-1. Primera etapa: adaptar los proveedores del sistema operativo como clase `system`, solo para lectura/diagnóstico, sin cambiar el reloj ni elevar assurance por inferencia.
-2. Segunda etapa: auditar `beevik/nts` en una POC aislada después de definir el bootstrap temporal TLS; probar NTS con servidor de laboratorio propio/Chrony y, si se puede, un servidor público interoperable.
-3. Tercera etapa: probar Roughtime RFC 10049 v1 con vectores y servidores controlados; comparar al menos operadores realmente independientes antes de considerar fuentes públicas.
-4. No añadir ambos protocolos al binario principal hasta completar la revisión de dependencias, seguridad, licencia, mantenimiento, tamaño, builds Windows/macOS/Linux y política de rotación de claves.
-5. Ninguna prueba de laboratorio puede marcar M1.4 como cerrado por sí sola. Los resultados de tiempo quedan separados de la verificación TUF, y no se habilita offline ni se omite expiración.
+La evaluación y el estado de la POC están registrados en [docs/research/trusted-time-provider-poc.md](../research/trusted-time-provider-poc.md). El PR #31 incluye una implementación aislada Roughtime RFC 10049 v1 strict sobre `github.com/tannerryan/roughtime v1.28.4`, con clave, commit upstream y pruebas multiplataforma fijados. Esto no constituye aprobación de producción ni habilita el flujo TUF.
+
+1. Mantener los proveedores del sistema operativo como clase `system`, solo para lectura/diagnóstico, sin cambiar el reloj ni elevar assurance por inferencia.
+2. Mantener Roughtime como POC aislada. Sus dos pasadas, firmas, nonces, delegación MINT/MAXT y orden causal se prueban en servidores locales UDP/TCP; no se toma la coherencia MINT/MAXT como prueba de frescura absoluta.
+3. Completar vectores oficiales RFC, interoperabilidad independiente, análisis de dependencia, provisión/rotación/revocación de raíces, independencia administrativa verificable y bootstrap de frescura antes de considerar producción.
+4. Auditar `beevik/nts` en una POC posterior al bootstrap TLS; el primer contacto NTS no debe saltarse validación X.509.
+5. No conectar Roughtime/NTS al binario principal ni al Updater TUF hasta completar política operativa, persistencia anti-rollback, referencia temporal consumible por go-tuf y pruebas offline/online dedicadas.
+6. Ninguna prueba de laboratorio puede marcar M1.4 como cerrado. No se habilita offline ni se omite expiración.
 
 ## Referencias
 

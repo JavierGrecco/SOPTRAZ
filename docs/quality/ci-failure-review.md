@@ -147,3 +147,120 @@ El run #14 fue introducido por una corrección de integración nuestra: el blob 
 
 Las 65 ejecuciones examinadas corresponden al historial disponible del repositorio al 2026-11-27: 60 pushes, un PR de Dependabot y cuatro ejecuciones dinámicas. El run #17 corresponde al PR; los cuatro runs dinámicos se identifican por separado y no se mezclan con los pushes. No se afirma que se hayan ejecutado pruebas locales en el Mac del usuario. Los runs #52–#54 se cuentan como una regresión raíz de construcción de `artifact.go`; #55 fue formato del fixture; #59 fue formato de la tabla de casos de CLI. La evidencia proviene de GitHub runners y de los logs asociados a los commits citados.
 
+## Actualización de PR #31 — 2026-11-28
+
+La integración de diagnósticos selectivos en `internal/modules/artifact` tuvo dos ejecuciones intermedias fallidas antes de la validación final:
+
+| Run | Commit | Resultado | Causa observada |
+|---|---|---|---|
+| [#229](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46108582041) | `08f91e9` | Falló formato en los tres SO; Race Detector no compiló el paquete artifact | Alineación pendiente en el struct `Resolver`, línea en blanco adicional y helpers de prueba aún no incorporados. |
+| [#230](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46108689091) | `ab16751` | Falló el build de tests/race | El formato ya estaba corregido; faltaban el recorder simulado y el helper constructor referenciados por la nueva prueba. |
+| [#231](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46108768491) | `75b68b4` | **6/6 jobs aprobados** | Windows, macOS, Ubuntu, Race Detector, fuzzing y branch hygiene. |
+
+La corrección agregó el recorder concurrency-safe, pruebas para discrepancias de integridad y symlinks, y comprobaciones para que errores esperables de descriptor/plataforma no generen eventos. El test también simula que el almacenamiento de diagnósticos falla y verifica que el resolver conserva su error original. La ejecución #231 pasó formato, `go vet` y tests en los tres sistemas; en Ubuntu también pasó `go mod tidy -diff` y `go mod verify`.
+
+Esta integración continúa siendo opcional: el composition root debe crear el resolver mediante `NewResolverWithDiagnostics`. No existe logging global ni integración equivalente en el cliente TUF. La ejecución #231 valida el código funcional del commit `75b68b4`; el presente apéndice documenta esa evidencia.
+## Actualización de PR #31 — diagnóstico TUF y equivocation — 2026-11-28
+
+La extensión del registrador al cliente TUF y la clasificación de respuestas contradictorias de raíz quedaron validadas así:
+
+| Run | Commit | Resultado | Causa o cobertura |
+|---|---|---|---|
+| [#233](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46109357908) | `04bec78` | Falló formato en Windows/macOS/Ubuntu; Race Detector, fuzzing e higiene de ramas pasaron | Dos líneas en blanco redundantes al introducir el helper de diagnóstico y su recorder de prueba. |
+| [#234](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46109406525) | `60006d0` | **6/6 aprobados** | Inyección de diagnósticos TUF, rechazo de replay inválido de raíces y silencio ante un fallo de disponibilidad por falta de `timestamp.json`. |
+| [#235](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46109620894) | `eacac7e` | Falló formato en Ubuntu/macOS; fuzzing e higiene de ramas pasaron | Una línea en blanco redundante antes de la nueva prueba de equivocation. |
+| [#236](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46109708061) | `2b24f1a` | **6/6 aprobados** | Prueba de respuestas idénticas de root aceptadas y contenidos distintos para la misma versión rechazados; CI completa en Windows/macOS/Ubuntu, Race Detector, fuzzing y branch hygiene. |
+
+La API opcional `TUFClientConfig.Diagnostics` ahora registra con mensajes fijos y sin URLs, rutas, metadata ni errores crudos:
+- Cadena de raíces persistida que no se puede autenticar desde el pin bootstrap (`CRITICAL`).
+- Conflicto de binding entre identidad/ancla del repositorio (`CRITICAL`).
+- Divergencia del high-water anti-rollback (`CRITICAL`).
+- Rotaciones no verificables y divergencia entre la root aceptada por go-tuf y la capturada (`CRITICAL`).
+- Dos contenidos distintos para una misma versión de root (`tuf.root_equivocation_detected`, `CRITICAL`).
+- Fallos de lectura/commit SQLite y captura no contradictoria (`ERROR`).
+
+Los errores normales de conectividad/metadata no se elevan a críticos: la prueba de refresh sin timestamp confirma que no se crea un evento de seguridad. El recorder es opcional y best-effort; un fallo del registro no sustituye el error TUF original. El composition root aún debe inyectarlo en los clientes usados por un flujo de producción.
+## Actualización de PR #31 — inyección VFS de fallos SQLite — 2026-11-28
+
+La prueba de errores del journal tuvo dos fallos intermedios antes de quedar verde:
+
+| Run | Commit | Resultado | Causa observada |
+|---|---|---|---|
+| [#238](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46110054324) | `7f720ec` | Falló formato en macOS/Ubuntu | Alineación de campos y literal del archivo VFS en el test nuevo. Los tests no habían empezado en esos jobs. |
+| [#239](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46110171279) | `d16cf23` | Pasó formato y `go vet`, pero fallaron tests en Windows/macOS | El VFS de prueba no consiguió abrir la DB (`unable to open database file`, SQLite 14); Race Detector, Ubuntu, fuzzing e higiene de ramas pasaron. |
+| [#240](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46110424318) | `13dbd5c` | **6/6 jobs aprobados** | Normalización de URI `file:` (separando el path de query params como `vfs` y `_txlock`) y canonicalización de la raíz temporal del VFS. Tests completos en Windows, macOS y Ubuntu, Race Detector, fuzzing y branch hygiene. |
+
+La cobertura VFS nueva:
+- devuelve `modernc.org/sqlite/vfs.ErrFull` en una escritura del archivo `-journal`; SQLite devuelve `SQLITE_FULL`;
+- devuelve un error I/O controlado desde `File.Sync` del journal;
+- verifica que `CommitVerifiedRoots` falla y que `RootState` y `LoadRootChain` permanecen en el ancla inicial, sin una rotación parcial.
+
+El VFS está registrado solo por tests; el `Open` de producción continúa usando el VFS OS normal. El error de espacio se inyecta en el punto de escritura del journal y el error de sync en la frontera VFS: **no se afirma que se haya llenado físicamente el disco ni que se haya probado un corte eléctrico**. El VFS del driver mantiene ciertos archivos temporales en memoria; el ENOSPC físico en unidades reales, la durabilidad del sync de directorio por filesystem y ensayos hardware siguen pendientes.
+
+### Extensión de VFS a commits de generación
+
+| Run | Commit | Resultado | Causa o cobertura |
+|---|---|---|---|
+| [#242](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46110831847) | `f9f1fd4` | Falló formato en los tres runners de Go | Una línea vacía redundante antes de `assertNoGenerationState` y otra al final del archivo VFS. Los tests no comenzaron. |
+| [#243](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46110980146) | `ee0084b` | **6/6 jobs aprobados** | La corrección de formato permitió ejecutar las pruebas ampliadas: `CommitGeneration` revierte ante `vfs.ErrFull` en la escritura de journal y ante un fallo de `File.Sync`; no quedan generaciones, metadata, role high-water ni `active_generations`. Windows, macOS, Ubuntu, Race Detector, fuzzing y branch hygiene pasaron. |
+
+Esta segunda capa cubre los dos límites transaccionales más importantes del catálogo local: persistencia de roots y activación atómica de generaciones. La prueba VFS sigue siendo una inyección determinista a nivel del driver, no una prueba de ENOSPC físico o corte de energía.
+
+## Actualización de PR #31 — redacción de secretos y terminación externa — 2026-11-28
+
+La revisión amplió la redacción de campos de diagnóstico para valores JSON/entrecomillados y credenciales frecuentes, y agregó un test que termina el proceso hijo con `Process.Kill()`. El siguiente arranque debe recuperar el informe, anotar `runtime.unexpected_shutdown` exactamente una vez y no inferir la causa real.
+
+| Run | Commit | Resultado | Causa o cobertura |
+|---|---|---|---|
+| [#298](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46157286094) | `bd062dc` | Falló formato en Ubuntu/macOS | El test nuevo de redacción no estaba alineado con `gofmt`; los tests de esos jobs no comenzaron. |
+| [#299](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46157486675) | `f2d947c` | **6/6 aprobados** | Formato corregido; Windows, macOS, Ubuntu, race detector, fuzzing y branch hygiene. |
+| [#301](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46157675724) | `f5e5148` | **6/6 aprobados** | Añade inputs explícitos de Bearer/access token a las pruebas de redacción. |
+| [#303](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46157828107) | `5c5f3f0` | **6/6 aprobados** | Alineación de estados documentales de ADR-0020/0021 y del contrato de diagnóstico temporal. |
+| [#304](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46158152696) | `9936206` | **6/6 aprobados** | Terminación real del proceso hijo desde el padre; recuperación del informe, lock liberado por el SO y notificación idempotente. Incluye Windows, macOS, Ubuntu, race detector, fuzzing y branch hygiene. |
+
+El test de terminación externa espera a que el hijo escriba y sincronice el evento crítico antes de llamar a `Process.Kill()`. Comprueba que la reapertura puede recuperar el informe y que una segunda apertura no vuelve a notificar el mismo incidente. No simula corte eléctrico ni corrupción física del disco: esos límites continúan expresamente pendientes.
+
+### Recuperación de lock TUF tras terminación externa del proceso
+
+| Run | Commit | Resultado | Causa o cobertura |
+|---|---|---|---|
+| [#309](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46158425815) | `96f8d4e` | **6/6 aprobados** | La prueba mata desde el proceso padre al hijo que posee el lock TUF, verifica que el kernel libera el lock, que el siguiente propietario puede adquirirlo y que elimina solo el stage huérfano de su propio `repositoryID`. Windows, macOS, Ubuntu, Race Detector, fuzzing y branch hygiene. |
+
+Esta prueba complementa el test externo de recuperación de informes de diagnóstico. No sustituye ensayos de corte de energía, corrupción de filesystem ni ENOSPC físico.
+
+### Integración del logger real con Artifact Resolver y TUF — 2026-11-28
+
+| Run | Commit | Resultado | Cobertura |
+|---|---|---|---|
+| [#312](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46158971673) | `da1a0d6` | Cancelado al actualizar el head de la rama | Ejecución reemplazada por la validación consolidada siguiente; no se cuenta como fallo ni aprobación. |
+| [#313](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46159045739) | `8a10670` | **6/6 aprobados** | Integra el logger TXT real con Artifact Resolver y TUF. Verifica incidente de integridad, conflicto de binding del repositorio, ausencia de URLs/rutas sensibles y que el constructor libera el lock si falla. Windows, macOS, Ubuntu, Race Detector, fuzzing y branch hygiene. |
+
+Estas pruebas validan el recorrido módulo→logger cuando el consumidor inyecta explícitamente `diagnostics.Logger`. No prueban wiring automático desde un composition root: todavía no existe un composition root de producción que construya estos módulos e inyecte el logger.
+
+### Política pura de aceptación de tiempo confiable — 2026-11-28
+
+| Run | Commit | Resultado | Cobertura / diagnóstico |
+|---|---|---|---|
+| [#320](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46160697343) | `2ef5a18` | Falló en verificación de formato | `gofmt` detectó alineación de campos en `policy.go` y `policy_test.go`. Race Detector y fuzzing de esa ejecución pasaron. |
+| [#324](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46160828341) | `3bb9015` | Falló | Se volvió a detectar formato y la suite race identificó cuatro referencias de test al campo anterior `AcceptedTime.Sources`, reemplazado por `AcceptedTime.Evidence` para conservar procedencia/digests. |
+| [#327](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46160938598) | `2149ffc` | Falló en verificación de formato | Quedaba una línea en blanco extra antes de un test. |
+| [#329](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46161082788) | `e929b47` | **6/6 aprobados** | Incluye la corrección de referencias, formato final, tests de política y Race Detector; Windows, macOS, Ubuntu, fuzzing y branch hygiene. |
+
+Las fallas fueron corregidas y verificadas en la ejecución #329. No se contó ninguna ejecución fallida o intermedia como aprobación. La política sigue siendo una capa determinista en memoria: los adaptadores criptográficos, frescura/replay, provisión de claves, persistencia SQLite v3 e integración TUF permanecen pendientes.
+
+
+### POC Roughtime RFC 10049 v1 en PR #31 — 2026-11-28
+
+| Run | Commit | Resultado | Causa o cobertura |
+|---|---|---|---|
+| [#332](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46163231266) | `6dfbfc1` | Falló en formato/dependencias | El runner detectó `gofmt` y la actualización transitiva requerida de `golang.org/x/sys`; se fijó `v0.50.0` y se añadieron los checksums verificados. |
+| [#333](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46163609877) | `fdf25b7` | Falló en tests | La prueba configuró `MeasurementTimeout` igual a `ExchangeTimeout`; el constructor rechazó correctamente esa jerarquía. Se corrigió el fixture, manteniendo contexto externo cancelable de 100 ms. |
+| [#334](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46163752596) | `6fd3e24` | **6/6 aprobados** | Primera POC estricta: firmas, nonces encadenados, dos pasadas, cancelación, límites; Windows/macOS/Ubuntu, Race Detector, fuzzing y branch hygiene. |
+| [#335](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46164034016) | `fc87579` | Falló en test fixture | La biblioteca no genera respuestas cuyo MIDP esté fuera de MINT/MAXT. Se reconstruyó un paquete de laboratorio con SREP y CERT firmados válidamente pero delegación incompatible; no se debilitó el verificador. |
+| [#337](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46164526420) | `647335d` | Falló en formato | Solo faltaba alinear campos del fake server; Race Detector, fuzzing e higiene pasaron. |
+| [#338](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46164614462) | `1db4434` | **6/6 aprobados** | Confirma formato y pruebas negativas de delegación/orden causal en Windows, macOS, Ubuntu, Race Detector, fuzzing e higiene. |
+| [#339](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46165009603) | `07c862d` | **6/6 aprobados** | Añade tres servidores TCP locales y verifica dos pasadas, nonces únicos, evidencias y el transporte TCP en Windows, macOS, Ubuntu, Race Detector, fuzzing e higiene. |
+| [#341](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46165299058) | `429ff71` | Falló en formato | La regresión para rechazar TrustAnchorID repetido quedó inline y gofmt pidió expandirla. Race Detector, fuzzing e higiene pasaron; las tres matrices de SO se detuvieron antes de ejecutar tests por formato. |
+| [#342](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46165410680) | `fb0ca5c` | **6/6 aprobados** | Corrige exclusivamente el formato y valida rechazo de anclas duplicadas en Windows, macOS, Ubuntu, Race Detector, fuzzing y branch hygiene. |
+
+Las fallas #332, #333, #335, #337 y #341 se corrigieron antes de contar una aprobación; ninguna se presenta como CI verde. La POC usa la biblioteca fijada `github.com/tannerryan/roughtime v1.28.4` (upstream commit `7454b45d337b413d3639da88acf5559d08d7af27`). El proveedor está aislado en el PR draft: no tiene wiring productivo, NTS, bootstrap de frescura demostrable, rotación/revocación operativa, persistencia SQLite v3 ni integración TUF. La validación de MINT/MAXT acredita coherencia de delegación, no frescura absoluta de la primera hora.

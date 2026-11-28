@@ -22,7 +22,7 @@ Las decisiones aceptadas se mantienen aquí. Una ADR registra contexto, alternat
 | ADR-0016 | Optimización y mantenimiento modular de Windows | Aceptada como dirección; implementación pendiente |
 | ADR-0017 | Almacén durable de confianza TUF en SQLite | Aceptada como decisión de almacenamiento; implementación pendiente |
 | ADR-0019 | Verificación offline explícita del catálogo TUF | Aceptada como arquitectura; implementación pendiente |
-| ADR-0020 | Fuente de tiempo confiable y recuperación ante relojes incorrectos | Aceptada como política de arquitectura; implementación pendiente |
-| ADR-0021 | Diagnóstico read-only del reloj del sistema operativo, separado de evidencia confiable | Aceptada como política; adaptadores pendientes |
+| ADR-0020 | Fuente de tiempo confiable y recuperación ante relojes incorrectos | Política aceptada; contrato Evidence/TrustedTimeProvider implementado; proveedores autenticados, persistencia y TUF pendientes |
+| ADR-0021 | Diagnóstico read-only del reloj del sistema operativo, separado de evidencia confiable | Política aceptada; DTO y adaptadores Linux/Windows implementados; macOS pendiente |
 
 Pendiente: licencia de distribución, cifrado local, firmas de releases, packaging Python, sincronización e identidad antes de implementar esas funciones.

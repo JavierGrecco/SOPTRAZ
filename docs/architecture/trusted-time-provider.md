@@ -1,6 +1,6 @@
 # Contrato de evidencia de tiempo confiable
 
-Estado: contratos puros de evidencia y diagnóstico del SO implementados; adaptadores nativos e integración TUF pendientes.  
+Estado: contrato puro, política de aceptación en memoria y DTO de diagnóstico implementados; adaptadores read-only Linux y Windows integrados; POC Roughtime RFC 10049 v1 strict implementada de forma aislada en la rama draft del PR #31. NTS, gobernanza de claves, frescura bootstrap, persistencia anti-rollback e integración TUF siguen pendientes.  
 Relacionado: [ADR-0020](../decisions/ADR-0020-trusted-time-and-clock-recovery.md).
 
 ## Alcance de esta primera entrega
@@ -10,11 +10,13 @@ El paquete internal/platform/trustedtime establece un límite pequeño y sin efe
 - Interval representa un intervalo UTC [Earliest, Latest], no una hora puntual con precisión ficticia.
 - Source identifica de forma estable el proveedor, su operador administrativo, el mecanismo y la clase de garantía declarada.
 - Evidence agrupa el intervalo y su procedencia.
-- TrustedTimeProvider define Observe(context.Context), sin acoplar consumidores a NTS, Roughtime ni APIs específicas del sistema operativo.
+- TrustedTimeProvider define Observe(context.Context) para proveedores de una sola muestra. Roughtime, que necesita varios testigos y una cadena causal de dos pasadas, implementa la interfaz separada TrustedTimeBatchProvider.
 - Validate comprueba únicamente invariantes estructurales.
 - Canonical devuelve una copia en UTC y elimina lecturas monotónicas locales antes de serializar o persistir.
 
-El paquete no incluye red, criptografía, almacenamiento, lectura del reloj, modificación del reloj del sistema ni selección automática de fuentes. No se agrega ninguna dependencia al binario.
+El contrato y la política general siguen separados de I/O y persistencia. En la rama experimental del PR #31 hay un adaptador Roughtime que realiza red y verificación criptográfica con una dependencia fijada; no está cableado en la CLI, en el flujo de aplicación ni en TUF. No existe operación para modificar el reloj del sistema y no se persisten muestras desde el proveedor.
+
+La política pura `AcceptancePolicy` ya realiza una primera selección en memoria sobre evidencias que los adaptadores declaran autenticadas o atestadas. No implementa el protocolo ni verifica firmas: el consumidor debe aprovisionar la lista de fuentes de forma independiente y el proveedor debe autenticar cada respuesta antes de devolverla.
 
 ## Semántica de la evidencia
 
@@ -29,6 +31,35 @@ Clases de garantía:
 Tipos de fuente admitidos: system, nts, roughtime y custom. Los tipos integrados tienen una clase estructural fija: system/system, nts/authenticated y roughtime/attested. Cualquier combinación incoherente se rechaza; custom permite adaptadores propios que deben documentar su semántica y seguir las mismas obligaciones de confianza.
 
 Source.ID es un identificador local estable, no un valor copiado de la respuesta remota. OperatorID identifica quién administra realmente la fuente. Si está vacío, la independencia del operador es desconocida: dos hosts o nombres DNS diferentes no prueban que existan operadores independientes. TrustAnchorID identifica el ancla configurada fuera de la respuesta de tiempo y es obligatorio para las clases authenticated y attested.
+
+## Política pura de aceptación (primera capa)
+
+`AcceptancePolicy` separa la verificación protocolar de la decisión de selección:
+
+- La allowlist local fija cada `Source` completo: ID, operador administrativo, tipo, assurance, trust anchor y KeyID. Una respuesta no puede atribuirse otro operador o ancla.
+- Solo se admiten clases `authenticated` o `attested`; los datos `system` siguen disponibles para diagnóstico, no para este límite de confianza.
+- La configuración exige al menos dos operadores posibles, un mínimo configurable de operadores distintos por observación y límites positivos para la incertidumbre de cada fuente y del intervalo final.
+- Cada lote admite como máximo una observación por operador. Dos nombres DNS o dos fuentes configuradas del mismo operador nunca aumentan el conteo.
+- Calcula los grupos con mayor intersección común de intervalos. Acepta solo si existe un único grupo máximo que alcanza el mínimo configurado; dos grupos máximos disjuntos o ambiguos se rechazan.
+- La hora aceptada es la intersección conservadora del grupo, no el promedio de las horas afirmadas.
+- `LastAcceptedTrustedTime.Earliest` se puede aplicar como piso monotónico: un intervalo nuevo que termina antes se rechaza; si cruza el piso se recorta sin ampliar su límite superior.
+
+Esta capa no es un protocolo de consenso bizantino ni establece que una mayoría sea honesta. El mínimo, los operadores, las claves y la independencia administrativa requieren gobernanza externa. No comprueba frescura ni replay: cada proveedor debe hacer esas verificaciones usando los mecanismos de su protocolo (por ejemplo, nonce Roughtime) antes de devolver evidencia. Tampoco persiste el piso; el llamador todavía debe obtenerlo de almacenamiento protegido y afrontar el rollback de backups locales.
+
+## POC aislada Roughtime RFC 10049 v1
+
+La rama draft del PR #31 incorpora `RoughtimeProvider` y `TrustedTimeBatchProvider` usando `github.com/tannerryan/roughtime v1.28.4`, fijado al commit upstream `7454b45d337b413d3639da88acf5559d08d7af27`.
+
+- Solo acepta RFC 10049 v1 strict y raíces Ed25519 provisionadas localmente.
+- Requiere tres o más testigos con Source.ID, OperatorID, TrustAnchorID y raíz pública distintos; KeyID debe ser el SHA-256 de la raíz. No infiere independencia desde DNS/IP.
+- Hace dos pasadas secuenciales en el mismo orden aleatorio, con nonces encadenados; verifica cada respuesta y después la cadena causal completa.
+- Soporta UDP y TCP con límites de timeout/radio; un error o contradicción cancela el lote completo sin evidencias parciales.
+- Calcula intervalos conservadores para el final de la medición con RTT y tiempo monotónico transcurrido, sin tratar la hora de pared como fuente confiable.
+
+Los tests locales UDP/TCP cubren respuesta firmada, repetición, firma alterada, MIDP fuera de MINT/MAXT, orden causal descendente, radio excesivo, anclas duplicadas y cancelación. CI #339 pasó 6/6.
+
+**Esta no es aún una fuente de tiempo de producción.** MINT/MAXT autentica la ventana de delegación del servidor, no la frescura de la primera hora afirmada frente a una referencia local. Un conjunto de servidores correlacionados puede presentar una hora antigua coherente. La identidad y la independencia de operadores requieren gobernanza externa, y todavía faltan vectores oficiales, interoperabilidad independiente, bootstrap de frescura, rotación/revocación de claves, persistencia SQLite v3 e integración TUF. El proveedor no habilita catálogo offline ni devuelve VerifiedTarget.
+
 
 ## Obligaciones del consumidor
 
@@ -61,11 +92,13 @@ El adaptador Windows está implementado en modo read-only. Usa SCM local con `SC
 
 ## Lo que todavía no está implementado
 
-- Adaptadores nativos de solo lectura para Windows, macOS y Linux y el contrato SystemTimeDiagnostics de ADR-0021; la sincronización puede permanecer unknown si la plataforma no la expone con seguridad.
-- Pruebas de NTS y Roughtime en laboratorio, incluidas claves/raíces, nonce, replay, incertidumbre, fuentes contradictorias y rotación.
-- Política de selección y combinación de varias fuentes independientes.
-- Persistencia SQLite v3 de LastAcceptedTrustedTime y migración v2 → v3 sin convertir fechas locales antiguas en evidencia.
-- Recuperación temporal online y conexión al flujo de actualización.
-- Referencia temporal compatible con go-tuf. El Updater oficial actual no recibe este contrato; esta entrega no altera su reloj de referencia ni introduce UnsafeSetRefTime.
+- Adaptador nativo de diagnóstico read-only para macOS timed; las señales Linux/Windows siguen clasificadas como `system` y no aportan autenticación criptográfica.
+- Integración productiva y configuración gobernada del proveedor Roughtime; NTS sigue sin adaptador.
+- Provisión operativa de fuentes, prueba de independencia real de operadores, bootstrap de frescura, rotación/revocación de trust anchors y pruebas interoperables multioperador.
+- Persistencia SQLite v3 de `LastAcceptedTrustedTime`, evidencias y procedencia; además de una estrategia contra rollback por restauración de backups locales.
+- Recuperación temporal online y conexión de la política con el flujo de actualización.
+- Referencia temporal compatible con go-tuf. El Updater oficial actual no recibe este contrato; esta entrega no altera su reloj de referencia ni introduce `UnsafeSetRefTime`.
 
-Por tanto, la creación del paquete no habilita el catálogo offline, no devuelve VerifiedTarget y no cambia el estado de aceptación de M1.4.
+La política de aceptación en memoria ya implementa allowlist exacta, operador único por lote, límites de incertidumbre, intersección común máxima y piso anti-rollback. La validación criptográfica, frescura y persistencia siguen siendo puertas distintas y pendientes.
+
+Por tanto, el paquete no habilita el catálogo offline, no devuelve `VerifiedTarget` y no cambia el estado de aceptación de M1.4.
