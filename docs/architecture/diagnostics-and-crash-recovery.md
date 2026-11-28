@@ -45,7 +45,7 @@ El lock del informe se libera automáticamente al terminar el proceso. Esta mism
 
 - Un panic recuperable en el límite principal de la CLI se registra con su stack y termina con código de salida no cero.
 - `runtime/debug.SetCrashOutput` dirige el diagnóstico de panics no manejados y fallos fatales del runtime Go a un archivo adicional, además de stderr.
-- Un `kill -9`, un corte de energía o una detención del sistema no permiten ejecutar código de cierre. En esos casos se detecta la falta de cierre normal en el próximo inicio; no se inventa un stack ni una causa que el proceso no pudo guardar. La CLI muestra la ubicación de informes recuperados y `soptraz diagnostics-path` permite consultarla manualmente.
+- Un `kill -9`, un corte de energía o una detención del sistema no permiten ejecutar código de cierre. La prueba de recuperación utiliza un proceso hijo que termina con `os.Exit` sin ejecutar `Close()` ni deferred cleanup. En esos casos se detecta la falta de cierre normal en el próximo inicio; no se inventa un stack ni una causa que el proceso no pudo guardar. La CLI muestra la ubicación de informes recuperados y `soptraz diagnostics-path` permite consultarla manualmente.
 - Un fallo de disco, permisos o espacio insuficiente puede impedir la escritura del informe. La aplicación continúa su operación y avisa por stderr; el registro no debe convertirse en requisito para poder arrancar.
 
 ## Privacidad y seguridad
