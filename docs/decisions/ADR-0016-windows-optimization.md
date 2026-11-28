@@ -54,3 +54,8 @@ El riesgo es convertir SOPTRAZ en un agregador de scripts de tweaks con resultad
 5. Pruebas en VMs para Windows 10/11 y builds/ediciones/arquitecturas declaradas; cubrir reinicio, conflictos con cambios externos, fallo parcial y rollback.
 6. Benchmark reproducible para toda afirmación de rendimiento; sin promesas universales de FPS, latencia o memoria.
 7. Revisión de licencias y condiciones de redistribución por cada archivo/código/binario integrado.
+
+
+## Investigación específica de MiniOS y MENU Extendido
+
+La investigación detallada del ecosistema DProjects, del menú contextual, de la distribución de utilidades de terceros y del enfoque propuesto para SOPTRAZ se mantiene en [docs/research/minios-and-context-menu.md](../research/minios-and-context-menu.md). Distingue declaraciones del proveedor, mecanismos de Windows documentados e hipótesis no verificadas; no habilita la distribución de imágenes o binarios de terceros.
