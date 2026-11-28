@@ -1,6 +1,6 @@
 # ADR-0017: Almacén durable de confianza TUF en SQLite
 
-- Estado: Aceptada como decisión de almacenamiento; implementación pendiente.
+- Estado: Aceptada. La primera capa aislada de persistencia de root-chain está implementada en `internal/storage/sqlitetuf` (PR #22); su integración con `TUFClient`, las generaciones completas y el modo offline siguen pendientes.
 - Fecha: 2026-11-28
 - Relacionada: ADR-0011, ADR-0015, Issue #5 (M1.4), Issue #4 (M1.5).
 - Alcance: estado de confianza, metadata TUF autenticada, high-water marks y generaciones del catálogo. No incluye targets ejecutables.
@@ -133,3 +133,27 @@ Esta ADR no habilita el modo offline. El almacén hace posible implementar un ve
 8. Recién entonces revisar M1.4 como candidato a aceptación.
 
 La implementación no se considera production-ready hasta que todas las pruebas de recuperación y anti-rollback estén verdes y el procedimiento de bootstrap/custodia de root esté aprobado.
+
+## Primera implementación del almacén de root-chain (PR #22, 2026-11-28)
+
+Se implementó una primera capa ejecutable, todavía aislada de `TUFClient`:
+
+- Paquete: `internal/storage/sqlitetuf`, con `modernc.org/sqlite` y una base separada de `audit.sqlite`.
+- Registro estable del repositorio ligado a su URL y al hash/versión del trust anchor provisionado de manera independiente. Un cambio de origen o anchor no se acepta como re-enrolamiento implícito.
+- Cadena append-only de roots, con bytes originales, SHA-256, versión consecutiva y hash de la raíz anterior.
+- Commit por lotes en una transacción SQLite, con compare-and-swap del estado esperado. Un lote con un salto o un enlace incorrecto revierte completo.
+- Lectura de cadena y high-water desde una única transacción de lectura; vuelve a comprobar tamaño, hash, continuidad y enlace final.
+- Configuración SQLite inicial: una conexión, foreign keys, busy timeout, `synchronous=FULL`, `trusted_schema=OFF` y journaling rollback `DELETE`.
+- Pruebas de re-apertura del archivo, continuidad, commit por lotes, rollback de lote inválido, CAS, cambio de anchor y detección de alteración de blobs.
+
+El commit de código `c785aebe9190eac870cd3081689f4f794e50f93d` pasó los cinco jobs de CI en [run 46091958671](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46091958671): Windows, macOS, Ubuntu, Race Detector y fuzzing. La documentación de este PR no cambia el alcance del código.
+
+### Límites que permanecen
+
+- El almacén no valida firmas TUF. Recibe únicamente raíces que la capa `catalog` debe haber verificado con `trustedmetadata.UpdateRoot`; al reabrir, el llamador aún debe reproducir toda la cadena desde el anchor independiente.
+- Todavía no hay integración que persista automáticamente una root aceptada por `TUFClient`, especialmente cuando el refresh falla después de rotar la root.
+- No se implementaron staging de metadata, generaciones, high-water por rol/delegación, ni actualización atómica de `active_generation`.
+- Las pruebas actuales incluyen cierre/reapertura ordenados y rollback transaccional ante candidatos inválidos; todavía faltan terminación abrupta real, recuperación crash/restart, dos procesos concurrentes y fallos de disco/permisos en la matriz.
+- No habilita catálogo offline ni demuestra anti-rollback frente a restauración integral del mismo disco.
+
+El siguiente paso es integrar el replay de roots desde el anchor fijado y conectar los roots verificados por go-tuf al commit durable. Después se implementará staging por generación y metadata por rol. M1.4 continúa abierto.
