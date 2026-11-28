@@ -170,14 +170,27 @@ const (
 	evidenceVirtual    = "windows.virtual_machine"
 )
 
+// NormalizeObservations fills omitted enum values with their explicit unknown
+// value. It does not infer missing capabilities or alter detected evidence.
+func NormalizeObservations(observations Observations) Observations {
+	if observations.Capabilities.PowerSource == "" {
+		observations.Capabilities.PowerSource = PowerSourceUnknown
+	}
+	if observations.Capabilities.ConvertibleSlate == "" {
+		observations.Capabilities.ConvertibleSlate = SlateModeUnknown
+	}
+	return observations
+}
+
 // Classify turns an observation snapshot into a conservative profile. It is
 // intentionally deterministic and never infers tablet/notebook from touch,
 // pen, battery, keyboard or slate posture alone.
 func Classify(observations Observations) Profile {
+	observations = NormalizeObservations(observations)
 	profile := Profile{
 		FormFactor:   FormFactorUnknown,
 		Confidence:   ConfidenceLow,
-		Capabilities: normalizeCapabilities(observations.Capabilities),
+		Capabilities: observations.Capabilities,
 		Evidence:     make([]Evidence, 0, 4),
 		Warnings:     make([]string, 0, 4),
 	}
@@ -284,16 +297,6 @@ func Classify(observations Observations) Profile {
 	}
 
 	return finalize(profile)
-}
-
-func normalizeCapabilities(capabilities Capabilities) Capabilities {
-	if capabilities.PowerSource == "" {
-		capabilities.PowerSource = PowerSourceUnknown
-	}
-	if capabilities.ConvertibleSlate == "" {
-		capabilities.ConvertibleSlate = SlateModeUnknown
-	}
-	return capabilities
 }
 
 func isSupportedFormFactor(formFactor FormFactor) bool {
