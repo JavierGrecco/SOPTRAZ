@@ -79,7 +79,7 @@ Un cambio de ancla de enrolamiento tras una actualización de SOPTRAZ requiere u
 
 ### 5. Política SQLite
 
-- Archivo separado bajo el directorio local de datos de SOPTRAZ; directorio con permisos mínimos y control de ACL nativo en Windows.
+- Archivo separado bajo el directorio local de datos de SOPTRAZ. El resolvedor valida el padre y el archivo final antes de SQLite; no cambia silenciosamente ACLs o permisos existentes. En Unix exige un directorio sin escritura de grupo/otros salvo sticky-bit y protege el DB con `0600`. En Windows inspecciona el handle con `FILE_FLAG_OPEN_REPARSE_POINT` y rechaza DACLs que conceden escritura a grupos amplios conocidos. Los grupos de dominio personalizados y la cadena completa de directorios requieren revisión manual de despliegue.
 - Driver `modernc.org/sqlite`, sin CGO.
 - Una conexión de escritura por store y transacciones `BEGIN IMMEDIATE` para serializar commits.
 - `PRAGMA foreign_keys=ON`, `busy_timeout` acotado, `synchronous=EXTRA`, `trusted_schema=OFF` y journaling rollback `DELETE` explícito inicialmente. No se introduce WAL hasta medir y probar su recuperación y sidecars en las tres plataformas.
@@ -175,6 +175,14 @@ La implementación no se considera production-ready hasta que todas las pruebas 
 - Descarta el stage cuando falla la creación del updater o el refresh; `TUFClient.Close()` limpia el workspace en cierres ordenados.
 - Los tests verifican aislamiento, descarte ante fallo, conservación de la generación activa y reconstrucción después de cerrar/reabrir SQLite. No simulan un `kill -9` del proceso.
 
+### PR #31 — Locks TUF, rutas SQLite y diagnósticos
+
+- Los locks TUF se coordinan por store/repositorio, se inspeccionan desde el handle abierto y se liberan por el kernel tras la salida del proceso.
+- `prepareTrustStorePath` canonicaliza el directorio padre, rechaza DB symlink/directorios y aplica no-follow al archivo final. Unix valida modo del padre y protege el DB con `0600`; Windows inspecciona reparse points y DACL del handle, sin reescribir permisos heredados.
+- Las comprobaciones DACL cubren grupos amplios built-in conocidos; los grupos personalizados de dominio y el árbol completo de directorios necesitan revisión manual. SQLite abre después la ruta por separado: la protección no elimina una carrera de un proceso del mismo usuario con escritura al padre.
+- Los tests cubren identidad de ruta canónica, symlink/directorio final, sticky-bit, directorio writable y DACL Everyone-writable. `SQLITE_FULL` y rollback de commit están cubiertos en la capa de generaciones.
+- CI completa: [run 219, 6/6](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46106899944).
+
 ### Evidencia de CI
 
 - PR #25: matriz pre-merge 5/5 en [run 46095086164](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46095086164); CI post-merge 5/5 en [run 46095255858](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46095255858).
@@ -185,6 +193,6 @@ La implementación no se considera production-ready hasta que todas las pruebas 
 - El updater online usa un stage privado reconstruido desde SQLite en vez de escribir en la carpeta base de caché. Un lock OS por repositorio impide que dos procesos lo manipulen a la vez; tras un kill, el siguiente proceso adquiere el lock y elimina los stages huérfanos de ese repositorio.
 - No existe todavía un verificador offline explícito que consuma una generación revalidada sin red. La reconstrucción del stage se usa únicamente como caché del updater online. `UnsafeLocalMode` permanece deshabilitado.
 - La generación contiene metadata top-level y roles delegados recorridos por los descriptores resueltos; los roles nunca consultados no se presentan como verificados ni como parte de un grafo completo.
-- La re-apertura de SQLite, reconstrucción de stage y recuperación tras terminación de un proceso con lock activo están cubiertas por pruebas de proceso hijo. También hay inyección de fallos al insertar metadata y activar la generación, al actualizar el high-water root y un caso `SQLITE_FULL` reproducible mediante `max_page_count`; la generación no deja filas parciales. Faltan ENOSPC físico del filesystem, fallos de fsync/sidecar y pruebas de corte abrupto en cada límite físico de commit.
+- La re-apertura de SQLite, reconstrucción de stage y recuperación tras terminación de un proceso con lock activo están cubiertas por pruebas de proceso hijo. También hay inyección de fallos al insertar metadata y activar la generación, al actualizar el high-water root y un caso `SQLITE_FULL` reproducible mediante `max_page_count`; la generación no deja filas parciales. Las rutas del trust store rechazan DB symlink, reparse points, archivos especiales y DACLs de escritura para grupos amplios conocidos. Faltan ENOSPC físico, fallos de fsync/sidecar, grupos de dominio personalizados y revisión de las ACLs del árbol completo.
 - El estado SQLite local no protege frente a restaurar una imagen completa antigua del mismo disco. Sigue pendiente un TPM/contador monotónico o witness externo para elevar el assurance anti-rollback.
 - El bootstrap de confianza y la custodia/rotación de claves de producción siguen abiertos. No se declara M1.4 cerrado hasta completar recuperación, bootstrap y verificación offline.

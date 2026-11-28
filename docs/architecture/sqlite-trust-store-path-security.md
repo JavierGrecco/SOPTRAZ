@@ -1,11 +1,28 @@
-# Security hardening update — SQLite trust-store paths
+# Seguridad de rutas del almacén de confianza SQLite
 
-The trust-store opener now resolves parent-directory aliases once and passes the canonical path to SQLite. It validates the resolved parent and pre-opens the database file with platform-specific no-follow semantics before SQLite is allowed to use the path.
+El inicializador del trust store resuelve los alias del directorio padre una sola vez y entrega a SQLite la ruta resultante. Antes de abrir la base, valida el directorio padre y abre el componente final con semántica específica de cada sistema operativo para no seguir enlaces de forma silenciosa.
 
-- Linux/macOS: the final DB component is opened with `O_NOFOLLOW`, checked with `fstat` as a regular file, and protected with mode `0600`. A parent directory writable by group/others is rejected unless the sticky bit is set (for example, a shared temporary directory).
-- Windows: the parent and final file are opened with `FILE_FLAG_OPEN_REPARSE_POINT`; directory/reparse-point substitutions are rejected. The DACL is read from the opened handle and broad write grants to Everyone, Authenticated Users, Builtin Users/Guests, Interactive, Network or Anonymous are rejected. No ACL is silently rewritten.
-- Existing parent directories are not chmodded. If the policy rejects a custom path, the caller must select a directory with suitable permissions.
-- The final no-follow preflight narrows path substitution risk. SQLite subsequently opens the canonical pathname independently; this is not a claim that a same-user process with write access to the parent cannot race that later open. Parent directory protection is therefore part of the security boundary.
-- Windows ACL review is intentionally conservative: unfamiliar DACL forms or inaccessible security descriptors fail closed. Administrators/System and the current owner are not treated as broad principals; administrators and a privileged local attacker remain outside the local-user isolation claim.
+## Linux y macOS
 
-Validation adds database symlink/directory rejection, canonical parent alias handling, Unix writable-parent and sticky-directory tests, and a Windows Everyone-writable DACL test.
+- El archivo final se abre con `O_NOFOLLOW` y `O_NONBLOCK`; el descriptor se inspecciona con `fstat` y solo se acepta un archivo regular.
+- El archivo queda protegido con modo `0600`, incluso cuando ya existía.
+- Se rechaza un directorio padre con escritura para grupo u otros, excepto cuando tiene sticky-bit, como ocurre en un directorio compartido protegido tipo `/tmp`.
+- No se cambian permisos de directorios padres existentes.
+
+## Windows
+
+- El directorio padre y el archivo final se abren con `FILE_FLAG_OPEN_REPARSE_POINT`; se rechazan reparse points y directorios en el lugar del archivo.
+- La DACL se consulta desde el handle abierto, no mediante una inspección textual del path.
+- Se rechazan ACEs de escritura para Everyone, Authenticated Users, Builtin Users/Guests, Interactive, Network y Anonymous.
+- Los ACEs extendidos/objeto/callback no soportados se rechazan de forma cerrada, en lugar de ignorarlos.
+- No se reescribe ninguna ACL heredada o elegida por el administrador.
+
+## Límites deliberados
+
+El preflight final reduce el riesgo de sustitución, pero SQLite vuelve a abrir la ruta canónica por separado. No se afirma que esto elimine una carrera frente a otro proceso del mismo usuario que tenga permiso de escritura sobre el directorio padre. Por eso, los permisos y la integridad del árbol de directorios siguen siendo parte de la frontera de seguridad.
+
+La comprobación de Windows cubre SIDs amplios conocidos; una instalación con grupos de dominio personalizados requiere revisión de sus DACL antes de producción. Un administrador local o un atacante con privilegios equivalentes al propietario del proceso queda fuera de la garantía de aislamiento local.
+
+## Pruebas
+
+Se añadieron pruebas para rechazar un archivo DB symlink y una carpeta en la ruta de DB, resolver alias del directorio padre y comprobar identidad del archivo sin depender de la forma textual de la ruta. En Unix se prueban directorios escribibles no protegidos y sticky-bit. En Windows se fuerza una DACL que concede escritura a Everyone y se verifica que el trust store falla cerrado.
