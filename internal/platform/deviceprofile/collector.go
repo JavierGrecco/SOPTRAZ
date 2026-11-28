@@ -26,3 +26,23 @@ func (result *Result) addSourceError(source string, err error) {
 		Message: err.Error(),
 	})
 }
+
+func newUnknownResult() Result {
+	return Result{
+		Observations: moduleprofile.Observations{
+			Capabilities: moduleprofile.Capabilities{
+				BatteryPresent:   moduleprofile.Unknown,
+				Touch:            moduleprofile.Unknown,
+				Pen:              moduleprofile.Unknown,
+				PhysicalKeyboard: moduleprofile.Unknown,
+				KeyboardAttached: moduleprofile.Unknown,
+				DedicatedGPU:     moduleprofile.Unknown,
+				ThermalSensors:   moduleprofile.Unknown,
+				DockPresent:      moduleprofile.Unknown,
+				VirtualMachine:   moduleprofile.Unknown,
+				PowerSource:      moduleprofile.PowerSourceUnknown,
+				ConvertibleSlate: moduleprofile.SlateModeUnknown,
+			},
+		},
+	}
+}
