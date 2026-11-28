@@ -226,7 +226,7 @@ func Classify(observations Observations) Profile {
 	case chassisForm != FormFactorUnknown:
 		profile.FormFactor = chassisForm
 		profile.Confidence = ConfidenceMedium
-		if pcRecognized && compatibleWithPCSystemType(chassisForm, observations.PCSystemType) {
+		if compatibleWithPCSystemType(chassisForm, observations.PCSystemType) {
 			profile.Confidence = ConfidenceHigh
 		} else if pcRecognized {
 			profile.Warnings = append(profile.Warnings, "PCSystemType contradice la categoría SMBIOS; se reduce la confianza.")
