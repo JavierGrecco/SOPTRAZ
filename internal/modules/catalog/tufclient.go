@@ -291,11 +291,14 @@ func (client *TUFClient) Refresh() error {
 
 // refreshLocked must be called with client.mu held. go-tuf's Updater permits
 // Refresh only once per instance, so each refresh creates a new instance and
-// lets go-tuf revalidate the persisted metadata cache against the pinned root.
+// lets go-tuf revalidate the persisted metadata cache against the trusted root.
 func (client *TUFClient) refreshLocked() error {
 	if client.config == nil {
 		client.updater = nil
 		return ErrTUFClientUnavailable
+	}
+	if client.persistence != nil {
+		client.persistence.capture.reset()
 	}
 	officialUpdater, err := tufupdater.New(client.config)
 	if err != nil {
@@ -304,12 +307,12 @@ func (client *TUFClient) refreshLocked() error {
 	}
 
 	refreshErr := officialUpdater.Refresh()
+	if client.persistence != nil {
+		return client.finishPersistentRefresh(officialUpdater, refreshErr)
+	}
 
-	// go-tuf updates its trusted root one consecutive version at a time and
-	// persists each verified root. A new Updater, however, starts from
-	// config.LocalTrustedRoot and writes that root to the cache again. Keep
-	// the latest root that this Updater actually verified, including when a
-	// later timestamp/snapshot/targets step fails.
+	// Legacy process-local mode: preserve the latest root verified by go-tuf
+	// even when a later timestamp/snapshot/targets step fails.
 	trusted := officialUpdater.GetTrustedMetadataSet()
 	if trusted.Root == nil {
 		client.updater = nil
@@ -330,6 +333,80 @@ func (client *TUFClient) refreshLocked() error {
 
 	if refreshErr != nil {
 		client.updater = nil
+		return fmt.Errorf("actualizar metadata TUF: %w", refreshErr)
+	}
+	client.updater = officialUpdater
+	return nil
+}
+
+// finishPersistentRefresh records every exact root response that go-tuf has
+// accepted, before propagating a later timestamp/snapshot/targets failure.
+func (client *TUFClient) finishPersistentRefresh(
+	officialUpdater *tufupdater.Updater,
+	refreshErr error,
+) error {
+	client.updater = nil
+	persistence := client.persistence
+	if persistence == nil || persistence.store == nil || persistence.capture == nil {
+		return ErrTUFClientUnavailable
+	}
+
+	candidates, captureErr := persistence.capture.take()
+	currentState := TrustState{
+		Version: persistence.rootState.Version,
+		SHA256:  persistence.rootState.SHA256,
+	}
+	verifiedRoots, latestRootJSON, latestState, verifyErr := verifyCapturedRootRotations(
+		persistence.latestRootJSON,
+		currentState,
+		candidates,
+	)
+	if len(verifiedRoots) > 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		committed, err := persistence.store.CommitVerifiedRoots(
+			ctx,
+			persistence.repositoryID,
+			persistence.rootState,
+			verifiedRoots,
+		)
+		cancel()
+		if err != nil {
+			return fmt.Errorf("persistir cadena de raíces TUF verificada: %w", err)
+		}
+		expected := sqlitetuf.RootState{Version: latestState.Version, SHA256: latestState.SHA256}
+		if committed != expected {
+			return fmt.Errorf("%w: SQLite confirmó %#v pero se esperaba %#v",
+				ErrTUFClientUnavailable, committed, expected)
+		}
+		persistence.rootState = committed
+		persistence.latestRootJSON = append([]byte(nil), latestRootJSON...)
+		client.config.LocalTrustedRoot = append([]byte(nil), latestRootJSON...)
+	}
+
+	trusted := officialUpdater.GetTrustedMetadataSet()
+	if trusted.Root == nil {
+		if refreshErr != nil {
+			return fmt.Errorf("actualizar metadata TUF: %w", refreshErr)
+		}
+		return fmt.Errorf("%w: updater TUF no devolvió una raíz confiable", ErrTUFClientUnavailable)
+	}
+	if trusted.Root.Signed.Version != persistence.rootState.Version {
+		return fmt.Errorf("%w: go-tuf quedó en root v%d y SQLite en root v%d",
+			ErrTUFClientUnavailable, trusted.Root.Signed.Version, persistence.rootState.Version)
+	}
+	if verifyErr != nil {
+		if refreshErr != nil {
+			return fmt.Errorf("actualizar metadata TUF: %v; validar/persistir rotación: %w", refreshErr, verifyErr)
+		}
+		return fmt.Errorf("validar/persistir rotación TUF: %w", verifyErr)
+	}
+	if captureErr != nil {
+		if refreshErr != nil {
+			return fmt.Errorf("actualizar metadata TUF: %v; capturar root para persistencia: %w", refreshErr, captureErr)
+		}
+		return fmt.Errorf("capturar root TUF para persistencia: %w", captureErr)
+	}
+	if refreshErr != nil {
 		return fmt.Errorf("actualizar metadata TUF: %w", refreshErr)
 	}
 	client.updater = officialUpdater
