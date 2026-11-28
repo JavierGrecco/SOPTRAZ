@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -266,4 +267,150 @@ func TestPersistentRefreshDoesNotCommitRootBeforeOfficialUpdaterAcceptsIt(t *tes
 	if state.Version != bootstrapState.Version || state.SHA256 != bootstrapState.SHA256 || len(chain) != 0 {
 		t.Fatalf("unaccepted root was committed: state=%#v chain=%#v", state, chain)
 	}
+}
+
+
+func TestPersistentTUFClientCommitsVerifiedGenerationAndDelegationMetadata(t *testing.T) {
+	fixture := makeDelegatedRepositoryFixture(t)
+	server, _, _ := startDelegatedMetadataServer(t, fixture)
+	cacheRoot := t.TempDir()
+	store, err := sqlitetuf.Open(context.Background(), filepath.Join(t.TempDir(), "catalog-trust.sqlite"))
+	if err != nil {
+		t.Fatalf("open persistent TUF store: %v", err)
+	}
+	defer store.Close()
+
+	anchor, err := NewPinnedTrustAnchor(fixture.rootJSON, rootPin(fixture.rootJSON))
+	if err != nil {
+		t.Fatalf("create pinned anchor: %v", err)
+	}
+	client, err := NewPersistentTUFClient(
+		anchor,
+		persistentClientConfig(server.URL+"/metadata", cacheRoot),
+		store,
+		"test-repository",
+	)
+	if err != nil {
+		t.Fatalf("NewPersistentTUFClient(): %v", err)
+	}
+
+	initial, err := store.LoadActiveGeneration(context.Background(), "test-repository")
+	if err != nil {
+		t.Fatalf("load top-level generation: %v", err)
+	}
+	if len(initial.Roles) != 3 {
+		t.Fatalf("initial generation has %d roles, want timestamp/snapshot/targets only", len(initial.Roles))
+	}
+	initialID := initial.ID
+	for _, required := range []string{"timestamp", "snapshot", "targets"} {
+		if !hasGenerationRole(initial.Roles, required) {
+			t.Fatalf("initial generation is missing role %q", required)
+		}
+	}
+
+	verified, err := client.ResolveDescriptor(fixture.descriptor)
+	if err != nil {
+		t.Fatalf("ResolveDescriptor(): %v", err)
+	}
+	if verified.Path != fixture.targetPath {
+		t.Fatalf("verified target path = %q, want %q", verified.Path, fixture.targetPath)
+	}
+
+	delegated, err := store.LoadActiveGeneration(context.Background(), "test-repository")
+	if err != nil {
+		t.Fatalf("load generation with delegated metadata: %v", err)
+	}
+	if delegated.ID != initialID+1 || len(delegated.Roles) != 4 {
+		t.Fatalf("delegated generation = ID %d with %d roles, want ID %d with 4 roles",
+			delegated.ID, len(delegated.Roles), initialID+1)
+	}
+	var delegatedRole *sqlitetuf.VerifiedRoleMetadata
+	for index := range delegated.Roles {
+		if delegated.Roles[index].Role == "osquery" {
+			delegatedRole = &delegated.Roles[index]
+			break
+		}
+	}
+	if delegatedRole == nil {
+		t.Fatal("generation does not contain delegated osquery metadata")
+	}
+	if len(delegatedRole.Parents) != 1 || delegatedRole.Parents[0] != "targets" {
+		t.Fatalf("delegated role parent chain = %v, want [targets]", delegatedRole.Parents)
+	}
+	if string(delegatedRole.Metadata) != string(fixture.metadata["osquery.json"]) {
+		t.Fatal("generation did not preserve the exact delegated metadata bytes")
+	}
+
+	// A second successful lookup over the same authenticated metadata set must
+	// not create a new immutable generation with identical role bytes.
+	if _, err := client.ResolveDescriptor(fixture.descriptor); err != nil {
+		t.Fatalf("ResolveDescriptor() repeated: %v", err)
+	}
+	afterRepeat, err := store.LoadActiveGeneration(context.Background(), "test-repository")
+	if err != nil {
+		t.Fatalf("load generation after repeated resolution: %v", err)
+	}
+	if afterRepeat.ID != delegated.ID || afterRepeat.ManifestSHA256 != delegated.ManifestSHA256 {
+		t.Fatalf("repeated resolution created a redundant generation: before=%d after=%d",
+			delegated.ID, afterRepeat.ID)
+	}
+}
+
+func TestPersistentTUFGenerationRejectsCacheBytesChangedAfterUpdaterAcceptedThem(t *testing.T) {
+	fixture := makeDelegatedRepositoryFixture(t)
+	server, _, _ := startDelegatedMetadataServer(t, fixture)
+	cacheRoot := t.TempDir()
+	store, err := sqlitetuf.Open(context.Background(), filepath.Join(t.TempDir(), "catalog-trust.sqlite"))
+	if err != nil {
+		t.Fatalf("open persistent TUF store: %v", err)
+	}
+	defer store.Close()
+
+	anchor, err := NewPinnedTrustAnchor(fixture.rootJSON, rootPin(fixture.rootJSON))
+	if err != nil {
+		t.Fatalf("create pinned anchor: %v", err)
+	}
+	client, err := NewPersistentTUFClient(
+		anchor,
+		persistentClientConfig(server.URL+"/metadata", cacheRoot),
+		store,
+		"test-repository",
+	)
+	if err != nil {
+		t.Fatalf("NewPersistentTUFClient(): %v", err)
+	}
+	if _, err := client.ResolveDescriptor(fixture.descriptor); err != nil {
+		t.Fatalf("ResolveDescriptor(): %v", err)
+	}
+	before, err := store.LoadActiveGeneration(context.Background(), "test-repository")
+	if err != nil {
+		t.Fatalf("load committed generation: %v", err)
+	}
+
+	delegatedCache := filepath.Join(cacheRoot, "metadata", "osquery.json")
+	if err := os.WriteFile(delegatedCache, []byte("{\"signed\":{\"_type\":\"targets\"}}"), 0o600); err != nil {
+		t.Fatalf("replace delegated cache fixture: %v", err)
+	}
+	client.mu.Lock()
+	err = client.persistGenerationLocked(client.updater)
+	client.mu.Unlock()
+	if err == nil {
+		t.Fatal("persistGenerationLocked() accepted cache bytes changed after go-tuf validation")
+	}
+	after, loadErr := store.LoadActiveGeneration(context.Background(), "test-repository")
+	if loadErr != nil {
+		t.Fatalf("load active generation after rejected cache mutation: %v", loadErr)
+	}
+	if after.ID != before.ID || after.ManifestSHA256 != before.ManifestSHA256 {
+		t.Fatalf("untrusted cache mutation changed active generation: before=%d after=%d", before.ID, after.ID)
+	}
+}
+
+func hasGenerationRole(roles []sqlitetuf.VerifiedRoleMetadata, name string) bool {
+	for _, role := range roles {
+		if role.Role == name {
+			return true
+		}
+	}
+	return false
 }
