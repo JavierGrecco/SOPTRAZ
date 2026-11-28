@@ -56,11 +56,13 @@ type persistentTUFTrust struct {
 // TUFClient wraps the official go-tuf Updater. The Updater is not safe for
 // concurrent use, so all refresh/lookup operations are serialized here.
 type TUFClient struct {
-	mu              sync.Mutex
-	config          *tufconfig.UpdaterConfig
-	updater         *tufupdater.Updater
-	persistence     *persistentTUFTrust
-	resolvedTargets map[string]struct{}
+	mu                 sync.Mutex
+	config             *tufconfig.UpdaterConfig
+	updater            *tufupdater.Updater
+	persistence        *persistentTUFTrust
+	resolvedTargets    map[string]struct{}
+	metadataCacheRoot  string
+	metadataStageDir   string
 }
 
 // NewTUFClient builds a bounded production-mode TUF client from a previously
@@ -242,9 +244,10 @@ func newTUFClientFromRoot(
 	}
 
 	client := &TUFClient{
-		config:          cfg,
-		persistence:     persistence,
-		resolvedTargets: make(map[string]struct{}),
+		config:            cfg,
+		persistence:       persistence,
+		resolvedTargets:   make(map[string]struct{}),
+		metadataCacheRoot: metadataCache,
 	}
 	if err := client.refreshLocked(); err != nil {
 		return nil, err
@@ -319,17 +322,27 @@ func (client *TUFClient) refreshLocked() error {
 		return ErrTUFClientUnavailable
 	}
 	if client.persistence != nil {
+		if err := client.preparePersistentMetadataStage(); err != nil {
+			return fmt.Errorf("preparar caché aislada de metadata TUF: %w", err)
+		}
 		client.persistence.capture.reset()
 	}
 	officialUpdater, err := tufupdater.New(client.config)
 	if err != nil {
 		client.updater = nil
+		if client.persistence != nil {
+			_ = client.discardPersistentMetadataStage()
+		}
 		return fmt.Errorf("inicializar updater TUF oficial: %w", err)
 	}
 
 	refreshErr := officialUpdater.Refresh()
 	if client.persistence != nil {
-		return client.finishPersistentRefresh(officialUpdater, refreshErr)
+		if err := client.finishPersistentRefresh(officialUpdater, refreshErr); err != nil {
+			_ = client.discardPersistentMetadataStage()
+			return err
+		}
+		return nil
 	}
 
 	// Legacy process-local mode: preserve the latest root verified by go-tuf
@@ -439,6 +452,107 @@ func (client *TUFClient) finishPersistentRefresh(
 	}
 	client.updater = officialUpdater
 	return nil
+}
+
+// preparePersistentMetadataStage creates a private working directory for one
+// updater attempt. Only the last committed SQLite generation is copied into it;
+// go-tuf still performs its normal online verification before using any cached
+// metadata. A failed refresh is discarded without modifying the previous
+// generation or the caller's metadata-cache root.
+func (client *TUFClient) preparePersistentMetadataStage() error {
+	if client == nil || client.config == nil || client.persistence == nil ||
+		client.persistence.store == nil || client.metadataCacheRoot == "" {
+		return ErrTUFClientUnavailable
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	generation, loadErr := client.persistence.store.LoadActiveGeneration(ctx, client.persistence.repositoryID)
+	cancel()
+	if errors.Is(loadErr, sqlitetuf.ErrGenerationNotFound) ||
+		errors.Is(loadErr, sqlitetuf.ErrGenerationRootMismatch) {
+		// There is no generation compatible with the currently pinned root.
+		// Starting with an empty working cache is safe; online TUF refresh will
+		// fetch and authenticate the current metadata.
+		generation.Roles = nil
+		loadErr = nil
+	}
+	if loadErr != nil {
+		return fmt.Errorf("%w: recuperar generación activa para el caché: %v", ErrGenerationCapture, loadErr)
+	}
+
+	stageDir, err := os.MkdirTemp(client.metadataCacheRoot, ".soptraz-tuf-stage-*")
+	if err != nil {
+		return fmt.Errorf("crear directorio temporal privado: %w", err)
+	}
+	if err := os.Chmod(stageDir, 0o700); err != nil {
+		_ = os.RemoveAll(stageDir)
+		return fmt.Errorf("proteger directorio temporal: %w", err)
+	}
+
+	for _, role := range generation.Roles {
+		if role.Role == "" || role.Role == "." || role.Role == ".." || len(role.Metadata) == 0 {
+			_ = os.RemoveAll(stageDir)
+			return fmt.Errorf("%w: rol de generación inválido al restaurar el caché", ErrGenerationCapture)
+		}
+		filename := url.PathEscape(role.Role) + ".json"
+		if filepath.Base(filename) != filename || strings.Contains(filename, "/") || strings.Contains(filename, "\\") {
+			_ = os.RemoveAll(stageDir)
+			return fmt.Errorf("%w: nombre de rol no apto para caché: %q", ErrGenerationCapture, role.Role)
+		}
+		filePath := filepath.Join(stageDir, filename)
+		file, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if err != nil {
+			_ = os.RemoveAll(stageDir)
+			return fmt.Errorf("crear metadata restaurada para %q: %w", role.Role, err)
+		}
+		_, writeErr := file.Write(role.Metadata)
+		closeErr := file.Close()
+		if writeErr != nil || closeErr != nil {
+			_ = os.RemoveAll(stageDir)
+			return fmt.Errorf("escribir metadata restaurada para %q: %w", role.Role, errors.Join(writeErr, closeErr))
+		}
+	}
+
+	previousStage := client.metadataStageDir
+	client.metadataStageDir = stageDir
+	client.config.LocalMetadataDir = stageDir
+	if previousStage != "" && previousStage != stageDir {
+		// The previous updater is no longer used: refreshLocked invalidates it
+		// before reaching this method, and client.mu is held throughout.
+		_ = os.RemoveAll(previousStage)
+	}
+	return nil
+}
+
+// discardPersistentMetadataStage abandons the current attempt and restores
+// the configured cache root as the next staging parent.
+func (client *TUFClient) discardPersistentMetadataStage() error {
+	if client == nil {
+		return nil
+	}
+	stageDir := client.metadataStageDir
+	client.metadataStageDir = ""
+	if client.config != nil && client.metadataCacheRoot != "" {
+		client.config.LocalMetadataDir = client.metadataCacheRoot
+	}
+	if stageDir == "" {
+		return nil
+	}
+	return os.RemoveAll(stageDir)
+}
+
+// Close releases the updater's private metadata workspace. The SQLite store
+// remains owned by the caller and is not closed here. Close is safe to call
+// more than once; Refresh can create a new workspace afterwards.
+func (client *TUFClient) Close() error {
+	if client == nil {
+		return nil
+	}
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	client.updater = nil
+	client.resolvedTargets = make(map[string]struct{})
+	return client.discardPersistentMetadataStage()
 }
 
 func (anchor *TrustAnchor) rootSnapshot() ([]byte, error) {
