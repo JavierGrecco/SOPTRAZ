@@ -280,8 +280,11 @@ func (store *Store) migrateV2(ctx context.Context) error {
 			"version INTEGER NOT NULL CHECK(version >= 1), " +
 			"sha256 TEXT NOT NULL CHECK(length(sha256) = 64), " +
 			"expires_at TEXT NOT NULL, " +
+			"source_generation_id INTEGER NOT NULL CHECK(source_generation_id >= 1), " +
 			"PRIMARY KEY(repository_id, role_name), " +
-			"FOREIGN KEY(repository_id) REFERENCES repositories(id))",
+			"FOREIGN KEY(repository_id) REFERENCES repositories(id), " +
+			"FOREIGN KEY(repository_id, source_generation_id, role_name) " +
+			"REFERENCES generation_metadata(repository_id, generation_id, role_name))",
 		"CREATE TABLE active_generations (" +
 			"repository_id TEXT PRIMARY KEY, " +
 			"generation_id INTEGER NOT NULL CHECK(generation_id >= 1), " +
