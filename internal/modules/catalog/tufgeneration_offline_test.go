@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/JavierGrecco/SOPTRAZ/internal/storage/sqlitetuf"
+	"github.com/theupdateframework/go-tuf/v2/metadata"
 )
 
 type persistedDelegatedFixture struct {
@@ -160,6 +161,79 @@ func TestReplayOfflineTargetMetadataFailsClosedForMissingDelegatedRole(t *testin
 	)
 	if err == nil || !errors.Is(err, ErrTargetDelegationUnavailable) {
 		t.Fatalf("replayOfflineTargetMetadata() error = %v, want missing delegated role rejection", err)
+	}
+}
+
+
+func TestReplayOfflineTargetMetadataRejectsDelegatedSignatureFromUnauthorizedKey(t *testing.T) {
+	fixture := createPersistedDelegatedFixture(t)
+	defer fixture.server.Close()
+	snapshot, rootJSON, rootState := loadPersistedFixtureSnapshot(t, fixture)
+
+	var delegatedRole *sqlitetuf.VerifiedRoleMetadata
+	var snapshotRole *sqlitetuf.VerifiedRoleMetadata
+	var timestampRole *sqlitetuf.VerifiedRoleMetadata
+	for index := range snapshot.Generation.Roles {
+		switch snapshot.Generation.Roles[index].Role {
+		case "osquery":
+			delegatedRole = &snapshot.Generation.Roles[index]
+		case metadata.SNAPSHOT:
+			snapshotRole = &snapshot.Generation.Roles[index]
+		case metadata.TIMESTAMP:
+			timestampRole = &snapshot.Generation.Roles[index]
+		}
+	}
+	if delegatedRole == nil || snapshotRole == nil || timestampRole == nil {
+		t.Fatal("fixture is missing delegated, snapshot or timestamp metadata")
+	}
+
+	originalDelegated, err := metadata.Targets().FromBytes(delegatedRole.Metadata)
+	if err != nil {
+		t.Fatalf("parse original delegated metadata: %v", err)
+	}
+	originalTarget := originalDelegated.Signed.Targets[fixture.repository.targetPath]
+	if originalTarget == nil {
+		t.Fatal("original delegated metadata does not contain the fixture target")
+	}
+	unauthorizedSigner := newTestSigningKey(t)
+	unauthorizedRole := metadata.Targets(originalDelegated.Signed.Expires)
+	unauthorizedRole.Signed.Targets[fixture.repository.targetPath] = originalTarget
+	unauthorizedBytes := signedMetadataBytes(t, unauthorizedRole, unauthorizedSigner)
+
+	// Re-sign snapshot and timestamp with their legitimately authorized keys,
+	// updating length/hash links so that only the delegated-role signature
+	// should fail when the exact parent authorization is checked by go-tuf.
+	snapshotMetadata, err := metadata.Snapshot().FromBytes(snapshotRole.Metadata)
+	if err != nil {
+		t.Fatalf("parse snapshot metadata: %v", err)
+	}
+	setMetaFile(t, snapshotMetadata.Signed.Meta, "osquery.json", unauthorizedBytes)
+	updatedSnapshotBytes := signedMetadataBytes(t, snapshotMetadata, fixture.snapshotSigner)
+
+	timestampMetadata, err := metadata.Timestamp().FromBytes(timestampRole.Metadata)
+	if err != nil {
+		t.Fatalf("parse timestamp metadata: %v", err)
+	}
+	setMetaFile(t, timestampMetadata.Signed.Meta, "snapshot.json", updatedSnapshotBytes)
+	updatedTimestampBytes := signedMetadataBytes(t, timestampMetadata, fixture.timestampSigner)
+
+	delegatedRole.Metadata = unauthorizedBytes
+	snapshotRole.Metadata = updatedSnapshotBytes
+	timestampRole.Metadata = updatedTimestampBytes
+
+	_, err = replayOfflineTargetMetadata(
+		snapshot,
+		rootJSON,
+		rootState,
+		time.Now().UTC(),
+		fixture.repository.targetPath,
+		4,
+	)
+	if err == nil {
+		t.Fatal("offline replay accepted delegated metadata signed by a key not authorized by its parent")
+	}
+	if !errors.Is(err, ErrOfflineGenerationReplay) {
+		t.Fatalf("replay error = %v, want ErrOfflineGenerationReplay", err)
 	}
 }
 
