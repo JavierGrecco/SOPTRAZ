@@ -53,7 +53,7 @@ El tipo `SystemTimeDiagnostics` está implementado como DTO puro y separado de `
 
 `Validate()` comprueba estados y mecanismo conocidos; `Canonical()` normaliza timestamps a UTC y elimina datos monotónicos locales. No compara `LastSyncAt` con `WallClockObservedAt`, porque una discrepancia puede ser precisamente el diagnóstico que se necesita preservar. Los estados de servicio y sincronización son independientes: no se deduce uno del otro.
 
-El DTO no consulta el sistema operativo, no modifica el reloj y no puede actualizar `LastAcceptedTrustedTime`, validar expiración TUF ni habilitar el catálogo offline. Los adaptadores read-only por plataforma siguen pendientes.
+El DTO no consulta el sistema operativo, no modifica el reloj y no puede actualizar `LastAcceptedTrustedTime`, validar expiración TUF ni habilitar el catálogo offline. El adaptador Linux del kernel está implementado como primera integración read-only: usa `unix.Adjtimex` con `Modes=0`, conserva `ServiceState=unknown`, no inventa `LastSyncAt` y reporta únicamente el estado de disciplina que publica el kernel. Un error o estado no reconocido produce `unknown` y `ErrSystemTimeDiagnosticsUnavailable`, sin filtrar el error nativo. En Windows y macOS el proveedor por ahora devuelve `unknown` sin ejecutar comandos ni leer estado privado. El adaptador Linux no autentica el servidor ni eleva assurance fuera de `system`.
 
 ## Lo que todavía no está implementado
 
