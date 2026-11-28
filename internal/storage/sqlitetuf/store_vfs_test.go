@@ -309,3 +309,63 @@ func TestCommitVerifiedRootsRollsBackWhenVFSJournalSyncFails(t *testing.T) {
 	}
 	assertRootChainStillAtBootstrap(t, store, anchor)
 }
+
+
+func assertNoGenerationState(t *testing.T, store *Store) {
+	t.Helper()
+	ctx := context.Background()
+	activeID, err := store.ActiveGenerationID(ctx, "soptraz-tools")
+	if err != nil {
+		t.Fatalf("read active generation after injected storage failure: %v", err)
+	}
+	if activeID != 0 {
+		t.Fatalf("active generation after injected storage failure = %d, want 0", activeID)
+	}
+
+	var generations, metadataRows, highWaterRows, activeRows int
+	for query, destination := range map[string]*int{
+		"SELECT COUNT(*) FROM generations WHERE repository_id = ?":         &generations,
+		"SELECT COUNT(*) FROM generation_metadata WHERE repository_id = ?": &metadataRows,
+		"SELECT COUNT(*) FROM role_high_water WHERE repository_id = ?":     &highWaterRows,
+		"SELECT COUNT(*) FROM active_generations WHERE repository_id = ?":  &activeRows,
+	} {
+		if err := store.db.QueryRowContext(ctx, query, "soptraz-tools").Scan(destination); err != nil {
+			t.Fatalf("count generation rows after injected storage failure: %v", err)
+		}
+	}
+	if generations != 0 || metadataRows != 0 || highWaterRows != 0 || activeRows != 0 {
+		t.Fatalf("partial generation survived injected storage failure: generations=%d metadata=%d high-water=%d active=%d",
+			generations, metadataRows, highWaterRows, activeRows)
+	}
+}
+
+func TestCommitGenerationRollsBackWhenVFSJournalWriteReportsFull(t *testing.T) {
+	store, faultVFS, anchor := openInjectedVFSStore(t)
+	faultVFS.armJournalWriteFailure()
+
+	_, err := store.CommitGeneration(context.Background(), "soptraz-tools", 0, anchor, generationTestRoles(2, 2, 2))
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "full") {
+		t.Fatalf("CommitGeneration() error = %v, want SQLite FULL from journal write", err)
+	}
+	writes, _ := faultVFS.failureCounts()
+	if writes != 1 {
+		t.Fatalf("injected journal write failures = %d, want 1", writes)
+	}
+	assertNoGenerationState(t, store)
+}
+
+func TestCommitGenerationRollsBackWhenVFSJournalSyncFails(t *testing.T) {
+	store, faultVFS, anchor := openInjectedVFSStore(t)
+	faultVFS.armJournalSyncFailure()
+
+	_, err := store.CommitGeneration(context.Background(), "soptraz-tools", 0, anchor, generationTestRoles(2, 2, 2))
+	if err == nil {
+		t.Fatal("CommitGeneration() succeeded despite an injected journal sync failure")
+	}
+	_, syncs := faultVFS.failureCounts()
+	if syncs != 1 {
+		t.Fatalf("injected journal sync failures = %d, want 1", syncs)
+	}
+	assertNoGenerationState(t, store)
+}
+
