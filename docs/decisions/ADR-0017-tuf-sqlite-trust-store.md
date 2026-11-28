@@ -128,7 +128,7 @@ Esta ADR no habilita el modo offline. El almacén hace posible implementar un ve
 3. [x] Capturar respuestas versionadas de root, reproducirlas con go-tuf y persistir solo cuando el updater oficial confirma la misma versión (PR #23).
 4. [x] Implementar el esquema de generaciones SQLite v2, migración sin pérdida de root-chain v1, metadata por rol/delegación, manifiesto SHA-256 y high-water con procedencia inmutable (PR #25).
 5. [x] Implementar `CommitGeneration`/`LoadActiveGeneration` con root binding, CAS, guardas de rollback/equivocation, commit atómico y validación de integridad de metadata y evidencia histórica (PR #25).
-6. [ ] Integrar el updater online con staging: obtener los bytes exactos autenticados por go-tuf, resolver los roles delegados que la aplicación necesita y solo entonces llamar a `CommitGeneration`; no declarar completo un grafo que no se haya recorrido.
+6. [ ] Integrar el updater online con staging: obtener bytes exactos autenticados por go-tuf, resolver los roles delegados que la aplicación necesita y solo entonces llamar a `CommitGeneration`; no declarar completo un grafo que no se haya recorrido.
 7. [ ] Añadir tests de terminación abrupta real, crash/restart, corrupción, rollback, disco lleno y concurrencia entre procesos en Windows/macOS/Linux.
 8. [ ] Implementar el validador offline explícito y su reporte de assurance.
 9. [ ] Completar SBOM, avisos/licencias y política de actualización de go-tuf/Sigstore.
