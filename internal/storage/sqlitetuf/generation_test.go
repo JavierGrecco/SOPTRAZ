@@ -339,7 +339,7 @@ func TestOpenMigratesExistingVersionOneTrustDatabase(t *testing.T) {
 		"CREATE TRIGGER root_chain_no_delete BEFORE DELETE ON root_chain " +
 			"BEGIN SELECT RAISE(ABORT, 'SOPTRAZ TUF roots are append-only'); END",
 		"CREATE INDEX idx_root_chain_digest ON root_chain(repository_id, sha256)",
-		"INSERT INTO repositories(id, metadata_url, anchor_version, anchor_sha256, latest_root_version, latest_root_sha256, created_at) "+
+		"INSERT INTO repositories(id, metadata_url, anchor_version, anchor_sha256, latest_root_version, latest_root_sha256, created_at) " +
 			"VALUES('soptraz-tools', 'https://metadata.example.test/repository', 1, ?, 1, ?, '2026-11-28T00:00:00Z')",
 		"PRAGMA user_version = 1",
 	}
