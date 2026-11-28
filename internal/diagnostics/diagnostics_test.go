@@ -333,3 +333,42 @@ func TestGoRuntimeFatalPanicIsCopiedToTextReport(t *testing.T) {
 		t.Fatalf("Go runtime crash message was not copied to a TXT report; stderr=%s", output)
 	}
 }
+
+func TestStartupBoundsOversizedRuntimeReportAndPreservesCleanMarker(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, runLogPrefix+"oversized.txt")
+	var builder strings.Builder
+	builder.WriteString("SOPTRAZ — INFORME TÉCNICO DE EJECUCIÓN\n")
+	builder.WriteString("fatal error: simulated runtime dump\n")
+	builder.WriteString(strings.Repeat("stack frame diagnostic data\n", (maxLogBytes/20)+100))
+	builder.WriteString("CIERRE NORMAL: previous clean shutdown\n")
+	if err := os.WriteFile(path, []byte(builder.String()), 0o600); err != nil {
+		t.Fatalf("write oversized report fixture: %v", err)
+	}
+
+	logger, err := Open(directory, "recovery-version")
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer logger.Close()
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat bounded report: %v", err)
+	}
+	if info.Size() > maxLogBytes {
+		t.Fatalf("bounded report size = %d, want <= %d", info.Size(), maxLogBytes)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read bounded report: %v", err)
+	}
+	for _, expected := range []string{"fatal error: simulated runtime dump", "INFORME TRUNCADO", "CIERRE NORMAL: marca preservada"} {
+		if !strings.Contains(string(raw), expected) {
+			t.Errorf("bounded report does not contain %q", expected)
+		}
+	}
+	if len(logger.RecoveredRuns()) != 0 {
+		t.Fatalf("clean oversized report was incorrectly classified as a crash: %v", logger.RecoveredRuns())
+	}
+}
