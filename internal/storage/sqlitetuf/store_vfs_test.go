@@ -310,7 +310,6 @@ func TestCommitVerifiedRootsRollsBackWhenVFSJournalSyncFails(t *testing.T) {
 	assertRootChainStillAtBootstrap(t, store, anchor)
 }
 
-
 func assertNoGenerationState(t *testing.T, store *Store) {
 	t.Helper()
 	ctx := context.Background()
@@ -368,4 +367,3 @@ func TestCommitGenerationRollsBackWhenVFSJournalSyncFails(t *testing.T) {
 	}
 	assertNoGenerationState(t, store)
 }
-
