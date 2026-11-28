@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/JavierGrecco/SOPTRAZ/internal/storage/sqlitetuf"
-	")
+)
 
 type persistedDelegatedFixture struct {
 	repository delegatedRepositoryFixture
