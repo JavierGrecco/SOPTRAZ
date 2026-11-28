@@ -310,10 +310,9 @@ func (store *Store) CommitGeneration(
 	}, nil
 }
 
-// LoadActiveGeneration reads the active generation from one SQLite snapshot.
-// It checks all blob digests, the manifest, role high-water values, required
-// roles, and the current root. Cryptographic authentication of TUF signatures
-// remains the caller's responsibility.
+// LoadActiveGeneration checks blob digests, the manifest, role high-water
+// values, required roles and the current root in one SQLite snapshot.
+// Cryptographic authentication of TUF signatures remains the caller's responsibility.
 func (store *Store) LoadActiveGeneration(ctx context.Context, repositoryID string) (Generation, error) {
 	if store == nil || store.db == nil {
 		return Generation{}, ErrInvalidTrustStore
@@ -321,13 +320,24 @@ func (store *Store) LoadActiveGeneration(ctx context.Context, repositoryID strin
 	if ctx == nil {
 		return Generation{}, fmt.Errorf("%w: el contexto no puede ser nil", ErrInvalidGeneration)
 	}
-
 	tx, err := store.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return Generation{}, fmt.Errorf("%w: iniciar lectura de generación: %v", ErrInvalidTrustStore, err)
 	}
 	defer tx.Rollback()
 
+	generation, err := loadActiveGenerationFromTx(ctx, tx, repositoryID)
+	if err != nil {
+		return Generation{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Generation{}, fmt.Errorf("%w: confirmar lectura de generación: %v", ErrInvalidTrustStore, err)
+	}
+	return generation, nil
+}
+
+func loadActiveGenerationFromTx(ctx context.Context, tx *sql.Tx, repositoryID string) (Generation, error) {
+	var err error
 	var latestRoot RootState
 	err = tx.QueryRowContext(ctx,
 		"SELECT latest_root_version, latest_root_sha256 FROM repositories WHERE id = ?",
@@ -547,9 +557,6 @@ func (store *Store) LoadActiveGeneration(ctx context.Context, repositoryID strin
 	}
 	generation.Roles = normalized
 
-	if err := tx.Commit(); err != nil {
-		return Generation{}, fmt.Errorf("%w: confirmar lectura de generación: %v", ErrInvalidTrustStore, err)
-	}
 	return generation, nil
 }
 
