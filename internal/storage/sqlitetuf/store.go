@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	schemaVersion          = 1
+	schemaVersion          = 2
 	busyTimeoutMS          = 5000
 	MaxRootMetadataBytes   = 512_000
 	MaxRootsPerCommit      = 256
@@ -173,13 +173,24 @@ func (store *Store) migrate(ctx context.Context) error {
 	if current > schemaVersion {
 		return fmt.Errorf("%w: versión %d, compatible hasta %d", ErrSchemaTooNew, current, schemaVersion)
 	}
-	if current == schemaVersion {
-		return nil
+	if current < 1 {
+		if err := store.migrateV1(ctx); err != nil {
+			return err
+		}
+		current = 1
 	}
+	if current < 2 {
+		if err := store.migrateV2(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
+func (store *Store) migrateV1(ctx context.Context) error {
 	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("%w: iniciar migración: %v", ErrInvalidTrustStore, err)
+		return fmt.Errorf("%w: iniciar migración v1: %v", ErrInvalidTrustStore, err)
 	}
 	defer tx.Rollback()
 
@@ -211,11 +222,101 @@ func (store *Store) migrate(ctx context.Context) error {
 	}
 	for _, statement := range statements {
 		if _, err := tx.ExecContext(ctx, statement); err != nil {
-			return fmt.Errorf("%w: aplicar migración: %v", ErrInvalidTrustStore, err)
+			return fmt.Errorf("%w: aplicar migración v1: %v", ErrInvalidTrustStore, err)
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("%w: confirmar migración: %v", ErrInvalidTrustStore, err)
+		return fmt.Errorf("%w: confirmar migración v1: %v", ErrInvalidTrustStore, err)
+	}
+	return nil
+}
+
+func (store *Store) migrateV2(ctx context.Context) error {
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("%w: iniciar migración v2: %v", ErrInvalidTrustStore, err)
+	}
+	defer tx.Rollback()
+
+	statements := []string{
+		"CREATE TABLE generations (" +
+			"repository_id TEXT NOT NULL, " +
+			"generation_id INTEGER NOT NULL CHECK(generation_id >= 1), " +
+			"parent_generation_id INTEGER, " +
+			"root_version INTEGER NOT NULL CHECK(root_version >= 1), " +
+			"root_sha256 TEXT NOT NULL CHECK(length(root_sha256) = 64), " +
+			"manifest_sha256 TEXT NOT NULL CHECK(length(manifest_sha256) = 64), " +
+			"role_count INTEGER NOT NULL CHECK(role_count BETWEEN 3 AND 128), " +
+			"created_at TEXT NOT NULL, " +
+			"PRIMARY KEY(repository_id, generation_id), " +
+			"FOREIGN KEY(repository_id) REFERENCES repositories(id), " +
+			"FOREIGN KEY(repository_id, parent_generation_id) " +
+			"REFERENCES generations(repository_id, generation_id))",
+		"CREATE TABLE generation_metadata (" +
+			"repository_id TEXT NOT NULL, " +
+			"generation_id INTEGER NOT NULL, " +
+			"role_name TEXT NOT NULL CHECK(length(role_name) BETWEEN 1 AND 512), " +
+			"version INTEGER NOT NULL CHECK(version >= 1), " +
+			"expires_at TEXT NOT NULL, " +
+			"sha256 TEXT NOT NULL CHECK(length(sha256) = 64), " +
+			"metadata_json BLOB NOT NULL CHECK(length(metadata_json) BETWEEN 1 AND 5242880), " +
+			"PRIMARY KEY(repository_id, generation_id, role_name), " +
+			"FOREIGN KEY(repository_id, generation_id) " +
+			"REFERENCES generations(repository_id, generation_id))",
+		"CREATE TABLE generation_role_parents (" +
+			"repository_id TEXT NOT NULL, " +
+			"generation_id INTEGER NOT NULL, " +
+			"child_role TEXT NOT NULL, " +
+			"parent_role TEXT NOT NULL, " +
+			"CHECK(child_role <> parent_role), " +
+			"PRIMARY KEY(repository_id, generation_id, child_role, parent_role), " +
+			"FOREIGN KEY(repository_id, generation_id, child_role) " +
+			"REFERENCES generation_metadata(repository_id, generation_id, role_name), " +
+			"FOREIGN KEY(repository_id, generation_id, parent_role) " +
+			"REFERENCES generation_metadata(repository_id, generation_id, role_name))",
+		"CREATE TABLE role_high_water (" +
+			"repository_id TEXT NOT NULL, " +
+			"role_name TEXT NOT NULL CHECK(length(role_name) BETWEEN 1 AND 512), " +
+			"version INTEGER NOT NULL CHECK(version >= 1), " +
+			"sha256 TEXT NOT NULL CHECK(length(sha256) = 64), " +
+			"expires_at TEXT NOT NULL, " +
+			"source_generation_id INTEGER NOT NULL CHECK(source_generation_id >= 1), " +
+			"PRIMARY KEY(repository_id, role_name), " +
+			"FOREIGN KEY(repository_id) REFERENCES repositories(id), " +
+			"FOREIGN KEY(repository_id, source_generation_id, role_name) " +
+			"REFERENCES generation_metadata(repository_id, generation_id, role_name))",
+		"CREATE TRIGGER role_high_water_no_update BEFORE UPDATE ON role_high_water " +
+			"WHEN NEW.version <= OLD.version " +
+			"BEGIN SELECT RAISE(ABORT, 'SOPTRAZ TUF role high-water is strictly monotonic'); END",
+		"CREATE TRIGGER role_high_water_no_delete BEFORE DELETE ON role_high_water " +
+			"BEGIN SELECT RAISE(ABORT, 'SOPTRAZ TUF role high-water is permanent'); END",
+		"CREATE TABLE active_generations (" +
+			"repository_id TEXT PRIMARY KEY, " +
+			"generation_id INTEGER NOT NULL CHECK(generation_id >= 1), " +
+			"activated_at TEXT NOT NULL, " +
+			"FOREIGN KEY(repository_id, generation_id) " +
+			"REFERENCES generations(repository_id, generation_id))",
+		"CREATE TRIGGER generations_no_update BEFORE UPDATE ON generations " +
+			"BEGIN SELECT RAISE(ABORT, 'SOPTRAZ TUF generations are immutable'); END",
+		"CREATE TRIGGER generations_no_delete BEFORE DELETE ON generations " +
+			"BEGIN SELECT RAISE(ABORT, 'SOPTRAZ TUF generations are append-only'); END",
+		"CREATE TRIGGER generation_metadata_no_update BEFORE UPDATE ON generation_metadata " +
+			"BEGIN SELECT RAISE(ABORT, 'SOPTRAZ TUF generation metadata are immutable'); END",
+		"CREATE TRIGGER generation_metadata_no_delete BEFORE DELETE ON generation_metadata " +
+			"BEGIN SELECT RAISE(ABORT, 'SOPTRAZ TUF generation metadata are append-only'); END",
+		"CREATE TRIGGER generation_parents_no_update BEFORE UPDATE ON generation_role_parents " +
+			"BEGIN SELECT RAISE(ABORT, 'SOPTRAZ TUF generation delegations are immutable'); END",
+		"CREATE TRIGGER generation_parents_no_delete BEFORE DELETE ON generation_role_parents " +
+			"BEGIN SELECT RAISE(ABORT, 'SOPTRAZ TUF generation delegations are append-only'); END",
+		"PRAGMA user_version = 2",
+	}
+	for _, statement := range statements {
+		if _, err := tx.ExecContext(ctx, statement); err != nil {
+			return fmt.Errorf("%w: aplicar migración v2: %v", ErrInvalidTrustStore, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("%w: confirmar migración v2: %v", ErrInvalidTrustStore, err)
 	}
 	return nil
 }
