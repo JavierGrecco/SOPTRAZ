@@ -120,6 +120,47 @@ func TestImportantEventRedactsCommonSecretForms(t *testing.T) {
 	}
 }
 
+func TestImportantEventRedactsQuotedAndStructuredSecretValues(t *testing.T) {
+	logger, err := Open(t.TempDir(), "test-version")
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer logger.Close()
+
+	if err := logger.Record(Event{
+		Severity: SeverityError,
+		Component: "integration.http",
+		Code: "http.request.failed",
+		Message: `payload {"access_token":"json-token-value","client_secret":"client secret with spaces","password":"two words here","cookie":"session-cookie-value","private_key":"escaped \\" secret value"}`,
+		Cause: `password = 'shell secret with spaces'; apiKey="camel-secret", credential: long secret value`,
+	}); err != nil {
+		t.Fatalf("Record() error = %v", err)
+	}
+
+	raw, err := os.ReadFile(logger.Path())
+	if err != nil {
+		t.Fatalf("read report: %v", err)
+	}
+	report := string(raw)
+	for _, secret := range []string{
+		"json-token-value",
+		"client secret with spaces",
+		"two words here",
+		"session-cookie-value",
+		"escaped \\\" secret value",
+		"shell secret with spaces",
+		"camel-secret",
+		"long secret value",
+	} {
+		if strings.Contains(report, secret) {
+			t.Errorf("report leaked structured secret %q: %s", secret, report)
+		}
+	}
+	if !strings.Contains(report, `"access_token":"[OCULTO]"`) {
+		t.Errorf("JSON key/value shape was not redacted as expected: %s", report)
+	}
+}
+
 func TestDiagnosticsAbruptExitHelper(t *testing.T) {
 	if os.Getenv("SOPTRAZ_DIAGNOSTICS_HELPER") != "1" {
 		return
