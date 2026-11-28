@@ -1,6 +1,7 @@
 package diagnostics
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -196,11 +197,22 @@ func TestNextStartupDetectsAbruptProcessTermination(t *testing.T) {
 		"runtime.unexpected_shutdown",
 		"terminó sin registrar un cierre normal",
 		"Causa: indeterminada",
+		"RECUPERACIÓN REGISTRADA:",
 	} {
 		if !strings.Contains(report, expected) {
-			t.Errorf("recovered report does not contain %q:
-%s", expected, report)
+			t.Errorf("recovered report does not contain %q: %s", expected, report)
 		}
+	}
+	if err := logger.Close(); err != nil {
+		t.Fatalf("close recovery run: %v", err)
+	}
+	next, err := Open(directory, "third-run-version")
+	if err != nil {
+		t.Fatalf("Open() after recovery marker: %v", err)
+	}
+	defer next.Close()
+	if len(next.RecoveredRuns()) != 0 {
+		t.Fatalf("same interrupted run was reported again: %v", next.RecoveredRuns())
 	}
 }
 
@@ -360,6 +372,7 @@ func TestDiagnosticsFatalCrashHelper(t *testing.T) {
 		panic("soptraz-runtime-crash-output-probe")
 	}()
 	select {}
+	runtime.KeepAlive(logger)
 }
 
 func TestGoRuntimeFatalPanicIsCopiedToTextReport(t *testing.T) {
