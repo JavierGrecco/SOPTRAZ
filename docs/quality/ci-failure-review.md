@@ -236,3 +236,15 @@ Esta prueba complementa el test externo de recuperación de informes de diagnós
 | [#313](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46159045739) | `8a10670` | **6/6 aprobados** | Integra el logger TXT real con Artifact Resolver y TUF. Verifica incidente de integridad, conflicto de binding del repositorio, ausencia de URLs/rutas sensibles y que el constructor libera el lock si falla. Windows, macOS, Ubuntu, Race Detector, fuzzing y branch hygiene. |
 
 Estas pruebas validan el recorrido módulo→logger cuando el consumidor inyecta explícitamente `diagnostics.Logger`. No prueban wiring automático desde un composition root: todavía no existe un composition root de producción que construya estos módulos e inyecte el logger.
+
+### Política pura de aceptación de tiempo confiable — 2026-11-28
+
+| Run | Commit | Resultado | Cobertura / diagnóstico |
+|---|---|---|---|
+| [#320](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46160697343) | `2ef5a18` | Falló en verificación de formato | `gofmt` detectó alineación de campos en `policy.go` y `policy_test.go`. Race Detector y fuzzing de esa ejecución pasaron. |
+| [#324](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46160828341) | `3bb9015` | Falló | Se volvió a detectar formato y la suite race identificó cuatro referencias de test al campo anterior `AcceptedTime.Sources`, reemplazado por `AcceptedTime.Evidence` para conservar procedencia/digests. |
+| [#327](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46160938598) | `2149ffc` | Falló en verificación de formato | Quedaba una línea en blanco extra antes de un test. |
+| [#329](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46161082788) | `e929b47` | **6/6 aprobados** | Incluye la corrección de referencias, formato final, tests de política y Race Detector; Windows, macOS, Ubuntu, fuzzing y branch hygiene. |
+
+Las fallas fueron corregidas y verificadas en la ejecución #329. No se contó ninguna ejecución fallida o intermedia como aprobación. La política sigue siendo una capa determinista en memoria: los adaptadores criptográficos, frescura/replay, provisión de claves, persistencia SQLite v3 e integración TUF permanecen pendientes.
+

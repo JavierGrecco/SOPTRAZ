@@ -77,6 +77,22 @@ Referencias:
 - Sin fuente de tiempo confiable o continuidad monotónica durable tras reiniciar, offline estricto puede no estar disponible. No se promete verificación offline indefinida.
 - Ninguna de estas POC debe cambiar el reloj, zona horaria, servicios, configuración TLS ni estado persistido de producción.
 
+## Primera política de aceptación incorporada (2026-11-28)
+
+La POC ya cuenta con una base de política pura en `internal/platform/trustedtime/policy.go`, sin incorporar aún adaptadores externos:
+
+- `AcceptancePolicy` exige una allowlist de `Source` provisionada localmente y compara todos los campos de identidad: ID, operador, tipo, assurance, ancla y KeyID.
+- Solo admite clases `authenticated` y `attested`; la hora del sistema queda fuera de la confianza criptográfica.
+- No cuenta dos respuestas del mismo `OperatorID` como dos operadores.
+- Aplica límites configurables de incertidumbre por fuente y sobre el intervalo combinado.
+- Selecciona la intersección máxima única de intervalos; rechaza evidencia insuficiente o dos grupos máximos empatados.
+- Conserva cada `Evidence` canónica seleccionada y su digest, además del intervalo agregado.
+- Aplica el límite inferior del último intervalo aceptado como piso anti-rollback, sin extender el extremo superior.
+
+La cobertura actual contiene 18 tests específicos y CI #329 pasó 6/6 en Windows, macOS, Ubuntu, Race Detector, fuzzing y branch hygiene ([run #329](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46161082788)).
+
+**Límites expresos:** esta política no verifica firmas, TLS, claves, nonce ni frescura; esas garantías pertenecen a los futuros adaptadores. Tampoco demuestra independencia administrativa real, no establece por sí misma un quorum de producción y aún no persiste el piso. No lee `time.Now()`, no cambia el reloj y no habilita TUF offline.
+
 ## Plan de POC y criterios de aceptación
 
 ### POC Roughtime aislada
@@ -99,7 +115,8 @@ Referencias:
 
 ### Integración de política, separada de adaptadores
 
-- [ ] Definir una política de combinación de intervalos basada en OperatorID y anclas provisionadas; especificar quorum, incertidumbre máxima, frescura y tratamiento de contradicciones antes de codificar valores de producción.
+- [x] Implementar política pura en memoria para allowlist exacta, operadores únicos por lote, intersección común máxima, incertidumbre y piso anti-rollback; conserva las evidencias seleccionadas y no realiza I/O.
+- [ ] Definir los valores operativos de producción para mínimo de operadores, límites de incertidumbre/frescura y gestión de contradicciones a partir del modelo de amenazas y pruebas de laboratorio.
 - [ ] Persistir `LastAcceptedTrustedTime` con procedencia y evidencia verificable mediante migración SQLite v2→v3; timestamps antiguos de pared permanecen `system/local-untrusted`.
 - [ ] Garantizar que rollback o fallo de commit deja intacto el estado previamente aceptado.
 - [ ] Integrar con TUF sin `UnsafeSetRefTime`, sin saltarse validación X.509 y sin prolongar expiración.
