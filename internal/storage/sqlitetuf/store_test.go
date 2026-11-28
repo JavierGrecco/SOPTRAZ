@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -243,6 +244,9 @@ func TestOpenRejectsMemoryDatabase(t *testing.T) {
 }
 
 func TestOpenCreatesPrivateParentDirectoryWhereSupported(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows directory permissions are controlled by ACLs, not Unix mode bits")
+	}
 	root := t.TempDir()
 	path := filepath.Join(root, "private", "nested", "catalog-trust.sqlite")
 	store, err := Open(context.Background(), path)
