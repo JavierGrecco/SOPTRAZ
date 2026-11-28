@@ -543,7 +543,9 @@ func TestNewRoughtimeProviderRejectsInvalidTrustConfiguration(t *testing.T) {
 	}{
 		{"fewer than three", func(c *RoughtimeProviderConfig) { c.Witnesses = c.Witnesses[:2] }},
 		{"same operator", func(c *RoughtimeProviderConfig) { c.Witnesses[1].Source.OperatorID = c.Witnesses[0].Source.OperatorID }},
-		{"same trust anchor", func(c *RoughtimeProviderConfig) { c.Witnesses[1].Source.TrustAnchorID = c.Witnesses[0].Source.TrustAnchorID }},
+		{"same trust anchor", func(c *RoughtimeProviderConfig) {
+			c.Witnesses[1].Source.TrustAnchorID = c.Witnesses[0].Source.TrustAnchorID
+		}},
 		{"wrong key fingerprint", func(c *RoughtimeProviderConfig) { c.Witnesses[0].Source.KeyID = "wrong" }},
 		{"duplicate root", func(c *RoughtimeProviderConfig) {
 			c.Witnesses[1].PublicKey = append([]byte(nil), c.Witnesses[0].PublicKey...)
