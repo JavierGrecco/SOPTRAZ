@@ -3,7 +3,6 @@ module github.com/JavierGrecco/SOPTRAZ
 go 1.27.4
 
 require (
-	github.com/gofrs/flock v0.13.2
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/sigstore/sigstore v1.11.3
 	github.com/theupdateframework/go-tuf/v2 v2.5.0

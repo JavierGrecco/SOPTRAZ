@@ -62,7 +62,7 @@ Runtime Go, registro local, IDs, acciones tipadas, permisos/riesgo, cancelación
 - [ ] Completar resiliencia: terminación abrupta real y limpieza segura de stages huérfanos, recuperación tras caída en cada etapa, disco lleno, lock y escritores multi-proceso, y política de actualización de metadata no-root cacheada.
 - [x] Definir el contrato puro `internal/platform/trustedtime`: intervalo de incertidumbre, procedencia, ancla, identidad de clave y SHA-256 de la atestación, sin I/O ni dependencias externas.
 - [x] Definir el DTO puro `SystemTimeDiagnostics` separado de `Evidence`, con estados independientes de servicio/sincronización, unknown explícito y timestamps UTC canónicos.
-- [ ] Implementar y probar el lector read-only Linux adjtimex y el estado del kernel; systemd D-Bus será una capacidad opcional, no requisito.
+- [x] Implementar el lector Linux read-only del estado del kernel con `golang.org/x/sys/unix.Adjtimex` y `Modes=0`; probar mapeo de estados, contexto cancelado, errores sanitizados y que el código no solicita ajustes. No se obtiene identidad de servidor ni hora de última sincronización.
 - [ ] Implementar diagnóstico Windows W32Time sin elevar privilegios; hasta contar con una señal no privilegiada y fiable, sincronización unknown.
 - [ ] Implementar diagnóstico macOS timed sin leer estado cacheado privado; sincronización unknown hasta disponer de API pública verificable.
 - [ ] Auditar POC aisladas de NTS/Roughtime, política de operadores independientes, anclas y rotación antes de seleccionar dependencias.
