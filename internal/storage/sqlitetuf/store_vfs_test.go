@@ -3,7 +3,9 @@ package sqlitetuf
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -69,7 +71,20 @@ func (vfs *injectedSQLiteVFS) failureCounts() (writes, syncs int) {
 
 func (vfs *injectedSQLiteVFS) resolve(name string) (string, error) {
 	if strings.HasPrefix(name, "file:") {
-		name = strings.TrimPrefix(name, "file:")
+		parsed, err := url.Parse(name)
+		if err != nil {
+			return "", fmt.Errorf("parse SQLite file URI %q: %w", name, err)
+		}
+		// SQLite may pass either a URI or the path extracted from it. Resolve
+		// the URI path (not its query parameters such as _txlock and vfs).
+		switch {
+		case parsed.Opaque != "":
+			name = parsed.Opaque
+		case parsed.Path != "":
+			name = parsed.Path
+		default:
+			return "", fmt.Errorf("SQLite file URI has no path: %q", name)
+		}
 	}
 	if runtime.GOOS == "windows" && len(name) >= 3 && name[0] == '/' && name[2] == ':' {
 		name = name[1:]
@@ -86,7 +101,7 @@ func (vfs *injectedSQLiteVFS) resolve(name string) (string, error) {
 		return "", err
 	}
 	if relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return "", errors.New("test VFS path escaped its private root")
+		return "", fmt.Errorf("test VFS path %q escaped private root %q", absolute, vfs.root)
 	}
 	return absolute, nil
 }
@@ -112,7 +127,7 @@ func (vfs *injectedSQLiteVFS) Open(name string, flags sqlitevfs.OpenFlag) (sqlit
 	}
 	file, err := os.OpenFile(path, openFlags, 0o600)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("test VFS open input %q resolved path %q: %w", name, path, err)
 	}
 	return &injectedSQLiteVFSFile{
 		File:          file,
@@ -213,7 +228,10 @@ func (file *injectedSQLiteVFSFile) Close() error {
 
 func openInjectedVFSStore(t *testing.T) (*Store, *injectedSQLiteVFS, RootState) {
 	t.Helper()
-	root := t.TempDir()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("canonicalize injected VFS root: %v", err)
+	}
 	faultVFS := &injectedSQLiteVFS{root: root}
 	name, registration, err := sqlitevfs.Register(faultVFS)
 	if err != nil {
