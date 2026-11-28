@@ -219,3 +219,11 @@ La revisión amplió la redacción de campos de diagnóstico para valores JSON/e
 | [#304](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46158152696) | `9936206` | **6/6 aprobados** | Terminación real del proceso hijo desde el padre; recuperación del informe, lock liberado por el SO y notificación idempotente. Incluye Windows, macOS, Ubuntu, race detector, fuzzing y branch hygiene. |
 
 El test de terminación externa espera a que el hijo escriba y sincronice el evento crítico antes de llamar a `Process.Kill()`. Comprueba que la reapertura puede recuperar el informe y que una segunda apertura no vuelve a notificar el mismo incidente. No simula corte eléctrico ni corrupción física del disco: esos límites continúan expresamente pendientes.
+
+### Recuperación de lock TUF tras terminación externa del proceso
+
+| Run | Commit | Resultado | Causa o cobertura |
+|---|---|---|---|
+| [#309](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46158425815) | `96f8d4e` | **6/6 aprobados** | La prueba mata desde el proceso padre al hijo que posee el lock TUF, verifica que el kernel libera el lock, que el siguiente propietario puede adquirirlo y que elimina solo el stage huérfano de su propio `repositoryID`. Windows, macOS, Ubuntu, Race Detector, fuzzing y branch hygiene. |
+
+Esta prueba complementa el test externo de recuperación de informes de diagnóstico. No sustituye ensayos de corte de energía, corrupción de filesystem ni ENOSPC físico.
