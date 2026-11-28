@@ -147,3 +147,16 @@ El run #14 fue introducido por una corrección de integración nuestra: el blob 
 
 Las 65 ejecuciones examinadas corresponden al historial disponible del repositorio al 2026-11-27: 60 pushes, un PR de Dependabot y cuatro ejecuciones dinámicas. El run #17 corresponde al PR; los cuatro runs dinámicos se identifican por separado y no se mezclan con los pushes. No se afirma que se hayan ejecutado pruebas locales en el Mac del usuario. Los runs #52–#54 se cuentan como una regresión raíz de construcción de `artifact.go`; #55 fue formato del fixture; #59 fue formato de la tabla de casos de CLI. La evidencia proviene de GitHub runners y de los logs asociados a los commits citados.
 
+## Actualización de PR #31 — 2026-11-28
+
+La integración de diagnósticos selectivos en `internal/modules/artifact` tuvo dos ejecuciones intermedias fallidas antes de la validación final:
+
+| Run | Commit | Resultado | Causa observada |
+|---|---|---|---|
+| [#229](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46108582041) | `08f91e9` | Falló formato en los tres SO; Race Detector no compiló el paquete artifact | Alineación pendiente en el struct `Resolver`, línea en blanco adicional y helpers de prueba aún no incorporados. |
+| [#230](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46108689091) | `ab16751` | Falló el build de tests/race | El formato ya estaba corregido; faltaban el recorder simulado y el helper constructor referenciados por la nueva prueba. |
+| [#231](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46108768491) | `75b68b4` | **6/6 jobs aprobados** | Windows, macOS, Ubuntu, Race Detector, fuzzing y branch hygiene. |
+
+La corrección agregó el recorder concurrency-safe, pruebas para discrepancias de integridad y symlinks, y comprobaciones para que errores esperables de descriptor/plataforma no generen eventos. El test también simula que el almacenamiento de diagnósticos falla y verifica que el resolver conserva su error original. La ejecución #231 pasó formato, `go vet` y tests en los tres sistemas; en Ubuntu también pasó `go mod tidy -diff` y `go mod verify`.
+
+Esta integración continúa siendo opcional: el composition root debe crear el resolver mediante `NewResolverWithDiagnostics`. No existe logging global ni integración equivalente en el cliente TUF. La ejecución #231 valida el código funcional del commit `75b68b4`; el presente apéndice documenta esa evidencia.
