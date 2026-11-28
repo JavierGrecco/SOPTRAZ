@@ -1,6 +1,6 @@
 # ADR-0020: Fuente de tiempo confiable y recuperación ante relojes incorrectos
 
-- Estado: Aceptada como política de arquitectura; contrato puro de evidencia implementado; fuentes autenticadas, persistencia y conexión con TUF pendientes.
+- Estado: Aceptada como política de arquitectura; contrato puro y política de aceptación en memoria implementados; proveedores criptográficos, persistencia anti-rollback y conexión con TUF pendientes.
 - Fecha: 2026-11-28
 - Relacionada: ADR-0015, ADR-0017, ADR-0019, Issue #5 (M1.4), Issue #4 (M1.5).
 - Alcance: establecer la hora de referencia para verificar expiración y frescura de metadata TUF. No cambia la firma de artefactos ni autoriza su ejecución.
@@ -67,6 +67,23 @@ Referencias y límites:
 - **NTP sin autenticación** puede servir a la sincronización ordinaria del sistema, pero no se tratará como atestación criptográfica propia de SOPTRAZ.
 
 La política concreta de fuentes, independencia, cantidad mínima de respuestas coincidentes, dispersión geográfica, incertidumbre máxima y rotación de claves debe quedar definida y probada antes de calificar una muestra como `authenticated`. No se fijará un quorum numérico sin especificar esas condiciones.
+
+### Primera implementación de la política pura de aceptación
+
+El paquete `internal/platform/trustedtime` incorpora `AcceptancePolicy` y `AcceptedTime` como una primera capa determinista, sin I/O:
+
+- La allowlist compara exactamente el `Source` provisionado: ID, operador, tipo, assurance, trust anchor y KeyID. El proveedor no puede autodeclarar una identidad distinta.
+- Solo se aceptan muestras `authenticated` o `attested`. Las señales `system` se conservan para diagnóstico y no pueden establecer esta política.
+- Cada lote cuenta como máximo una observación por OperatorID. Un segundo hostname, dirección o SourceID del mismo operador no suma independencia.
+- Se validan límites máximos de incertidumbre por muestra y sobre la intersección final.
+- Se selecciona el grupo de intervalos con mayor intersección común. Solo se acepta cuando ese grupo máximo es único y alcanza `MinDistinctOperators`; los grupos máximos empatados y disjuntos se rechazan. No se promedian tiempos ni se elige una rama de forma arbitraria.
+- El último límite inferior previamente aceptado actúa como piso monotónico: si el nuevo intervalo termina antes, se rechaza; si cruza el piso, se recorta sin ampliar su límite superior.
+- El resultado conserva las evidencias y los digest de respuesta de cada fuente seleccionada, además del intervalo conservador.
+
+Esta función **no** verifica firmas, anclas, nonces, frescura ni replay. Tampoco decide si los operadores son realmente independientes: esa relación debe venir de la configuración de confianza. Cada adaptador debe autenticar el protocolo antes de devolver Evidence. La política no lee `time.Now()`, no persiste y no corrige el reloj del sistema.
+
+La implementación y sus límites están descritos en [trusted-time-provider.md](../architecture/trusted-time-provider.md). Las pruebas cubren fuentes no autorizadas, identidad alterada, duplicidad de operador, intervalos disjuntos o ambiguos, outlier, límites de incertidumbre, NTS/Roughtime, piso anti-rollback y lotes sobredimensionados.
+
 
 ### Bootstrap temporal: resolver la dependencia circular de NTS
 
