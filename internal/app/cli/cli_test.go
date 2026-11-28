@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/JavierGrecco/SOPTRAZ/internal/diagnostics"
 	moduleprofile "github.com/JavierGrecco/SOPTRAZ/internal/modules/deviceprofile"
 	platformprofile "github.com/JavierGrecco/SOPTRAZ/internal/platform/deviceprofile"
 )
@@ -45,6 +46,33 @@ func TestHelpIsReadOnlyAndSuccessful(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "No modifica el equipo") || !strings.Contains(stdout.String(), "checkpoint") || !strings.Contains(stdout.String(), "artifact") || !strings.Contains(stdout.String(), "device-profile") {
 		t.Fatalf("unexpected help output: %q", stdout.String())
+	}
+}
+
+func TestDiagnosticsPathCommandPrintsLocalReportFolder(t *testing.T) {
+	want, err := diagnostics.DefaultDirectory()
+	if err != nil {
+		t.Fatalf("DefaultDirectory() error = %v", err)
+	}
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"diagnostics-path"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("Run(diagnostics-path) code = %d; stderr=%q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), want) {
+		t.Fatalf("diagnostics path output = %q, want %q", stdout.String(), want)
+	}
+	if strings.TrimSpace(stderr.String()) != "" {
+		t.Fatalf("diagnostics path wrote unexpected stderr: %q", stderr.String())
+	}
+}
+
+func TestDiagnosticsPathCommandRejectsArguments(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"diagnostics-path", "--json"}, &stdout, &stderr); code != 2 {
+		t.Fatalf("Run(diagnostics-path --json) code = %d, want 2", code)
+	}
+	if !strings.Contains(stderr.String(), "uso: soptraz diagnostics-path") {
+		t.Fatalf("unexpected diagnostics path usage: %q", stderr.String())
 	}
 }
 
