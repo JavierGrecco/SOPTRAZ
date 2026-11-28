@@ -164,7 +164,6 @@ func TestReplayOfflineTargetMetadataFailsClosedForMissingDelegatedRole(t *testin
 	}
 }
 
-
 func TestReplayOfflineTargetMetadataRejectsDelegatedSignatureFromUnauthorizedKey(t *testing.T) {
 	fixture := createPersistedDelegatedFixture(t)
 	defer fixture.server.Close()
