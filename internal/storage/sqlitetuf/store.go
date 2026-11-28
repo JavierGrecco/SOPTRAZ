@@ -470,9 +470,18 @@ func (store *Store) LoadRootChain(ctx context.Context, repositoryID string) ([]R
 		return nil, RootState{}, fmt.Errorf("%w: el contexto no puede ser nil", ErrInvalidTrustStore)
 	}
 
+	// Read the anchor, high-water and chain from one database snapshot. Without
+	// this transaction a concurrent root commit could make two valid reads
+	// appear inconsistent.
+	tx, err := store.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, RootState{}, fmt.Errorf("%w: iniciar lectura consistente: %v", ErrInvalidTrustStore, err)
+	}
+	defer tx.Rollback()
+
 	var anchor RootState
 	var latest RootState
-	err := store.db.QueryRowContext(ctx,
+	err = tx.QueryRowContext(ctx,
 		"SELECT anchor_version, anchor_sha256, latest_root_version, latest_root_sha256 "+
 			"FROM repositories WHERE id = ?",
 		repositoryID,
@@ -484,7 +493,7 @@ func (store *Store) LoadRootChain(ctx context.Context, repositoryID string) ([]R
 		return nil, RootState{}, fmt.Errorf("%w: leer ancla y estado: %v", ErrInvalidTrustStore, err)
 	}
 
-	rows, err := store.db.QueryContext(ctx,
+	rows, err := tx.QueryContext(ctx,
 		"SELECT version, previous_sha256, sha256, root_json, committed_at "+
 			"FROM root_chain WHERE repository_id = ? ORDER BY version ASC",
 		repositoryID,
@@ -492,7 +501,6 @@ func (store *Store) LoadRootChain(ctx context.Context, repositoryID string) ([]R
 	if err != nil {
 		return nil, RootState{}, fmt.Errorf("%w: leer cadena de roots: %v", ErrInvalidTrustStore, err)
 	}
-	defer rows.Close()
 
 	chain := make([]RootRecord, 0)
 	observed := anchor
@@ -505,16 +513,20 @@ func (store *Store) LoadRootChain(ctx context.Context, repositoryID string) ([]R
 			&record.Metadata,
 			&record.CommittedAt,
 		); err != nil {
+			_ = rows.Close()
 			return nil, RootState{}, fmt.Errorf("%w: leer root: %v", ErrCorruptTrustStore, err)
 		}
 		if record.Version != observed.Version+1 || record.PreviousSHA256 != observed.SHA256 {
+			_ = rows.Close()
 			return nil, RootState{}, fmt.Errorf("%w: discontinuidad antes de root v%d", ErrCorruptTrustStore, record.Version)
 		}
 		if len(record.Metadata) == 0 || int64(len(record.Metadata)) > MaxRootMetadataBytes {
+			_ = rows.Close()
 			return nil, RootState{}, fmt.Errorf("%w: tamaño inválido en root v%d", ErrCorruptTrustStore, record.Version)
 		}
 		digest := sha256.Sum256(record.Metadata)
 		if hex.EncodeToString(digest[:]) != record.SHA256 {
+			_ = rows.Close()
 			return nil, RootState{}, fmt.Errorf("%w: SHA-256 incorrecto en root v%d", ErrCorruptTrustStore, record.Version)
 		}
 		observed = RootState{Version: record.Version, SHA256: record.SHA256}
@@ -522,10 +534,17 @@ func (store *Store) LoadRootChain(ctx context.Context, repositoryID string) ([]R
 		chain = append(chain, record)
 	}
 	if err := rows.Err(); err != nil {
+		_ = rows.Close()
 		return nil, RootState{}, fmt.Errorf("%w: recorrer cadena: %v", ErrCorruptTrustStore, err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, RootState{}, fmt.Errorf("%w: cerrar lectura de cadena: %v", ErrCorruptTrustStore, err)
 	}
 	if observed != latest {
 		return nil, RootState{}, fmt.Errorf("%w: la cadena no coincide con el high-water registrado", ErrCorruptTrustStore)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, RootState{}, fmt.Errorf("%w: confirmar lectura consistente: %v", ErrInvalidTrustStore, err)
 	}
 	return chain, latest, nil
 }
