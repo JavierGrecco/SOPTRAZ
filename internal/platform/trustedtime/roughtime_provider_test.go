@@ -5,11 +5,13 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
 	"reflect"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -30,8 +32,10 @@ type rtpFake struct {
 	cert              *protocol.Certificate
 	recorder          *rtpRecorder
 	radius            time.Duration
-	replay, corrupt   bool
-	expiredDelegation bool
+	replay, corrupt          bool
+	outOfWindowDelegation    bool
+	descendingChainTime      bool
+	outOfWindowCert          *protocol.Certificate
 	mu                sync.Mutex
 	firstReply        []byte
 	done              chan struct{}
@@ -48,18 +52,29 @@ func newRTPFake(t *testing.T, id string, root, online ed25519.PrivateKey, record
 	for _, opt := range opts {
 		opt(server)
 	}
-	mint, maxt := base.Add(-time.Hour), base.Add(time.Hour)
-	if server.expiredDelegation {
-		mint, maxt = base.Add(-2*time.Hour), base.Add(-time.Hour)
-	}
-	cert, err := protocol.NewCertificate(mint, maxt, online, root)
+	cert, err := protocol.NewCertificate(base.Add(-time.Hour), base.Add(time.Hour), online, root)
 	if err != nil {
 		_ = conn.Close()
 		t.Fatal(err)
 	}
 	server.cert = cert
+	if server.outOfWindowDelegation {
+		server.outOfWindowCert, err = protocol.NewCertificate(base.Add(-2*time.Hour), base.Add(-time.Hour), online, root)
+		if err != nil {
+			_ = conn.Close()
+			cert.Wipe()
+			t.Fatal(err)
+		}
+	}
 	go server.serve(t, base)
-	t.Cleanup(func() { _ = conn.Close(); <-server.done; cert.Wipe() })
+	t.Cleanup(func() {
+		_ = conn.Close()
+		<-server.done
+		cert.Wipe()
+		if server.outOfWindowCert != nil {
+			server.outOfWindowCert.Wipe()
+		}
+	})
 	return server, root.Public().(ed25519.PublicKey)
 }
 
@@ -82,6 +97,7 @@ func (s *rtpFake) serve(t *testing.T, base time.Time) {
 		}
 		s.recorder.mu.Lock()
 		s.recorder.order = append(s.recorder.order, s.id)
+		requestNumber := len(s.recorder.order)
 		s.recorder.counts[s.id]++
 		if s.recorder.nonces[string(req.Nonce)] {
 			s.recorder.mu.Unlock()
@@ -97,6 +113,9 @@ func (s *rtpFake) serve(t *testing.T, base time.Time) {
 			reply = append([]byte(nil), s.firstReply...)
 		} else {
 			midpoint := base.Add(time.Since(base))
+			if s.descendingChainTime {
+				midpoint = base.Add(-time.Duration(requestNumber-1) * 5 * time.Second)
+			}
 			replies, e := protocol.CreateReplies(protocol.Version1, []protocol.Request{*req}, midpoint, s.radius, s.cert)
 			if e != nil {
 				s.mu.Unlock()
@@ -106,6 +125,21 @@ func (s *rtpFake) serve(t *testing.T, base time.Time) {
 			reply = replies[0]
 			if s.firstReply == nil {
 				s.firstReply = append([]byte(nil), reply...)
+			}
+			if s.outOfWindowDelegation {
+				oldReplies, oldErr := protocol.CreateReplies(
+					protocol.Version1,
+					[]protocol.Request{*req},
+					base.Add(-90*time.Minute),
+					s.radius,
+					s.outOfWindowCert,
+				)
+				if oldErr != nil {
+					s.mu.Unlock()
+					t.Errorf("create correctly signed old-delegation reply: %v", oldErr)
+					continue
+				}
+				reply = replaceRoughtimeCertificate(t, reply, oldReplies[0])
 			}
 			if s.corrupt {
 				reply = append([]byte(nil), reply...)
@@ -217,13 +251,13 @@ func TestRoughtimeProviderRejectsReplayAndBadSignature(t *testing.T) {
 	}
 }
 
-func TestRoughtimeProviderRejectsDelegationOutsideValidityWindow(t *testing.T) {
+func TestRoughtimeProviderRejectsMidpointOutsideDelegationWindow(t *testing.T) {
 	rec := newRTPRecorder()
 	witnesses := make([]RoughtimeWitness, 0, 3)
 	for i := 0; i < 3; i++ {
 		opts := []func(*rtpFake){}
 		if i == 0 {
-			opts = append(opts, func(s *rtpFake) { s.expiredDelegation = true })
+			opts = append(opts, func(s *rtpFake) { s.outOfWindowDelegation = true })
 		}
 		witness, _ := newRTPWitness(t, fmt.Sprintf("w-%d", i), fmt.Sprintf("op-%d", i), rec, opts...)
 		witnesses = append(witnesses, witness)
@@ -239,6 +273,80 @@ func TestRoughtimeProviderRejectsDelegationOutsideValidityWindow(t *testing.T) {
 	if !errors.Is(err, ErrRoughtimeVerification) || !errors.Is(err, protocol.ErrDelegationWindow) || evidence != nil {
 		t.Fatalf("ObserveBatch() = (%v, %v), want nil evidence and rejected delegation window", evidence, err)
 	}
+}
+
+func TestRoughtimeProviderRejectsCausallyDecreasingServerTimes(t *testing.T) {
+	rec := newRTPRecorder()
+	witnesses := make([]RoughtimeWitness, 0, 3)
+	for i := 0; i < 3; i++ {
+		witness, _ := newRTPWitness(t, fmt.Sprintf("w-%d", i), fmt.Sprintf("op-%d", i), rec,
+			func(s *rtpFake) { s.descendingChainTime = true })
+		witnesses = append(witnesses, witness)
+	}
+	provider, err := NewRoughtimeProvider(RoughtimeProviderConfig{
+		Witnesses: witnesses, ExchangeTimeout: time.Second,
+		MeasurementTimeout: 15 * time.Second, MaxRadius: 2 * time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidence, err := provider.ObserveBatch(context.Background())
+	if !errors.Is(err, ErrRoughtimeVerification) || !errors.Is(err, protocol.ErrCausalOrder) || evidence != nil {
+		t.Fatalf("ObserveBatch() = (%v, %v), want nil evidence and causal-order rejection", evidence, err)
+	}
+}
+
+func replaceRoughtimeCertificate(t *testing.T, currentReply, certificateReply []byte) []byte {
+	t.Helper()
+	current, err := protocol.Decode(currentReply[protocol.PacketHeaderSize:])
+	if err != nil {
+		t.Fatalf("decode current Roughtime response: %v", err)
+	}
+	alternate, err := protocol.Decode(certificateReply[protocol.PacketHeaderSize:])
+	if err != nil {
+		t.Fatalf("decode alternate Roughtime response: %v", err)
+	}
+	current[protocol.TagCERT] = append([]byte(nil), alternate[protocol.TagCERT]...)
+	return encodeRoughtimeRFCReply(t, current)
+}
+
+func encodeRoughtimeRFCReply(t *testing.T, message map[uint32][]byte) []byte {
+	t.Helper()
+	tags := make([]uint32, 0, len(message))
+	for tag := range message {
+		tags = append(tags, tag)
+	}
+	sort.Slice(tags, func(i, j int) bool { return tags[i] < tags[j] })
+	if len(tags) == 0 {
+		t.Fatal("cannot encode an empty Roughtime message")
+	}
+	headerLength := 4 + 4*(len(tags)-1) + 4*len(tags)
+	valuesLength := 0
+	for index, tag := range tags {
+		value := message[tag]
+		if index < len(tags)-1 && len(value)%4 != 0 {
+			t.Fatalf("Roughtime value for tag %08x is not word aligned", tag)
+		}
+		valuesLength += len(value)
+	}
+	packet := make([]byte, protocol.PacketHeaderSize+headerLength+valuesLength)
+	copy(packet[:8], []byte("ROUGHTIM"))
+	binary.LittleEndian.PutUint32(packet[8:protocol.PacketHeaderSize], uint32(len(packet)-protocol.PacketHeaderSize))
+	body := packet[protocol.PacketHeaderSize:]
+	binary.LittleEndian.PutUint32(body[:4], uint32(len(tags)))
+	offset := 0
+	for index := 1; index < len(tags); index++ {
+		offset += len(message[tags[index-1]])
+		binary.LittleEndian.PutUint32(body[4+4*(index-1):], uint32(offset))
+	}
+	tagsOffset := 4 + 4*(len(tags)-1)
+	valueOffset := headerLength
+	for index, tag := range tags {
+		binary.LittleEndian.PutUint32(body[tagsOffset+4*index:], tag)
+		copy(body[valueOffset:], message[tag])
+		valueOffset += len(message[tag])
+	}
+	return packet
 }
 
 func TestRoughtimeProviderRejectsRadiusAbovePolicy(t *testing.T) {
