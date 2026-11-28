@@ -19,12 +19,12 @@ import (
 )
 
 type delegatedRepositoryFixture struct {
-	rootJSON   []byte
-	rootSigner testSigningKey
+	rootJSON      []byte
+	rootSigner    testSigningKey
 	timestampJSON []byte
-	metadata   map[string][]byte
-	descriptor artifact.Descriptor
-	targetPath string
+	metadata      map[string][]byte
+	descriptor    artifact.Descriptor
+	targetPath    string
 }
 
 func addFixtureRootKey(t *testing.T, root *metadata.Metadata[metadata.RootType], key testSigningKey, role string) {
@@ -499,7 +499,6 @@ func TestTUFClientRejectsRootRotationMissingPreviouslyTrustedSignature(t *testin
 		t.Fatalf("TUF updater continued to timestamp metadata after rejecting root rotation; requests = %v", *requests)
 	}
 }
-
 
 func TestTUFClientRefreshStartsFromLatestVerifiedRoot(t *testing.T) {
 	fixture := makeDelegatedRepositoryFixture(t)
