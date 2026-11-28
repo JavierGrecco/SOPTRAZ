@@ -25,9 +25,9 @@ func run() (exitCode int) {
 		if err := logger.ConfigureCrashOutput(); err != nil {
 			fmt.Fprintf(os.Stderr, "SOPTRAZ: no se pudo configurar el registro de fallos fatales: %v\n", err)
 		}
-		fmt.Fprintf(os.Stderr, "SOPTRAZ: informe técnico local: %s\n", logger.Path())
 		if recovered := logger.RecoveredRuns(); len(recovered) > 0 {
 			fmt.Fprintf(os.Stderr, "SOPTRAZ: se detectó una ejecución anterior sin cierre normal; revisar: %s\n", recovered[0])
+			fmt.Fprintf(os.Stderr, "SOPTRAZ: informe de esta recuperación: %s\n", logger.Path())
 		}
 	}
 
@@ -37,6 +37,8 @@ func run() (exitCode int) {
 			if logger != nil {
 				if recordErr := logger.RecordPanic("cmd/soptraz", recovered, stack); recordErr != nil {
 					fmt.Fprintf(os.Stderr, "SOPTRAZ: no se pudo escribir el informe del panic: %v\n", recordErr)
+				} else {
+					fmt.Fprintf(os.Stderr, "SOPTRAZ: panic no esperado; informe técnico: %s\n", logger.Path())
 				}
 			} else {
 				fmt.Fprintf(os.Stderr, "SOPTRAZ: panic no recuperado: %v\n%s", recovered, stack)
