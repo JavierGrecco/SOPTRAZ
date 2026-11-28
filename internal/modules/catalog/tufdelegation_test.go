@@ -187,7 +187,6 @@ func TestResolveTargetPathEnforcesDelegationLimit(t *testing.T) {
 	}
 }
 
-
 func TestResolveTargetPathUsesDepthFirstPreOrder(t *testing.T) {
 	targetPath := "packages/tool/1.0/tool"
 	roles := map[string]*metadata.Metadata[metadata.TargetsType]{
