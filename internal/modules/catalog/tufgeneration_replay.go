@@ -23,7 +23,9 @@ var ErrGenerationReplay = errors.New("replay criptográfico de generación TUF r
 // using go-tuf's supported trustedmetadata API. rootJSON must already be an
 // independently authenticated current root (for example after replaying the
 // bootstrap root chain). referenceTime is mandatory and fixed for the entire
-// operation; this function never reads the wall clock or performs network I/O.
+// operation; it replaces go-tuf's constructor default before any metadata
+// update, so expiry decisions never use an implicit wall-clock reference.
+// The function performs no network I/O.
 //
 // This is the shared cryptographic primitive for online generation capture and
 // future strict-offline verification. It authenticates metadata and delegation
@@ -50,7 +52,7 @@ func replayVerifiedGeneration(
 	}
 	root, err := metadata.Root().FromBytes(rootJSON)
 	if err != nil {
-		return nil, fmt.Errorf("%w: analizar root JSON: %v", ErrGenerationReplay, err)
+		return nil, fmt.Errorf("%w: analizar root JSON: %w", ErrGenerationReplay, err)
 	}
 	if int64(root.Signed.Version) != rootState.Version {
 		return nil, fmt.Errorf("%w: root version %d, esperada %d", ErrGenerationReplay, root.Signed.Version, rootState.Version)
@@ -58,7 +60,7 @@ func replayVerifiedGeneration(
 
 	replayed, err := trustedmetadata.New(rootJSON)
 	if err != nil {
-		return nil, fmt.Errorf("%w: inicializar go-tuf desde root: %v", ErrGenerationReplay, err)
+		return nil, fmt.Errorf("%w: inicializar go-tuf desde root: %w", ErrGenerationReplay, err)
 	}
 	if replayed.Root == nil || !reflect.DeepEqual(replayed.Root, root) {
 		return nil, fmt.Errorf("%w: go-tuf no conservó la root exacta", ErrGenerationReplay)
@@ -78,7 +80,7 @@ func replayVerifiedGeneration(
 
 	for _, role := range roles {
 		if err := validateReplayRoleName(role.Role); err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrGenerationReplay, err)
+			return nil, fmt.Errorf("%w: %w", ErrGenerationReplay, err)
 		}
 		if _, exists := roleBytes[role.Role]; exists {
 			return nil, fmt.Errorf("%w: rol duplicado %q", ErrGenerationReplay, role.Role)
@@ -115,7 +117,7 @@ func replayVerifiedGeneration(
 			}
 			parsed, err := metadata.Timestamp().FromBytes(role.Metadata)
 			if err != nil {
-				return nil, fmt.Errorf("%w: parsear timestamp: %v", ErrGenerationReplay, err)
+				return nil, fmt.Errorf("%w: parsear timestamp: %w", ErrGenerationReplay, err)
 			}
 			if parsed.Signed.Version != role.Version || !parsed.Signed.Expires.Equal(role.ExpiresAt) {
 				return nil, fmt.Errorf("%w: versión/expiración almacenada de timestamp no coincide", ErrGenerationReplay)
@@ -128,7 +130,7 @@ func replayVerifiedGeneration(
 			}
 			parsed, err := metadata.Snapshot().FromBytes(role.Metadata)
 			if err != nil {
-				return nil, fmt.Errorf("%w: parsear snapshot: %v", ErrGenerationReplay, err)
+				return nil, fmt.Errorf("%w: parsear snapshot: %w", ErrGenerationReplay, err)
 			}
 			if parsed.Signed.Version != role.Version || !parsed.Signed.Expires.Equal(role.ExpiresAt) {
 				return nil, fmt.Errorf("%w: versión/expiración almacenada de snapshot no coincide", ErrGenerationReplay)
@@ -139,12 +141,12 @@ func replayVerifiedGeneration(
 			if role.Role == metadata.ROOT {
 				return nil, fmt.Errorf("%w: root pertenece a root-chain, no a generation roles", ErrGenerationReplay)
 			}
-			if len(parents) == 0 {
-				if role.Role == metadata.TARGETS {
-					// The top-level targets role is the only non-delegated targets role.
-				} else {
-					return nil, fmt.Errorf("%w: rol delegado %q sin delegador", ErrGenerationReplay, role.Role)
+			if role.Role == metadata.TARGETS {
+				if len(parents) != 0 {
+					return nil, fmt.Errorf("%w: targets top-level no admite delegador", ErrGenerationReplay)
 				}
+			} else if len(parents) == 0 {
+				return nil, fmt.Errorf("%w: rol delegado %q sin delegador", ErrGenerationReplay, role.Role)
 			}
 			parsed, err := metadata.Targets().FromBytes(role.Metadata)
 			if err != nil {
@@ -181,13 +183,13 @@ func replayVerifiedGeneration(
 	}
 
 	if _, err := replayed.UpdateTimestamp(roleBytes[metadata.TIMESTAMP]); err != nil {
-		return nil, fmt.Errorf("%w: validar timestamp con go-tuf: %v", ErrGenerationReplay, err)
+		return nil, fmt.Errorf("%w: validar timestamp con go-tuf: %w", ErrGenerationReplay, err)
 	}
 	if _, err := replayed.UpdateSnapshot(roleBytes[metadata.SNAPSHOT], false); err != nil {
-		return nil, fmt.Errorf("%w: validar snapshot con go-tuf: %v", ErrGenerationReplay, err)
+		return nil, fmt.Errorf("%w: validar snapshot con go-tuf: %w", ErrGenerationReplay, err)
 	}
 	if _, err := replayed.UpdateTargets(roleBytes[metadata.TARGETS]); err != nil {
-		return nil, fmt.Errorf("%w: validar targets top-level con go-tuf: %v", ErrGenerationReplay, err)
+		return nil, fmt.Errorf("%w: validar targets top-level con go-tuf: %w", ErrGenerationReplay, err)
 	}
 	if !reflect.DeepEqual(replayed.Timestamp, timestampValue) ||
 		!reflect.DeepEqual(replayed.Snapshot, snapshotValue) ||
