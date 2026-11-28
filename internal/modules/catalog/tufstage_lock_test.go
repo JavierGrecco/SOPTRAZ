@@ -6,12 +6,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"testing"
 	"time"
 
 	"github.com/JavierGrecco/SOPTRAZ/internal/storage/sqlitetuf"
 )
+
+var tufLockHelperResources []any
 
 func openStageLockTestStore(t *testing.T, path string) *sqlitetuf.Store {
 	t.Helper()
@@ -146,6 +147,7 @@ func TestTUFRepositoryLockHelperProcess(t *testing.T) {
 	storePath := os.Getenv("SOPTRAZ_TUF_LOCK_STORE")
 	cacheRoot := os.Getenv("SOPTRAZ_TUF_LOCK_CACHE")
 	readyPath := os.Getenv("SOPTRAZ_TUF_LOCK_READY")
+	releasePath := os.Getenv("SOPTRAZ_TUF_LOCK_RELEASE")
 	repositoryID := "abrupt-exit-repository"
 
 	store, err := sqlitetuf.Open(context.Background(), storePath)
@@ -159,15 +161,18 @@ func TestTUFRepositoryLockHelperProcess(t *testing.T) {
 	if _, err := os.MkdirTemp(cacheRoot, tufMetadataStagePrefixForRepository(repositoryID)+"*"); err != nil {
 		os.Exit(93)
 	}
-	if err := os.WriteFile(readyPath, []byte("LOCK_READY"), 0o600); err != nil {
+	tufLockHelperResources = []any{store, repositoryLock}
+	if err := os.WriteFile(readyPath, []byte(repositoryLock.Path()), 0o600); err != nil {
 		os.Exit(94)
 	}
 
-	// Keep the lock and SQLite connection reachable until the parent kills this process.
-	done := make(chan struct{})
-	<-done
-	runtime.KeepAlive(repositoryLock)
-	runtime.KeepAlive(store)
+	for {
+		if _, err := os.Stat(releasePath); err == nil {
+			// os.Exit bypasses Close/Unlock and deferred cleanup.
+			os.Exit(0)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 func TestTUFRepositoryLockAndOrphanCleanupAfterAbruptProcessExit(t *testing.T) {
@@ -175,6 +180,7 @@ func TestTUFRepositoryLockAndOrphanCleanupAfterAbruptProcessExit(t *testing.T) {
 	storePath := filepath.Join(root, "catalog-trust.sqlite")
 	cacheRoot := filepath.Join(root, "metadata")
 	readyPath := filepath.Join(root, "ready")
+	releasePath := filepath.Join(root, "release")
 	if err := os.MkdirAll(cacheRoot, 0o700); err != nil {
 		t.Fatalf("create cache root: %v", err)
 	}
@@ -186,6 +192,7 @@ func TestTUFRepositoryLockAndOrphanCleanupAfterAbruptProcessExit(t *testing.T) {
 		"SOPTRAZ_TUF_LOCK_STORE="+storePath,
 		"SOPTRAZ_TUF_LOCK_CACHE="+cacheRoot,
 		"SOPTRAZ_TUF_LOCK_READY="+readyPath,
+		"SOPTRAZ_TUF_LOCK_RELEASE="+releasePath,
 	)
 	if err := command.Start(); err != nil {
 		t.Fatalf("start lock-owning process: %v", err)
@@ -193,7 +200,7 @@ func TestTUFRepositoryLockAndOrphanCleanupAfterAbruptProcessExit(t *testing.T) {
 	processExited := false
 	defer func() {
 		if !processExited {
-			_ = command.Process.Kill()
+			_ = os.WriteFile(releasePath, []byte("EXIT"), 0o600)
 			_ = command.Wait()
 		}
 	}()
@@ -213,11 +220,11 @@ func TestTUFRepositoryLockAndOrphanCleanupAfterAbruptProcessExit(t *testing.T) {
 		t.Fatalf("second process lock error = %v, want ErrTUFRepositoryInUse", err)
 	}
 
-	if err := command.Process.Kill(); err != nil {
-		t.Fatalf("kill lock-owning process: %v", err)
+	if err := os.WriteFile(releasePath, []byte("EXIT"), 0o600); err != nil {
+		t.Fatalf("release lock-owning child for abrupt exit: %v", err)
 	}
-	if err := command.Wait(); err == nil {
-		t.Fatal("forcibly terminated helper process exited successfully")
+	if err := command.Wait(); err != nil {
+		t.Fatalf("abrupt lock helper returned error: %v", err)
 	}
 	processExited = true
 
