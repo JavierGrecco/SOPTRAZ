@@ -209,7 +209,7 @@ func (p *RoughtimeProvider) ObserveBatch(ctx context.Context) ([]Evidence, error
 				}
 				_, radius, err := protocol.VerifyReply([]protocol.Version{protocol.Version1}, reply, witness.PublicKey, link.Nonce, link.Request)
 				if err != nil {
-					return nil, fmt.Errorf("%w: testigo %q: %v", ErrRoughtimeVerification, witness.Source.ID, err)
+					return nil, fmt.Errorf("%w: testigo %q: %w", ErrRoughtimeVerification, witness.Source.ID, err)
 				}
 				if radius <= 0 || radius > p.maxRadius {
 					return nil, fmt.Errorf("%w: %q informa %s; máximo %s", ErrRoughtimeRadius, witness.Source.ID, radius, p.maxRadius)
@@ -233,7 +233,7 @@ func (p *RoughtimeProvider) ObserveBatch(ctx context.Context) ([]Evidence, error
 
 	bounds, err := chain.VerifyBounds()
 	if err != nil {
-		return nil, fmt.Errorf("%w: cadena causal: %v", ErrRoughtimeVerification, err)
+		return nil, fmt.Errorf("%w: cadena causal: %w", ErrRoughtimeVerification, err)
 	}
 	if len(bounds) != 2*len(order) || len(samples) != len(bounds) {
 		return nil, ErrRoughtimeMeasurement

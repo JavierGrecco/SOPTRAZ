@@ -31,6 +31,7 @@ type rtpFake struct {
 	recorder        *rtpRecorder
 	radius          time.Duration
 	replay, corrupt bool
+	expiredDelegation bool
 	mu              sync.Mutex
 	firstReply      []byte
 	done            chan struct{}
@@ -43,15 +44,20 @@ func newRTPFake(t *testing.T, id string, root, online ed25519.PrivateKey, record
 		t.Fatal(err)
 	}
 	base := time.Now()
-	cert, err := protocol.NewCertificate(base.Add(-time.Hour), base.Add(time.Hour), online, root)
+	server := &rtpFake{id: id, conn: conn, recorder: recorder, radius: 100 * time.Millisecond, done: make(chan struct{})}
+	for _, opt := range opts {
+		opt(server)
+	}
+	mint, maxt := base.Add(-time.Hour), base.Add(time.Hour)
+	if server.expiredDelegation {
+		mint, maxt = base.Add(-2*time.Hour), base.Add(-time.Hour)
+	}
+	cert, err := protocol.NewCertificate(mint, maxt, online, root)
 	if err != nil {
 		_ = conn.Close()
 		t.Fatal(err)
 	}
-	server := &rtpFake{id: id, conn: conn, cert: cert, recorder: recorder, radius: 100 * time.Millisecond, done: make(chan struct{})}
-	for _, opt := range opts {
-		opt(server)
-	}
+	server.cert = cert
 	go server.serve(t, base)
 	t.Cleanup(func() { _ = conn.Close(); <-server.done; cert.Wipe() })
 	return server, root.Public().(ed25519.PublicKey)
@@ -208,6 +214,30 @@ func TestRoughtimeProviderRejectsReplayAndBadSignature(t *testing.T) {
 				t.Fatalf("got (%v,%v), want nil evidence and verification error", got, err)
 			}
 		})
+	}
+}
+
+func TestRoughtimeProviderRejectsDelegationOutsideValidityWindow(t *testing.T) {
+	rec := newRTPRecorder()
+	witnesses := make([]RoughtimeWitness, 0, 3)
+	for i := 0; i < 3; i++ {
+		opts := []func(*rtpFake){}
+		if i == 0 {
+			opts = append(opts, func(s *rtpFake) { s.expiredDelegation = true })
+		}
+		witness, _ := newRTPWitness(t, fmt.Sprintf("w-%d", i), fmt.Sprintf("op-%d", i), rec, opts...)
+		witnesses = append(witnesses, witness)
+	}
+	provider, err := NewRoughtimeProvider(RoughtimeProviderConfig{
+		Witnesses: witnesses, ExchangeTimeout: time.Second,
+		MeasurementTimeout: 15 * time.Second, MaxRadius: 2 * time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidence, err := provider.ObserveBatch(context.Background())
+	if !errors.Is(err, ErrRoughtimeVerification) || !errors.Is(err, protocol.ErrDelegationWindow) || evidence != nil {
+		t.Fatalf("ObserveBatch() = (%v, %v), want nil evidence and rejected delegation window", evidence, err)
 	}
 }
 
