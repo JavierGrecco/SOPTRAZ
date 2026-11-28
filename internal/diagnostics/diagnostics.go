@@ -70,12 +70,12 @@ type Logger struct {
 	recoveredRuns  []string
 }
 
-// OpenDefault stores reports in the current user's private configuration
-// directory. Reports remain local and are never uploaded by this package.
+// OpenDefault stores reports in the current user's local cache directory.
+// Reports remain local and are never uploaded by this package.
 func OpenDefault(version string) (*Logger, error) {
 	base, err := os.UserCacheDir()
 	if err != nil {
-		return nil, fmt.Errorf("resolver carpeta local de configuración: %w", err)
+		return nil, fmt.Errorf("resolver carpeta local de diagnósticos: %w", err)
 	}
 	return Open(filepath.Join(base, "SOPTRAZ", "diagnostics"), version)
 }
