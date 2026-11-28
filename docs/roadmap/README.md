@@ -53,9 +53,10 @@ Runtime Go, registro local, IDs, acciones tipadas, permisos/riesgo, cancelación
 - [x] Seleccionar almacenamiento durable para root chain, generaciones, high-water y active generation mediante SQLite separado (ADR-0017).
 - [x] Implementar la primera capa aislada del store SQLite para la cadena root: anchor/origen fijados, raíces append-only, enlaces SHA-256, versiones consecutivas, CAS transaccional, lectura consistente y reapertura (PR #22; CI completo de cinco jobs).
 - [x] Integrar el store con `NewPersistentTUFClient`: replay de toda la cadena desde el pin bootstrap, captura de respuestas `N.root.json`, confirmación de que el updater oficial aceptó la misma versión y commit CAS durable incluso si falla metadata posterior (PR #23 integrado en `1988db9`; CI pre-merge 5/5 en run 46093570302).
-- [ ] Implementar staging y commits atómicos de generaciones completas, metadata por rol/delegación, high-water marks y `active_generation`; cubrir crash/restart real y concurrencia.
-- [ ] Integrar el updater con staging por generación y materialización de metadata por rol; el replay persistente de root desde el anchor ya está implementado e integrado en PR #23.
-- [ ] Completar resiliencia del updater: commits atómicos de generaciones, high-water durable por rol, recuperación crash/restart real y política de actualización de metadata no-root cacheada.
+- [x] Implementar el esquema SQLite v2 para generaciones inmutables, metadata por rol/delegación, manifiesto SHA-256, high-water por rol con procedencia inmutable y puntero `active_generation` (PR #25 integrado en `e4341ab`).
+- [x] Implementar `CommitGeneration`/`LoadActiveGeneration`: root binding, CAS, commit atómico de blobs/relaciones/high-water/puntero y readback con verificación de hashes y manifiesto (PR #25; CI 5/5 en run 46095086164).
+- [ ] Integrar el updater con staging por generación: capturar bytes exactos autenticados por go-tuf, resolver y validar los roles delegados requeridos y materializar una generación antes del commit. No marcar el grafo como completo si no se recorrieron todos los roles requeridos.
+- [ ] Completar resiliencia: terminación abrupta real, recuperación crash/restart, disco lleno, dos procesos escritores y política de actualización de metadata no-root cacheada.
 - [ ] Definir modo offline que revalide metadata cacheada, vigente y anti-rollback; no usar TOFU ni UnsafeLocalMode como bypass.
 - [ ] Probar rotación root, thresholds, firma inválida, expiración, rollback/freeze, consistent snapshots, delegaciones y cache corrupta.
 - [x] Configurar el fetcher inicial con timeout HTTP, límites de metadata, redirects desactivados, reintentos acotados y sincronización del Updater.
