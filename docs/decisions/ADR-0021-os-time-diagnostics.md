@@ -1,6 +1,6 @@
 # ADR-0021: Diagnóstico de sincronización horaria del sistema operativo
 
-- Estado: Aceptada como política de arquitectura; adaptadores pendientes.
+- Estado: Aceptada como política de arquitectura; DTO y adaptadores read-only Linux/Windows implementados; adaptador macOS pendiente.
 - Fecha: 2026-11-28
 - Relacionada: ADR-0020, ADR-0006, M1.4.
 - Alcance: observación local, de solo lectura, de la hora de pared y de las señales de sincronización que exponga el sistema operativo. No establece una fuente de tiempo criptográficamente confiable.
@@ -17,7 +17,7 @@ Necesitamos un diagnóstico útil y multiplataforma sin elevar privilegios autom
 
 ### 1. Separar diagnóstico de evidencia confiable
 
-El futuro tipo SystemTimeDiagnostics será independiente de trustedtime.Evidence. Como mínimo distinguirá:
+El tipo SystemTimeDiagnostics, implementado como DTO puro, es independiente de trustedtime.Evidence. Como mínimo distinguirá:
 
 - WallClockObservedAt: lectura UTC del reloj local tomada al capturar el diagnóstico; sirve para mostrar el contexto, no para validar expiración.
 - ServiceState: active, inactive o unknown. Describe el servicio de sincronización observado.
