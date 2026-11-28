@@ -35,6 +35,14 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Verify local development environment (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/dev/check-env.ps1
+      - name: Verify local development environment (macOS/Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: bash scripts/dev/check-env.sh
       - name: Verify Go module files
         if: runner.os == 'Linux'
         run: |
