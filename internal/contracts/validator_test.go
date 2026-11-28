@@ -222,7 +222,7 @@ func TestProcessProfileRejectsShellAndUnknownExecutionFields(t *testing.T) {
 
 func TestProcessProfileRejectsControlCharactersAndExitCodeWithoutSuccess(t *testing.T) {
 	raw := string(readExample(t, "process-profile.example.json"))
-	control := strings.Replace(raw, `"SELECT name, version, build FROM os_version;"`, "SELECT name,\\n version FROM os_version;", 1)
+	control := strings.Replace(raw, `"SELECT name, version, build FROM os_version;"`, "SELECT name,\n version FROM os_version;", 1)
 	if err := ValidateDocument("process-profile", []byte(control)); err == nil {
 		t.Fatal("process profile must reject control characters in fixed arguments")
 	}
