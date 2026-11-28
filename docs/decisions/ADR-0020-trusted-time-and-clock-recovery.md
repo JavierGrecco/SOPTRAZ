@@ -218,6 +218,8 @@ Referencias: [Microsoft — Windows Time Service](https://learn.microsoft.com/en
 
 ### Selección de implementación
 
+La evaluación de repositorios y los criterios de aceptación para una POC aislada de Roughtime/NTS están registrados en [docs/research/trusted-time-provider-poc.md](../research/trusted-time-provider-poc.md). Esa revisión no agrega dependencias ni cierra M1.4.
+
 1. Primera etapa: adaptar los proveedores del sistema operativo como clase `system`, solo para lectura/diagnóstico, sin cambiar el reloj ni elevar assurance por inferencia.
 2. Segunda etapa: auditar `beevik/nts` en una POC aislada después de definir el bootstrap temporal TLS; probar NTS con servidor de laboratorio propio/Chrony y, si se puede, un servidor público interoperable.
 3. Tercera etapa: probar Roughtime RFC 10049 v1 con vectores y servidores controlados; comparar al menos operadores realmente independientes antes de considerar fuentes públicas.
