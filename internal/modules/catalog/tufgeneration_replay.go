@@ -102,7 +102,7 @@ func replayVerifiedGeneration(
 		sort.Strings(parents)
 		for index, parent := range parents {
 			if err := validateReplayRoleName(parent); err != nil {
-				return nil, fmt.Errorf("%w: delegador de %q: %v", ErrGenerationReplay, role.Role, err)
+				return nil, fmt.Errorf("%w: delegador de %q: %w", ErrGenerationReplay, role.Role, err)
 			}
 			if parent == role.Role || (index > 0 && parents[index-1] == parent) {
 				return nil, fmt.Errorf("%w: delegación propia o duplicada en %q", ErrGenerationReplay, role.Role)
@@ -150,7 +150,7 @@ func replayVerifiedGeneration(
 			}
 			parsed, err := metadata.Targets().FromBytes(role.Metadata)
 			if err != nil {
-				return nil, fmt.Errorf("%w: parsear targets %q: %v", ErrGenerationReplay, role.Role, err)
+				return nil, fmt.Errorf("%w: parsear targets %q: %w", ErrGenerationReplay, role.Role, err)
 			}
 			if parsed.Signed.Version != role.Version || !parsed.Signed.Expires.Equal(role.ExpiresAt) {
 				return nil, fmt.Errorf("%w: versión/expiración almacenada de %q no coincide", ErrGenerationReplay, role.Role)
@@ -232,7 +232,7 @@ func replayVerifiedGeneration(
 			}
 			for _, parent := range parents {
 				if _, err := replayed.UpdateDelegatedTargets(roleBytes[roleName], roleName, parent); err != nil {
-					return nil, fmt.Errorf("%w: validar rol delegado %q desde %q: %v", ErrGenerationReplay, roleName, parent, err)
+					return nil, fmt.Errorf("%w: validar rol delegado %q desde %q: %w", ErrGenerationReplay, roleName, parent, err)
 				}
 			}
 			if !reflect.DeepEqual(replayed.Targets[roleName], targetValues[roleName]) {
