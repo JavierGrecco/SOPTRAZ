@@ -48,7 +48,6 @@ func persistentClientConfig(metadataURL, cacheRoot string) TUFClientConfig {
 	}
 }
 
-
 func TestRootMetadataCaptureDetectsConflictingBytesForSameVersion(t *testing.T) {
 	transport := &rootMetadataCaptureTransport{roots: make(map[int64][]byte)}
 	transport.recordRoot(2, []byte("root-v2-first"))
