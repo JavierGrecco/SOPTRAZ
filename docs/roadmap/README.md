@@ -75,7 +75,9 @@ La vertical está registrada en [Issue #9](https://github.com/JavierGrecco/SOPTR
 - [x] Decidir arquitectura por catálogo declarativo propio, perfiles revisables y captura del estado real anterior (ADR-0016).
 - [x] Documentar perfil adaptativo por form factor, capacidades, estado dinámico, evidencia y confianza: [windows-device-profile.md](../architecture/windows-device-profile.md).
 - [ ] Definir JSON Schema/contrato de acción de optimización, incluidos compatibilidad por build/arquitectura, privilegios, riesgo, idempotencia, verificación y rollback exacto/parcial/no disponible.
-- [ ] Implementar baseline e inventario Windows de solo lectura dentro de Fase 2, incluido el detector de form factor/capacidades y manejo de señales ambiguas, sin requerir elevación innecesaria.
+- [x] Implementar la primera capa de inventario Windows read-only: parser SMBIOS seguro, chasis, alimentación/batería, touch/pen, postura convertible/dock cuando aplica, clasificador con confianza y CLI `soptraz device-profile [--json]`.
+- [ ] Completar el baseline Windows read-only: DeviceForm/PCSystemType, teclado físico completo, GPU dedicada, sensores térmicos, almacenamiento/SMART, contexto VM/Remote y manejo de fuentes parciales, sin elevación innecesaria.
+- [ ] Integrar el informe de dispositivo en la UI Wails/Field con vista touch-first para tablets y convertibles.
 - [ ] Auditar tweaks candidatos de WinUtil y Sophia individualmente; conservar código solo cuando licencia, soporte, side effects y restauración sean aceptables.
 - [ ] Habilitar la primera acción mutante de bajo riesgo solo detrás de M1.5, con estado previo, consentimiento, verificación y prueba en VM.
 - [ ] Implementar perfiles Mínimo, Equilibrado, Gaming, Batería, Privacidad y Personalizado como selecciones revisables de acciones compatibles, no como scripts opacos.

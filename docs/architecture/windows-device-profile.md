@@ -1,6 +1,6 @@
 # Perfil adaptativo de dispositivo Windows
 
-- Estado: arquitectura aceptada; clasificador puro y primer recolector nativo Windows de solo lectura integrados. Exposición CLI en revisión por PR #18. Sin acciones mutantes.
+- Estado: arquitectura aceptada; clasificador, primer recolector nativo Windows de solo lectura e informe CLI integrados en `main` (PR #18, commit `407a43c`). Sin acciones mutantes.
 - Fecha: 2026-11-27
 - Relacionado: ADR-0016, Issue #9, Issue #5 (M1.4), Issue #4 (M1.5), investigación MiniOS/DELTA.
 - Principio: detectar el equipo y sus capacidades para adaptar recomendaciones; nunca inferir permiso para modificar Windows.
@@ -259,11 +259,12 @@ La investigación distingue el contrato y las fuentes oficiales de la implementa
 - La recolección tolera fallos parciales, mantiene `unknown` y no recoge seriales, UUID, MAC ni asset tags.
 - No-Windows devuelve error de capacidad no disponible y mantiene el mismo contrato de datos.
 
-### En revisión en PR #18
+### Integrado en main (PR #18)
 
 - Comando `soptraz device-profile [--json]` para presentar el resultado como informe humano o JSON.
-- Estados tri-state explícitos como cadenas `yes | no | unknown`.
+- Estados tri-state explícitos como cadenas `yes | no | unknown`; los enums omitidos se normalizan a unknown.
 - Reporte de errores por fuente y marca `mutations_applied: false`.
+- Estados de recolección `collected | partial | unavailable`, sin inferir datos que no pudieron leerse.
 
 ### Lo que todavía falta
 
@@ -273,3 +274,10 @@ La investigación distingue el contrato y las fuentes oficiales de la implementa
 - Pruebas en hardware físico representativo: desktop, notebook, tablet y convertible. La CI de Windows verifica compilación y ABI con el runner, pero no sustituye la prueba en cada OEM/chasis real.
 
 El inventario actual es una primera base verificable, no un detector completo de capacidades ni un benchmark del equipo.
+
+
+### Evidencia de integración de la CLI
+
+- PR #18 integrado en `main` como `407a43c`: https://github.com/JavierGrecco/SOPTRAZ/pull/18.
+- CI pre-merge en SHA `3177149`: cinco jobs exitosos (Windows, macOS, Ubuntu, Race Detector y fuzzing), [run 46089452064](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46089452064).
+- CI post-merge en `main`: [run 46089600469](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46089600469), pendiente de finalización al actualizar este documento.
