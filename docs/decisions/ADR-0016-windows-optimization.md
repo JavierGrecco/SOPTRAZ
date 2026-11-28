@@ -59,3 +59,12 @@ El riesgo es convertir SOPTRAZ en un agregador de scripts de tweaks con resultad
 ## Investigación específica de MiniOS y MENU Extendido
 
 La investigación detallada del ecosistema DProjects, del menú contextual, de la distribución de utilidades de terceros y del enfoque propuesto para SOPTRAZ se mantiene en [docs/research/minios-and-context-menu.md](../research/minios-and-context-menu.md). Distingue declaraciones del proveedor, mecanismos de Windows documentados e hipótesis no verificadas; no habilita la distribución de imágenes o binarios de terceros.
+
+
+## Perfil adaptativo por equipo
+
+SOPTRAZ no aplicará un mismo perfil a tablets, notebooks y desktops. Antes de recomendar acciones construirá un Device Profile que separa form factor físico, capacidades presentes, estado dinámico (CA/batería, teclado/postura, dock y condiciones térmicas) y perfil de uso solicitado. La clasificación debe exponer fuente, evidencia y confianza; los datos que no se pudieron leer permanecen como unknown. Touch no equivale a tablet y la presencia de batería no basta para clasificar notebook.
+
+Se priorizan señales documentadas de SMBIOS/Win32_SystemEnclosure y DeviceForm; PCSystemType/Ex, ConvertibleSlateMode, estado de energía e input sirven para corroborar y describir cambios dinámicos. Las recomendaciones se reevalúan antes de una operación; los cambios de postura, energía o docking nunca disparan una mutación por sí solos. Las señales contradictorias llevan a clasificación conservadora.
+
+El diseño, fuentes oficiales, perfiles por dispositivo, privacidad, pruebas y contrato de referencia están en [docs/architecture/windows-device-profile.md](../architecture/windows-device-profile.md). La implementación sigue pendiente: el documento no implica que la detección ya exista.
