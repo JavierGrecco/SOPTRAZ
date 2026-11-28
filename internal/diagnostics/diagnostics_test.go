@@ -271,6 +271,101 @@ func TestNextStartupDetectsAbruptProcessTermination(t *testing.T) {
 		t.Fatalf("same interrupted run was reported again: %v", next.RecoveredRuns())
 	}
 }
+
+func TestNextStartupDetectsExternallyKilledProcess(t *testing.T) {
+	directory := t.TempDir()
+	readyPath := filepath.Join(t.TempDir(), "ready")
+	releasePath := filepath.Join(t.TempDir(), "release")
+	command := exec.Command(os.Args[0], "-test.run=^TestDiagnosticsAbruptExitHelper$")
+	command.Env = append(os.Environ(),
+		"SOPTRAZ_DIAGNOSTICS_HELPER=1",
+		"SOPTRAZ_DIAGNOSTICS_DIR="+directory,
+		"SOPTRAZ_DIAGNOSTICS_READY="+readyPath,
+		"SOPTRAZ_DIAGNOSTICS_RELEASE="+releasePath,
+	)
+	var stdout, stderr strings.Builder
+	command.Stdout = &stdout
+	command.Stderr = &stderr
+	if err := command.Start(); err != nil {
+		t.Fatalf("start helper process: %v", err)
+	}
+
+	processExited := false
+	defer func() {
+		if !processExited {
+			// Keep the test leak-free if an assertion fails before Kill succeeds.
+			_ = os.WriteFile(releasePath, []byte("EXIT"), 0o600)
+			_ = command.Wait()
+		}
+	}()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if _, err := os.Stat(readyPath); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("helper did not become ready; stdout=%q stderr=%q", stdout.String(), stderr.String())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	readyReport, err := os.ReadFile(readyPath)
+	if err != nil {
+		t.Fatalf("read helper report path: %v", err)
+	}
+	if strings.TrimSpace(string(readyReport)) == "" {
+		t.Fatal("helper reported an empty diagnostics path")
+	}
+
+	if err := command.Process.Kill(); err != nil {
+		t.Fatalf("terminate helper externally: %v", err)
+	}
+	waitErr := command.Wait()
+	processExited = true
+	if waitErr == nil {
+		t.Fatalf("externally terminated helper exited successfully; stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+
+	logger, err := Open(directory, "external-kill-recovery")
+	if err != nil {
+		t.Fatalf("Open() after externally killed process: %v", err)
+	}
+	defer logger.Close()
+
+	recovered := logger.RecoveredRuns()
+	if len(recovered) != 1 {
+		t.Fatalf("RecoveredRuns() = %v, want one externally interrupted execution", recovered)
+	}
+	previous, err := os.ReadFile(recovered[0])
+	if err != nil {
+		t.Fatalf("read externally interrupted report: %v", err)
+	}
+	report := string(previous)
+	for _, expected := range []string{
+		"test.abrupt_exit",
+		"runtime.unexpected_shutdown",
+		"Causa: indeterminada",
+		"RECUPERACIÓN REGISTRADA:",
+	} {
+		if !strings.Contains(report, expected) {
+			t.Errorf("externally recovered report missing %q: %s", expected, report)
+		}
+	}
+
+	if err := logger.Close(); err != nil {
+		t.Fatalf("close recovery execution: %v", err)
+	}
+	next, err := Open(directory, "external-kill-third-run")
+	if err != nil {
+		t.Fatalf("Open() after external-kill recovery marker: %v", err)
+	}
+	defer next.Close()
+	if len(next.RecoveredRuns()) != 0 {
+		t.Fatalf("external termination was reported more than once: %v", next.RecoveredRuns())
+	}
+}
+
 func TestConcurrentActiveExecutionIsNotReportedAsCrash(t *testing.T) {
 	directory := t.TempDir()
 	first, err := Open(directory, "first-version")
