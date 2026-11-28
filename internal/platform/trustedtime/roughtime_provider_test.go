@@ -27,18 +27,18 @@ type rtpRecorder struct {
 }
 
 type rtpFake struct {
-	id                string
-	conn              net.PacketConn
-	cert              *protocol.Certificate
-	recorder          *rtpRecorder
-	radius            time.Duration
-	replay, corrupt          bool
-	outOfWindowDelegation    bool
-	descendingChainTime      bool
-	outOfWindowCert          *protocol.Certificate
-	mu                sync.Mutex
-	firstReply        []byte
-	done              chan struct{}
+	id                    string
+	conn                  net.PacketConn
+	cert                  *protocol.Certificate
+	recorder              *rtpRecorder
+	radius                time.Duration
+	replay, corrupt       bool
+	outOfWindowDelegation bool
+	descendingChainTime   bool
+	outOfWindowCert       *protocol.Certificate
+	mu                    sync.Mutex
+	firstReply            []byte
+	done                  chan struct{}
 }
 
 func newRTPFake(t *testing.T, id string, root, online ed25519.PrivateKey, recorder *rtpRecorder, opts ...func(*rtpFake)) (*rtpFake, ed25519.PublicKey) {
