@@ -8,7 +8,7 @@ require (
 	github.com/sigstore/sigstore v1.11.3
 	github.com/tannerryan/roughtime v1.28.4
 	github.com/theupdateframework/go-tuf/v2 v2.5.0
-	golang.org/x/sys v0.49.0
+	golang.org/x/sys v0.50.0
 	modernc.org/sqlite v1.63.0
 )
 
