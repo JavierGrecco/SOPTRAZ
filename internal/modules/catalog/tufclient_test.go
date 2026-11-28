@@ -546,18 +546,19 @@ func TestTUFClientRefreshStartsFromLatestVerifiedRoot(t *testing.T) {
 
 func TestTUFClientPreservesVerifiedRootWhenLaterMetadataRefreshFails(t *testing.T) {
 	fixture := makeDelegatedRepositoryFixture(t)
-	fixture.metadata["2.root.json"] = makeRotatedRootMetadata(t, fixture, true)
+	rootV2 := makeRotatedRootMetadata(t, fixture, true)
 
 	server, requests, requestsMu := startDelegatedMetadataServer(t, fixture)
 	client := newFixtureTUFClient(t, fixture, server.URL+"/metadata", 4)
 
+	// Publish the next trusted root only after the initial v1 refresh has
+	// completed. The following refresh must accept v2 and then fail at timestamp.
+	fixture.metadata["2.root.json"] = rootV2
 	requestsMu.Lock()
 	*requests = nil
 	requestsMu.Unlock()
-
-	// Root v2 is valid, but timestamp is temporarily unavailable. Refresh
-	// must fail closed for catalog use while still retaining the verified root.
 	delete(fixture.metadata, "timestamp.json")
+
 	if err := client.Refresh(); err == nil {
 		t.Fatal("Refresh() unexpectedly succeeded without timestamp metadata")
 	}
@@ -573,20 +574,26 @@ func TestTUFClientPreservesVerifiedRootWhenLaterMetadataRefreshFails(t *testing.
 		t.Fatalf("trusted root version after later metadata failure = %d, want 2", root.Signed.Version)
 	}
 
-	// Restore metadata and refresh again. The client must continue from the
-	// already verified v2 root rather than resetting to its original v1 pin.
+	// Restore timestamp and retry. The new Updater must now start from v2,
+	// not from the original v1 pin, and still resolve delegated metadata.
 	fixture.metadata["timestamp.json"] = fixture.timestampJSON
 	if err := client.Refresh(); err != nil {
 		t.Fatalf("Refresh() after restoring timestamp error = %v", err)
 	}
 
 	requestsMu.Lock()
-	defer requestsMu.Unlock()
+	foundRootV2 := false
 	for _, requestPath := range *requests {
 		if requestPath == "/metadata/2.root.json" {
-			t.Fatalf("client re-requested root v2 after a later metadata failure; requests = %v", *requests)
+			foundRootV2 = true
+			break
 		}
 	}
+	requestsMu.Unlock()
+	if foundRootV2 {
+		t.Fatalf("client re-requested root v2 after a later metadata failure; requests = %v", *requests)
+	}
+
 	if _, err := client.ResolveDescriptor(fixture.descriptor); err != nil {
 		t.Fatalf("ResolveDescriptor() after recovered refresh error = %v", err)
 	}
