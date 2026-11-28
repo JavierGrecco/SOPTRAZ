@@ -207,14 +207,14 @@ func TestReplayOfflineTargetMetadataRejectsDelegatedSignatureFromUnauthorizedKey
 		t.Fatalf("parse snapshot metadata: %v", err)
 	}
 	setMetaFile(t, snapshotMetadata.Signed.Meta, "osquery.json", unauthorizedBytes)
-	updatedSnapshotBytes := signedMetadataBytes(t, snapshotMetadata, fixture.snapshotSigner)
+	updatedSnapshotBytes := signedMetadataBytes(t, snapshotMetadata, fixture.repository.snapshotSigner)
 
 	timestampMetadata, err := metadata.Timestamp().FromBytes(timestampRole.Metadata)
 	if err != nil {
 		t.Fatalf("parse timestamp metadata: %v", err)
 	}
 	setMetaFile(t, timestampMetadata.Signed.Meta, "snapshot.json", updatedSnapshotBytes)
-	updatedTimestampBytes := signedMetadataBytes(t, timestampMetadata, fixture.timestampSigner)
+	updatedTimestampBytes := signedMetadataBytes(t, timestampMetadata, fixture.repository.timestampSigner)
 
 	delegatedRole.Metadata = unauthorizedBytes
 	snapshotRole.Metadata = updatedSnapshotBytes
