@@ -11,7 +11,6 @@ El roadmap prioriza una vertical funcional confiable antes de ampliar herramient
 - [x] Definir estrategia tecnológica por dominio.
 - [x] Definir política Free-first de IA.
 - [x] Crear CLI Go de solo lectura.
-- [ ] Incorporar informes técnicos locales para errores importantes, panics y recuperación ante cierres inesperados (PR #31, en revisión).
 - [x] Agregar pruebas iniciales y CI multiplataforma.
 - [x] Definir esquemas JSON para módulos, acciones, intervenciones y eventos.
 - [x] Añadir validador Go de contratos.
@@ -43,7 +42,7 @@ El roadmap prioriza una vertical funcional confiable antes de ampliar herramient
 
 ## Fase 1 — Core y auditoría
 
-Runtime Go, registro local, IDs, acciones tipadas, permisos/riesgo, cancelación, timeout, SQLite y migraciones. La propuesta de diagnósticos de PR #31 escribe informes locales por incidente, excluye INFO/WARN, captura salida fatal del runtime y detecta cierres inesperados en el siguiente arranque. La validación de contratos se utiliza como puerta de entrada. Completar checkpoints externos, recuperación ante corrupción y exportación verificable.
+Runtime Go, registro local, IDs, acciones tipadas, permisos/riesgo, cancelación, timeout, SQLite y migraciones. La validación de contratos se utiliza como puerta de entrada. Completar checkpoints externos, recuperación ante corrupción, exportación verificable y retención.
 
 ## M1.4 — Catálogo autenticado de artefactos
 
@@ -60,11 +59,9 @@ Runtime Go, registro local, IDs, acciones tipadas, permisos/riesgo, cancelación
 - [x] Implementar `CommitGeneration`/`LoadActiveGeneration`: root binding, CAS, commit atómico de blobs/relaciones/high-water/puntero y readback con verificación de hashes y manifiesto (PR #25; CI 5/5 en run 46095086164).
 - [x] Conectar `TUFClient` con `CommitGeneration`: capturar los bytes exactos cacheados por go-tuf, contrastarlos con el estado confiable en memoria, reproducir timestamp/snapshot/targets y las delegaciones recorridas con `trustedmetadata`, y activar mediante CAS transaccional (PR #27 integrado como `4983f7d`; CI pre-merge y post-merge 5/5).
 - [x] Aislar cada refresh persistente en un workspace privado y rehidratarlo desde la generación SQLite activa cuando coincide con la root vigente; el updater online oficial revalida la metadata y un fallo descarta el stage sin cambiar la generación confirmada. `TUFClient.Close()` elimina el workspace (PR #29). Esto no habilita offline.
-- [ ] Integrar y aceptar la coordinación de clientes TUF y recuperación de stages huérfanos propuesta en PR #31, tras revisar locks/crash en Windows, macOS y Linux.
-- [ ] Completar resiliencia física: ENOSPC real, fallos de escritura/sync y recuperación en cada límite de transacción; mantener pruebas multi-proceso.
 - [ ] Completar resiliencia: terminación abrupta real y limpieza segura de stages huérfanos, recuperación tras caída en cada etapa, disco lleno, lock y escritores multi-proceso, y política de actualización de metadata no-root cacheada.
-- [x] Definir el contrato puro `internal/platform/trustedtime`: intervalos de incertidumbre, procedencia, ancla, identidad de clave y SHA-256 de la atestación, con validaciones estructurales sin I/O ni dependencias externas.
-- [ ] Implementar SystemTimeDiagnostics separado de Evidence según ADR-0021: estados independientes de servicio/sincronización, unknown sin inferencias, sin elevación ni cambios del reloj.
+- [x] Definir el contrato puro `internal/platform/trustedtime`: intervalo de incertidumbre, procedencia, ancla, identidad de clave y SHA-256 de la atestación, sin I/O ni dependencias externas.
+- [x] Definir el DTO puro `SystemTimeDiagnostics` separado de `Evidence`, con estados independientes de servicio/sincronización, unknown explícito y timestamps UTC canónicos.
 - [ ] Implementar y probar el lector read-only Linux adjtimex y el estado del kernel; systemd D-Bus será una capacidad opcional, no requisito.
 - [ ] Implementar diagnóstico Windows W32Time sin elevar privilegios; hasta contar con una señal no privilegiada y fiable, sincronización unknown.
 - [ ] Implementar diagnóstico macOS timed sin leer estado cacheado privado; sincronización unknown hasta disponer de API pública verificable.
