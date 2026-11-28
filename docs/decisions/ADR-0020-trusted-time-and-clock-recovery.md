@@ -1,6 +1,6 @@
 # ADR-0020: Fuente de tiempo confiable y recuperación ante relojes incorrectos
 
-- Estado: Aceptada como política de arquitectura; implementación pendiente.
+- Estado: Aceptada como política de arquitectura; contrato puro de evidencia implementado; fuentes autenticadas, persistencia y conexión con TUF pendientes.
 - Fecha: 2026-11-28
 - Relacionada: ADR-0015, ADR-0017, ADR-0019, Issue #5 (M1.4), Issue #4 (M1.5).
 - Alcance: establecer la hora de referencia para verificar expiración y frescura de metadata TUF. No cambia la firma de artefactos ni autoriza su ejecución.
