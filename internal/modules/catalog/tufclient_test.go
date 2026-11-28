@@ -20,6 +20,7 @@ import (
 
 type delegatedRepositoryFixture struct {
 	rootJSON   []byte
+	rootSigner testSigningKey
 	metadata   map[string][]byte
 	descriptor artifact.Descriptor
 	targetPath string
@@ -155,7 +156,8 @@ func makeDelegatedRepositoryFixture(t *testing.T) delegatedRepositoryFixture {
 	timestampJSON := signedMetadataBytes(t, timestamp, timestampKey)
 
 	return delegatedRepositoryFixture{
-		rootJSON: rootJSON,
+		rootJSON:   rootJSON,
+		rootSigner: rootKey,
 		metadata: map[string][]byte{
 			"timestamp.json": timestampJSON,
 			"snapshot.json":  snapshotJSON,
@@ -388,5 +390,110 @@ func TestTUFClientSerializesRefreshAgainstLookups(t *testing.T) {
 	}
 	if _, err := client.ResolveDescriptor(fixture.descriptor); err != nil {
 		t.Fatalf("ResolveDescriptor() after concurrent refreshes error = %v", err)
+	}
+}
+
+// makeRotatedRootMetadata creates a consecutive v2 root that raises the new
+// root role threshold to two. Both the previously trusted key and the new key
+// must sign the transition, exercising TUF's old-root and new-root thresholds.
+func makeRotatedRootMetadata(t *testing.T, fixture delegatedRepositoryFixture, includeOldSignature bool) []byte {
+	t.Helper()
+	root, err := metadata.Root().FromBytes(fixture.rootJSON)
+	if err != nil {
+		t.Fatalf("parse initial root metadata: %v", err)
+	}
+	root.Signed.Version = 2
+
+	newRootKey := newTestSigningKey(t)
+	addFixtureRootKey(t, root, newRootKey, metadata.ROOT)
+	root.Signed.Roles[metadata.ROOT].Threshold = 2
+	root.Signatures = nil
+
+	if includeOldSignature {
+		if _, err := root.Sign(fixture.rootSigner.signer); err != nil {
+			t.Fatalf("sign rotated root with previously trusted key: %v", err)
+		}
+	}
+	if _, err := root.Sign(newRootKey.signer); err != nil {
+		t.Fatalf("sign rotated root with new root key: %v", err)
+	}
+	raw, err := root.ToBytes(false)
+	if err != nil {
+		t.Fatalf("marshal rotated root metadata: %v", err)
+	}
+	return raw
+}
+
+func TestTUFClientAcceptsConsecutiveRootRotationWithBothThresholds(t *testing.T) {
+	fixture := makeDelegatedRepositoryFixture(t)
+	fixture.metadata["2.root.json"] = makeRotatedRootMetadata(t, fixture, true)
+
+	server, requests, requestsMu := startDelegatedMetadataServer(t, fixture)
+	client := newFixtureTUFClient(t, fixture, server.URL+"/metadata", 4)
+	if _, err := client.ResolveDescriptor(fixture.descriptor); err != nil {
+		t.Fatalf("ResolveDescriptor() after root rotation error = %v", err)
+	}
+
+	requestsMu.Lock()
+	defer requestsMu.Unlock()
+	foundRootV2 := false
+	foundRootV3Probe := false
+	for _, requestPath := range *requests {
+		switch requestPath {
+		case "/metadata/2.root.json":
+			foundRootV2 = true
+		case "/metadata/3.root.json":
+			foundRootV3Probe = true
+		}
+	}
+	if !foundRootV2 {
+		t.Fatalf("official TUF updater did not request consecutive root metadata; requests = %v", *requests)
+	}
+	if !foundRootV3Probe {
+		t.Fatalf("official TUF updater did not probe the next root version after v2; requests = %v", *requests)
+	}
+}
+
+func TestTUFClientRejectsRootRotationMissingPreviouslyTrustedSignature(t *testing.T) {
+	fixture := makeDelegatedRepositoryFixture(t)
+	fixture.metadata["2.root.json"] = makeRotatedRootMetadata(t, fixture, false)
+
+	server, requests, requestsMu := startDelegatedMetadataServer(t, fixture)
+	cacheRoot := t.TempDir()
+	anchor, err := NewPinnedTrustAnchor(fixture.rootJSON, rootPin(fixture.rootJSON))
+	if err != nil {
+		t.Fatalf("NewPinnedTrustAnchor() error = %v", err)
+	}
+	_, err = NewTUFClient(anchor, TUFClientConfig{
+		MetadataURL:               server.URL + "/metadata",
+		MetadataCacheDir:          filepath.Join(cacheRoot, "metadata"),
+		TargetCacheDir:            filepath.Join(cacheRoot, "targets"),
+		RequestTimeout:            3 * time.Second,
+		RetryCount:                1,
+		MaxRootRotations:          4,
+		MaxDelegations:            4,
+		AllowInsecureLoopbackHTTP: true,
+	})
+	if err == nil {
+		t.Fatal("NewTUFClient() accepted a new root without the previously trusted root signature")
+	}
+
+	requestsMu.Lock()
+	defer requestsMu.Unlock()
+	foundRootV2 := false
+	fetchedTimestamp := false
+	for _, requestPath := range *requests {
+		if requestPath == "/metadata/2.root.json" {
+			foundRootV2 = true
+		}
+		if requestPath == "/metadata/timestamp.json" {
+			fetchedTimestamp = true
+		}
+	}
+	if !foundRootV2 {
+		t.Fatalf("official TUF updater did not request the invalid root transition; requests = %v", *requests)
+	}
+	if fetchedTimestamp {
+		t.Fatalf("TUF updater continued to timestamp metadata after rejecting root rotation; requests = %v", *requests)
 	}
 }
