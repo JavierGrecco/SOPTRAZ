@@ -180,11 +180,13 @@ func (store *Store) CommitGeneration(
 			return Generation{}, fmt.Errorf("%w: leer high-water de %q: %v", ErrInvalidTrustStore, role.Role, err)
 		}
 		if err == nil {
+			digest := sha256.Sum256(role.Metadata)
+			receivedSHA256 := hex.EncodeToString(digest[:])
 			switch {
 			case role.Version < highWaterVersion:
 				return Generation{}, fmt.Errorf("%w: rol %q, actual %d y recibido %d",
 					ErrRoleRollback, role.Role, highWaterVersion, role.Version)
-			case role.Version == highWaterVersion && role.SHA256 != highWaterSHA256:
+			case role.Version == highWaterVersion && receivedSHA256 != highWaterSHA256:
 				return Generation{}, fmt.Errorf("%w: rol %q, versión %d",
 					ErrRoleEquivocation, role.Role, role.Version)
 			}
