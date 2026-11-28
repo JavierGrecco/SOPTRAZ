@@ -156,7 +156,7 @@ No configurar `UpdaterConfig.UnsafeLocalMode` como solución productiva. La docu
 SOPTRAZ mantendrá dos operaciones diferentes:
 
 - **Refresh online:** busca metadata nueva y ejecuta el workflow completo root → timestamp → snapshot → targets; carga delegaciones bajo demanda. Solo una generación totalmente aceptada se compromete.
-- **Consulta offline:** lee exclusivamente una generación previamente comprometida y ejecuta un validador local explícito que vuelve a comprobar root chain, thresholds, expiración, versiones monotónicas, hashes, delegaciones y high-water marks. No descarga ni modifica el estado confiable.
+- **Consulta offline:** lee exclusivamente una generación previamente comprometida y ejecuta un validador local explícito que vuelve a comprobar root chain, thresholds, expiración, versiones monotónicas, hashes, delegaciones y high-water marks. No descarga ni modifica metadata TUF, root-chain, generaciones ni high-water marks. Solo después de una verificación completa puede avanzar `last_observed_utc` mediante una transacción SQLite con compare-and-swap, manteniendo el lock exclusivo del repositorio; si la marca no se puede persistir o el snapshot cambió, no se devuelve `VerifiedTarget`. Una hora anterior a la marca persistida falla cerrada.
 
 El verificador offline se implementará con las primitivas oficiales de go-tuf (`trustedmetadata`), no con un parser criptográfico propio. Tendrá que validar root rotations consecutivas almacenadas, timestamp, snapshot, targets y delegaciones solicitadas. La sesión actual `MetadataSession` solo cubre metadata top-level y no basta todavía para una consulta offline con delegaciones.
 
