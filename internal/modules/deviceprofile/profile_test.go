@@ -243,7 +243,6 @@ func TestClassifyMapsDocumentedSMBIOSChassisFamilies(t *testing.T) {
 	}
 }
 
-
 func TestTriStateJSONUsesExplicitStrings(t *testing.T) {
 	tests := []struct {
 		state TriState
