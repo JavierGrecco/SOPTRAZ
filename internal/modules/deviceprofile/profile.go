@@ -186,7 +186,7 @@ func Classify(observations Observations) Profile {
 		return finalize(profile)
 	}
 
-	var chassisForm FormFactor
+	var chassisForm FormFactor = FormFactorUnknown
 	for candidate := range chassisCandidates {
 		chassisForm = candidate
 	}
