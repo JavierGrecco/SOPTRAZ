@@ -30,11 +30,11 @@ func normalizePowerStatus(acLineStatus, batteryFlag byte) (moduleprofile.TriStat
 	}
 
 	power := moduleprofile.PowerSourceUnknown
-	switch acLineStatus {
-	case 0:
-		power = moduleprofile.PowerSourceBattery
-	case 1:
+	switch {
+	case acLineStatus == 1:
 		power = moduleprofile.PowerSourceAC
+	case acLineStatus == 0 && battery == moduleprofile.Yes:
+		power = moduleprofile.PowerSourceBattery
 	}
 	return battery, power
 }
