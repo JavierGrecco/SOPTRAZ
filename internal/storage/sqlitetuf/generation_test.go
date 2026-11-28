@@ -389,3 +389,68 @@ func TestOpenMigratesExistingVersionOneTrustDatabase(t *testing.T) {
 		t.Fatalf("legacy repository unexpectedly has active generation %d", activeID)
 	}
 }
+
+
+func TestRoleHighWaterSurvivesOmissionWithImmutableSourceGeneration(t *testing.T) {
+	ctx := context.Background()
+	store, _, anchor := openGenerationTestStore(t)
+
+	firstRoles := append(generationTestRoles(2, 3, 4), VerifiedRoleMetadata{
+		Role:      "legacy-maintenance",
+		Parents:   []string{"targets"},
+		Version:   8,
+		ExpiresAt: time.Date(2035, time.March, 20, 12, 0, 0, 0, time.UTC),
+		Metadata:  []byte("legacy-maintenance-v8"),
+	})
+	first, err := store.CommitGeneration(ctx, "soptraz-tools", 0, anchor, firstRoles)
+	if err != nil {
+		t.Fatalf("first CommitGeneration() error = %v", err)
+	}
+
+	second, err := store.CommitGeneration(ctx, "soptraz-tools", first.ID, anchor, generationTestRoles(3, 4, 5))
+	if err != nil {
+		t.Fatalf("generation omitting delegated role error = %v", err)
+	}
+	var highWaterVersion, sourceGenerationID int64
+	var highWaterSHA, evidenceSHA string
+	if err := store.db.QueryRowContext(ctx,
+		"SELECT h.version, h.sha256, h.source_generation_id, m.sha256 "+
+			"FROM role_high_water h JOIN generation_metadata m "+
+			"ON m.repository_id = h.repository_id AND m.generation_id = h.source_generation_id AND m.role_name = h.role_name "+
+			"WHERE h.repository_id = ? AND h.role_name = ?",
+		"soptraz-tools",
+		"legacy-maintenance",
+	).Scan(&highWaterVersion, &highWaterSHA, &sourceGenerationID, &evidenceSHA); err != nil {
+		t.Fatalf("read omitted role high-water: %v", err)
+	}
+	if highWaterVersion != 8 || sourceGenerationID != first.ID || highWaterSHA != evidenceSHA {
+		t.Fatalf("omitted role high-water lost provenance: version=%d source=%d sha=%s evidence=%s",
+			highWaterVersion, sourceGenerationID, highWaterSHA, evidenceSHA)
+	}
+
+	loaded, err := store.LoadActiveGeneration(ctx, "soptraz-tools")
+	if err != nil {
+		t.Fatalf("LoadActiveGeneration() after role omission: %v", err)
+	}
+	if loaded.ID != second.ID {
+		t.Fatalf("active generation = %d, want %d", loaded.ID, second.ID)
+	}
+
+	downgraded := append(generationTestRoles(4, 5, 6), VerifiedRoleMetadata{
+		Role:      "legacy-maintenance",
+		Parents:   []string{"targets"},
+		Version:   7,
+		ExpiresAt: time.Date(2035, time.March, 20, 12, 0, 0, 0, time.UTC),
+		Metadata:  []byte("legacy-maintenance-v7"),
+	})
+	if _, err := store.CommitGeneration(ctx, "soptraz-tools", second.ID, anchor, downgraded); !errors.Is(err, ErrRoleRollback) {
+		t.Fatalf("reintroduced lower delegated role error = %v, want ErrRoleRollback", err)
+	}
+	afterReject, err := store.LoadActiveGeneration(ctx, "soptraz-tools")
+	if err != nil {
+		t.Fatalf("LoadActiveGeneration() after rejected reintroduction: %v", err)
+	}
+	if afterReject.ID != second.ID {
+		t.Fatalf("rejected reintroduction changed active generation to %d", afterReject.ID)
+	}
+}
