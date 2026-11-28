@@ -99,7 +99,7 @@ func TestImportantEventRedactsCommonSecretForms(t *testing.T) {
 		t.Fatalf("read report: %v", err)
 	}
 	report := string(raw)
-	for _, secret := range []string{"abc123", "supersecret", "user:password", "api_key=private"} {
+	for _, secret := range []string{"abc123", "supersecret", "bearer-secret", "user:password", "api_key=private", "access_token=private-token"} {
 		if strings.Contains(report, secret) {
 			t.Errorf("report leaked secret %q: %s", secret, report)
 		}
@@ -207,5 +207,41 @@ func TestRecordRejectsUnknownSeverity(t *testing.T) {
 	defer logger.Close()
 	if err := logger.Record(Event{Severity: "DEBUG", Message: "not supported"}); err == nil {
 		t.Fatal("Record(DEBUG) succeeded, want invalid severity error")
+	}
+}
+
+func TestRoutineExecutionDoesNotLeaveAnEmptyReport(t *testing.T) {
+	logger, err := Open(t.TempDir(), "test-version")
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	path := logger.Path()
+	if err := logger.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("routine execution left an empty report behind; stat error = %v", err)
+	}
+}
+
+func TestPanicReportIncludesStack(t *testing.T) {
+	logger, err := Open(t.TempDir(), "test-version")
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer logger.Close()
+
+	stack := []byte("goroutine 1 [running]:\nexample.com/soptraz/failingOperation()\n")
+	if err := logger.RecordPanic("test.component", "unexpected panic", stack); err != nil {
+		t.Fatalf("RecordPanic() error = %v", err)
+	}
+	raw, err := os.ReadFile(logger.Path())
+	if err != nil {
+		t.Fatalf("read panic report: %v", err)
+	}
+	for _, expected := range []string{"PANIC", "unexpected panic", "goroutine 1", "failingOperation"} {
+		if !strings.Contains(string(raw), expected) {
+			t.Errorf("panic report does not contain %q: %s", expected, raw)
+		}
 	}
 }
