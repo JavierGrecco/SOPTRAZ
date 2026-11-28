@@ -4,6 +4,7 @@
 package supervisor
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -22,10 +23,10 @@ const (
 )
 
 var (
-	ErrInvalidProcessProfile = fmt.Errorf("perfil de ejecución de proceso inválido")
-	profileIDPattern         = regexp.MustCompile(`^soptraz\.process\.[a-z0-9]+(?:[.-][a-z0-9]+)*$`)
-	actionIDPattern          = regexp.MustCompile(`^soptraz\.[a-z0-9]+(?:[.-][a-z0-9]+)*$`)
-	artifactIDPattern        = regexp.MustCompile(`^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$`)
+	ErrInvalidProcessProfile = errors.New("perfil de ejecución de proceso inválido")
+	profileIDPattern         = regexp.MustCompile(`^soptraz\.process\.[a-z0-9]+([.-][a-z0-9]+)*$`)
+	actionIDPattern          = regexp.MustCompile(`^soptraz\.[a-z0-9]+([.-][a-z0-9]+)*$`)
+	artifactIDPattern        = regexp.MustCompile(`^[a-z][a-z0-9]*([.-][a-z0-9]+)*$`)
 	semverPattern            = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$`)
 )
 

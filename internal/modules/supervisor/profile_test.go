@@ -132,3 +132,12 @@ func TestProcessProfileDoesNotExpandShellMetacharacters(t *testing.T) {
 		t.Fatal("fixed argument was modified")
 	}
 }
+
+
+func TestProcessProfileRejectsAggregateArgumentLimit(t *testing.T) {
+	profile := validProcessProfile()
+	profile.FixedArguments = []string{strings.Repeat("x", MaxProcessArgumentTotal+1)}
+	if err := profile.Validate(); !errors.Is(err, ErrInvalidProcessProfile) {
+		t.Fatalf("aggregate argument bytes error = %v", err)
+	}
+}
