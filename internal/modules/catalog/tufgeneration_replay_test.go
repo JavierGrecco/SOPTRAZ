@@ -65,6 +65,58 @@ func TestReplayVerifiedGenerationUsesOneExplicitReferenceTime(t *testing.T) {
 	}
 }
 
+
+func TestRejectMetadataExpiryAtOrBefore(t *testing.T) {
+	referenceTime := time.Date(2026, time.November, 28, 20, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name      string
+		expiresAt time.Time
+		wantError bool
+	}{
+		{name: "before reference", expiresAt: referenceTime.Add(-time.Nanosecond), wantError: true},
+		{name: "exact boundary", expiresAt: referenceTime, wantError: true},
+		{name: "after reference", expiresAt: referenceTime.Add(time.Nanosecond), wantError: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := rejectMetadataExpiryAtOrBefore("timestamp", tt.expiresAt, referenceTime)
+			if (err != nil) != tt.wantError {
+				t.Fatalf("rejectMetadataExpiryAtOrBefore() error = %v, wantError %v", err, tt.wantError)
+			}
+		})
+	}
+}
+
+func TestReplayVerifiedGenerationRejectsMetadataAtExactExpiryBoundary(t *testing.T) {
+	fixture := makeDelegatedRepositoryFixture(t)
+	roles := replayFixtureRoles(t, fixture)
+
+	var timestampExpiry time.Time
+	for _, role := range roles {
+		if role.Role == metadata.TIMESTAMP {
+			timestampExpiry = role.ExpiresAt
+			break
+		}
+	}
+	if timestampExpiry.IsZero() {
+		t.Fatal("fixture is missing timestamp expiry")
+	}
+
+	root, err := metadata.Root().FromBytes(fixture.rootJSON)
+	if err != nil {
+		t.Fatalf("parse fixture root: %v", err)
+	}
+	// Keep the final root valid beyond the timestamp boundary so this proves
+	// the role-expiry guard, not the earlier root-expiry guard.
+	root.Signed.Expires = timestampExpiry.Add(time.Hour)
+	rootJSON := signedMetadataBytes(t, root, fixture.rootSigner)
+	rootState := sqlitetuf.RootState{Version: 1, SHA256: rootPin(rootJSON)}
+
+	if _, err := replayVerifiedGeneration(rootJSON, rootState, timestampExpiry, roles, 4); !errors.Is(err, ErrGenerationReplay) {
+		t.Fatalf("replayVerifiedGeneration() at expires boundary = %v, want ErrGenerationReplay", err)
+	}
+}
+
 func TestReplayVerifiedGenerationRejectsExpiredMetadataAtExplicitReferenceTime(t *testing.T) {
 	fixture := makeDelegatedRepositoryFixture(t)
 	roles := replayFixtureRoles(t, fixture)
