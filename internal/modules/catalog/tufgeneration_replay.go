@@ -23,9 +23,11 @@ var ErrGenerationReplay = errors.New("replay criptográfico de generación TUF r
 // using go-tuf's supported trustedmetadata API. rootJSON must already be an
 // independently authenticated current root (for example after replaying the
 // bootstrap root chain). referenceTime is mandatory and fixed for the entire
-// operation; it replaces go-tuf's constructor default before any metadata
-// update, so expiry decisions never use an implicit wall-clock reference.
-// The function performs no network I/O.
+// operation. go-tuf's constructor initializes RefTime from the local
+// wall clock, but performs no expiry check while loading the bootstrap root;
+// this function replaces that default immediately, before any Update* call.
+// Therefore every expiry decision in this replay uses referenceTime. The
+// function performs no network I/O.
 //
 // This is the shared cryptographic primitive for online generation capture and
 // future strict-offline verification. It authenticates metadata and delegation
