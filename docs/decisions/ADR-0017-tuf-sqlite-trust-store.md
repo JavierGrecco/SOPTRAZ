@@ -123,15 +123,14 @@ Esta ADR no habilita el modo offline. El almacén hace posible implementar un ve
 
 ## Orden de implementación
 
-1. Añadir el paquete de persistencia SQLite aislado con migración, tipos de root chain/generation/role metadata y tests transaccionales.
-2. Añadir replay de root chain desde el ancla fijada y CAS de latest-root.
-3. Instrumentar el fetcher TUF para capturar roots descargados; persistir únicamente los roots que la capa `trustedmetadata` revalide como consecutivos.
-4. Materializar en staging la última generación activa y pasarla al updater oficial.
-5. Comprometer generación y high-water de forma transaccional tras resolver los roles requeridos.
-6. Añadir tests crash/restart/corruption/rollback cross-platform.
-7. Implementar el validador offline explícito y su reporte de assurance.
-8. Recién entonces revisar M1.4 como candidato a aceptación.
-
+1. [x] Implementar el store SQLite aislado para root-chain con migración, ancla/origen fijados, append-only, CAS y tests transaccionales (PR #22).
+2. [x] Añadir replay de root-chain desde el ancla fijada con `trustedmetadata.UpdateRoot` y comprobar el high-water durable (PR #23).
+3. [x] Capturar respuestas versionadas de root, reproducirlas con go-tuf y persistir solo cuando el updater oficial confirma la misma versión (PR #23).
+4. [ ] Materializar en staging una generación completa de metadata y pasarla al updater oficial.
+5. [ ] Comprometer generación y high-water por rol de forma transaccional tras resolver todos los roles requeridos.
+6. [ ] Añadir tests de terminación abrupta, crash/restart, corrupción, rollback y concurrencia entre procesos en Windows/macOS/Linux.
+7. [ ] Implementar el validador offline explícito y su reporte de assurance.
+8. [ ] Completar SBOM, avisos/licencias y política de actualización de go-tuf/Sigstore.
 La implementación no se considera production-ready hasta que todas las pruebas de recuperación y anti-rollback estén verdes y el procedimiento de bootstrap/custodia de root esté aprobado.
 
 ## Primera implementación del almacén de root-chain (PR #22, 2026-11-28)
