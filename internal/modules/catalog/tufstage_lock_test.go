@@ -28,6 +28,7 @@ func openStageLockTestStore(t *testing.T, path string) *sqlitetuf.Store {
 }
 
 func TestPersistentTUFRepositoryLockRejectsSecondWriter(t *testing.T) {
+	store := openStageLockTestStore(t, filepath.Join(t.TempDir(), "catalog-trust.sqlite"))
 
 	first, err := acquirePersistentTUFRepositoryLock(store, "repository-one")
 	if err != nil {
