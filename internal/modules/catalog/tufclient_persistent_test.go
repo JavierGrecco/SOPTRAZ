@@ -116,6 +116,11 @@ func TestPersistentTUFClientReplaysStoredRootAfterRestartWhenLaterMetadataFails(
 	if err != nil {
 		t.Fatalf("NewPersistentTUFClient() after restart: %v", err)
 	}
+	defer func() {
+		if err := client.Close(); err != nil {
+			t.Errorf("close client persistent client: %v", err)
+		}
+	}()
 	if _, err := client.ResolveDescriptor(fixture.descriptor); err != nil {
 		t.Fatalf("ResolveDescriptor() after persistent root replay: %v", err)
 	}
@@ -300,6 +305,11 @@ func TestPersistentTUFClientCommitsVerifiedGenerationAndDelegationMetadata(t *te
 	if err != nil {
 		t.Fatalf("NewPersistentTUFClient(): %v", err)
 	}
+	defer func() {
+		if err := client.Close(); err != nil {
+			t.Errorf("close client persistent client: %v", err)
+		}
+	}()
 	configuredMetadataRoot := filepath.Join(cacheRoot, "metadata")
 	if filepath.Clean(client.config.LocalMetadataDir) == filepath.Clean(configuredMetadataRoot) {
 		t.Fatal("persistent updater is using the durable metadata root directly instead of an isolated stage")
@@ -550,6 +560,11 @@ func TestPersistentTUFGenerationRejectsCacheBytesChangedAfterUpdaterAcceptedThem
 	if err != nil {
 		t.Fatalf("NewPersistentTUFClient(): %v", err)
 	}
+	defer func() {
+		if err := client.Close(); err != nil {
+			t.Errorf("close client persistent client: %v", err)
+		}
+	}()
 	if _, err := client.ResolveDescriptor(fixture.descriptor); err != nil {
 		t.Fatalf("ResolveDescriptor(): %v", err)
 	}
