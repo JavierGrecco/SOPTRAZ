@@ -479,23 +479,23 @@ func recoverPreviousRuns(directory string) ([]string, error) {
 			continue // A different SOPTRAZ process still owns this execution log.
 		}
 
-		wasClean, readErr := hasCleanShutdownMarker(path)
+		marker, readErr := readRunEndMarker(path)
 		if readErr != nil {
 			_ = lock.Unlock()
-			return recovered, fmt.Errorf("leer cierre de informe previo %q: %w", name, readErr)
+			return recovered, fmt.Errorf("leer marca de cierre de informe previo %q: %w", name, readErr)
 		}
-		if err := trimOversizedReport(path, wasClean); err != nil {
+		if err := trimOversizedReport(path, marker); err != nil {
 			_ = lock.Unlock()
 			return recovered, fmt.Errorf("limitar tamaño de informe previo %q: %w", name, err)
 		}
-		if !wasClean {
+		if marker == "" {
 			file, openErr := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0o600)
 			if openErr != nil {
 				_ = lock.Unlock()
 				return recovered, fmt.Errorf("abrir informe previo %q: %w", name, openErr)
 			}
 			_, writeErr := fmt.Fprintf(file,
-				"\n[%s] CRITICAL\nComponente: runtime\nCódigo: runtime.unexpected_shutdown\nDescripción: La ejecución anterior terminó sin registrar un cierre normal.\nCausa: indeterminada; puede corresponder a kill, panic/fatal, corte de energía o terminación del sistema.\n",
+				"\n[%s] CRITICAL\nComponente: runtime\nCódigo: runtime.unexpected_shutdown\nDescripción: La ejecución anterior terminó sin registrar un cierre normal.\nCausa: indeterminada; puede corresponder a kill, panic/fatal, corte de energía o terminación del sistema.\nRECUPERACIÓN REGISTRADA: esta interrupción ya fue detectada por un inicio posterior.\n",
 				time.Now().UTC().Format(time.RFC3339Nano),
 			)
 			if writeErr == nil {
@@ -515,29 +515,35 @@ func recoverPreviousRuns(directory string) ([]string, error) {
 	return recovered, nil
 }
 
-func hasCleanShutdownMarker(path string) (bool, error) {
+func readRunEndMarker(path string) (string, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return false, err
+		return "", err
 	}
 	defer file.Close()
 
 	info, err := file.Stat()
 	if err != nil {
-		return false, err
+		return "", err
 	}
 	start := int64(0)
 	if info.Size() > maxCrashTailBytes {
 		start = info.Size() - maxCrashTailBytes
 	}
 	if _, err := file.Seek(start, io.SeekStart); err != nil {
-		return false, err
+		return "", err
 	}
 	data, err := io.ReadAll(bufio.NewReader(io.LimitReader(file, maxCrashTailBytes)))
 	if err != nil {
-		return false, err
+		return "", err
 	}
-	return bytes.Contains(data, []byte("CIERRE NORMAL:")), nil
+	if bytes.Contains(data, []byte("CIERRE NORMAL:")) {
+		return "CIERRE NORMAL:", nil
+	}
+	if bytes.Contains(data, []byte("RECUPERACIÓN REGISTRADA:")) {
+		return "RECUPERACIÓN REGISTRADA:", nil
+	}
+	return "", nil
 }
 
 func pruneOldRunReports(directory string, keep int, protectedPaths []string) error {
@@ -615,7 +621,7 @@ func pruneOldRunReports(directory string, keep int, protectedPaths []string) err
 	return nil
 }
 
-func trimOversizedReport(path string, wasClean bool) error {
+func trimOversizedReport(path, endMarker string) error {
 	info, err := os.Stat(path)
 	if err != nil {
 		return err
@@ -641,8 +647,9 @@ func trimOversizedReport(path string, wasClean bool) error {
 		"\n[INFORME TRUNCADO: se conservan los primeros %d bytes para limitar el tamaño local.]\n",
 		targetSize,
 	)
-	if writeErr == nil && wasClean {
-		_, writeErr = fmt.Fprintf(file, "CIERRE NORMAL: marca preservada tras truncar el informe %s\n",
+	if writeErr == nil && endMarker != "" {
+		_, writeErr = fmt.Fprintf(file, "%s marca preservada tras truncar el informe %s\n",
+			endMarker,
 			time.Now().UTC().Format(time.RFC3339Nano))
 	}
 	if writeErr == nil {
