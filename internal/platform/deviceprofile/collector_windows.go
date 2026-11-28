@@ -12,11 +12,11 @@ import (
 )
 
 const (
-	smbiosProviderRSMB         = 0x42534d52 // 'RSMB' in little-endian DWORD form.
-	maxPointerDeviceCount      = 1024
-	pointerDeviceProductMax    = 520
-	smConvertibleSlateMode     = 0x2003
-	smSystemDocked             = 0x2004
+	smbiosProviderRSMB             = 0x42534d52 // 'RSMB' in little-endian DWORD form.
+	maxPointerDeviceCount          = 1024
+	pointerDeviceProductMax        = 520
+	smConvertibleSlateMode         = 0x2003
+	smSystemDocked                 = 0x2004
 	pointerDeviceTypeIntegratedPen = 0x00000001
 	pointerDeviceTypeExternalPen   = 0x00000002
 	pointerDeviceTypeTouch         = 0x00000003
@@ -37,11 +37,11 @@ type pointerDeviceInfo struct {
 
 // systemPowerStatus mirrors SYSTEM_POWER_STATUS from winbase.h.
 type systemPowerStatus struct {
-	ACLineStatus       byte
-	BatteryFlag        byte
-	BatteryLifePercent byte
-	SystemStatusFlag   byte
-	BatteryLifeTime    uint32
+	ACLineStatus        byte
+	BatteryFlag         byte
+	BatteryLifePercent  byte
+	SystemStatusFlag    byte
+	BatteryLifeTime     uint32
 	BatteryFullLifeTime uint32
 }
 
