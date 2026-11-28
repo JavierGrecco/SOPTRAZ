@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	moduleprofile "github.com/JavierGrecco/SOPTRAZ/internal/modules/deviceprofile"
+	platformprofile "github.com/JavierGrecco/SOPTRAZ/internal/platform/deviceprofile"
 )
 
 const validManifest = `{
@@ -40,7 +43,7 @@ func TestHelpIsReadOnlyAndSuccessful(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("Run() code = %d, want 0; stderr=%q", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "No modifica el equipo") || !strings.Contains(stdout.String(), "checkpoint") || !strings.Contains(stdout.String(), "artifact") {
+	if !strings.Contains(stdout.String(), "No modifica el equipo") || !strings.Contains(stdout.String(), "checkpoint") || !strings.Contains(stdout.String(), "artifact") || !strings.Contains(stdout.String(), "device-profile") {
 		t.Fatalf("unexpected help output: %q", stdout.String())
 	}
 }
@@ -179,5 +182,107 @@ func TestUnknownCommandReturnsUsageError(t *testing.T) {
 	code := Run([]string{"repair-everything"}, &stdout, &stderr)
 	if code != 2 || !strings.Contains(stderr.String(), "comando desconocido") {
 		t.Fatalf("unexpected result: code=%d stderr=%q", code, stderr.String())
+	}
+}
+
+
+func TestDeviceProfileReportSerializesUnknownCapabilitiesExplicitly(t *testing.T) {
+	report := buildDeviceProfileReport(platformprofile.Result{})
+	var stdout bytes.Buffer
+	if code := writeJSON(&stdout, report); code != 0 {
+		t.Fatalf("writeJSON() code = %d", code)
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &decoded); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	profile, ok := decoded["profile"].(map[string]any)
+	if !ok {
+		t.Fatalf("profile has unexpected type: %T", decoded["profile"])
+	}
+	capabilities, ok := profile["capabilities"].(map[string]any)
+	if !ok {
+		t.Fatalf("capabilities have unexpected type: %T", profile["capabilities"])
+	}
+	for _, key := range []string{"battery_present", "touch", "pen", "physical_keyboard", "dedicated_gpu", "thermal_sensors"} {
+		if got := capabilities[key]; got != "unknown" {
+			t.Errorf("capability %q = %#v, want unknown", key, got)
+		}
+	}
+	if decoded["mutations_applied"] != false {
+		t.Fatalf("mutations_applied = %#v, want false", decoded["mutations_applied"])
+	}
+	if decoded["collection_status"] != "collected" {
+		t.Fatalf("collection_status = %#v, want collected", decoded["collection_status"])
+	}
+}
+
+func TestDeviceCollectionStatusDistinguishesPartialAndUnavailable(t *testing.T) {
+	errorValue := platformprofile.SourceError{Source: "windows.smbios", Message: "firmware API unavailable"}
+	if got := deviceCollectionStatus(platformprofile.Result{SourceErrors: []platformprofile.SourceError{errorValue}}); got != "unavailable" {
+		t.Fatalf("status without usable observations = %q, want unavailable", got)
+	}
+
+	partial := platformprofile.Result{
+		Observations: moduleprofile.Observations{
+			Capabilities: moduleprofile.Capabilities{
+				Touch: moduleprofile.No,
+			},
+		},
+		SourceErrors: []platformprofile.SourceError{errorValue},
+	}
+	if got := deviceCollectionStatus(partial); got != "partial" {
+		t.Fatalf("status with usable observations and an error = %q, want partial", got)
+	}
+}
+
+func TestDeviceProfileTextReportShowsUnknownAndNoMutation(t *testing.T) {
+	report := buildDeviceProfileReport(platformprofile.Result{})
+	var stdout bytes.Buffer
+	writeDeviceProfileText(&stdout, report)
+	output := stdout.String()
+	for _, expected := range []string{
+		"Tipo de equipo: Desconocido",
+		"Confianza: Baja",
+		"Pantalla táctil: Desconocido",
+		"GPU dedicada: Desconocido",
+		"Cambios aplicados: no",
+	} {
+		if !strings.Contains(output, expected) {
+			t.Errorf("device profile report does not contain %q: %s", expected, output)
+		}
+	}
+}
+
+func TestDeviceProfileCommandRejectsInvalidArguments(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"device-profile", "--apply"}, &stdout, &stderr); code != 2 {
+		t.Fatalf("invalid flag code = %d, want 2", code)
+	}
+	if !strings.Contains(stderr.String(), "uso: soptraz device-profile [--json]") {
+		t.Fatalf("unexpected usage: %q", stderr.String())
+	}
+}
+
+func TestDeviceProfileReportRetainsObservedFormFactorEvidence(t *testing.T) {
+	report := buildDeviceProfileReport(platformprofile.Result{
+		Observations: moduleprofile.Observations{
+			SMBIOSChassisTypes: []uint16{30},
+			Capabilities: moduleprofile.Capabilities{
+				Touch:          moduleprofile.Yes,
+				BatteryPresent: moduleprofile.Yes,
+				PowerSource:    moduleprofile.PowerSourceAC,
+			},
+		},
+	})
+	if report.Profile.FormFactor != moduleprofile.FormFactorTablet {
+		t.Fatalf("form factor = %q, want tablet", report.Profile.FormFactor)
+	}
+	if report.Profile.Confidence != moduleprofile.ConfidenceMedium {
+		t.Fatalf("confidence = %q, want medium", report.Profile.Confidence)
+	}
+	if len(report.Profile.Evidence) != 1 || report.Profile.Evidence[0].Value != "30" {
+		t.Fatalf("unexpected evidence: %#v", report.Profile.Evidence)
 	}
 }
