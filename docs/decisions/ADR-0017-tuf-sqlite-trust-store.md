@@ -9,7 +9,7 @@
 
 La primera capa online TUF ya utiliza el `updater.Updater` oficial de go-tuf v2.5.0 y resuelve roles delegados. PR #20 corrigió la recreación del updater para que un root que ya fue verificado se conserve entre refrescos dentro del mismo proceso, incluso si después falla timestamp/snapshot/targets.
 
-Ese arreglo no era persistencia durable: `TUFClient.config.LocalTrustedRoot` vivía en memoria. PR #23 añade `NewPersistentTUFClient`, que conserva la cadena de roots en SQLite y la reproduce desde el pin bootstrap antes de inicializar el updater. PR #25 añade `CommitGeneration` y `LoadActiveGeneration`: el almacén puede comprometer los bytes exactos de timestamp/snapshot/targets y las delegaciones suministradas por el caller, sus relaciones, high-water y `active_generation` dentro de una transacción. Esta API todavía no está integrada con `TUFClient` ni crea generaciones a partir del cache del updater; el updater oficial sigue conservando metadata individual en su caché hasta que implementemos el staging y la importación transaccional.
+Ese arreglo no era persistencia durable: `TUFClient.config.LocalTrustedRoot` vivía en memoria. PR #23 añade `NewPersistentTUFClient`, que conserva la cadena de roots en SQLite y la reproduce desde el pin bootstrap antes de inicializar el updater. PR #25 añade `CommitGeneration` y `LoadActiveGeneration`. PR #27 conecta la captura al flujo de `TUFClient`: tras resolver un descriptor firmado, compara los bytes originales de la caché de go-tuf con los objetos confiables en memoria, reproduce timestamp/snapshot/targets y las delegaciones recorridas con `trustedmetadata`, y compromete el conjunto mediante una transacción SQLite. Esta integración persiste online los roles realmente usados; todavía no restaura una generación desde SQLite ni habilita consultas offline, y el updater continúa utilizando su caché de archivos como espacio de trabajo.
 
 SOPTRAZ ya usa `modernc.org/sqlite` sin CGO en Field. El adaptador de auditoría aporta convenciones que podemos reutilizar: una conexión, transacciones inmediatas, `busy_timeout`, `foreign_keys`, `synchronous=FULL`, migraciones versionadas y tests de recuperación. El estado del catálogo debe permanecer separado de `audit.sqlite`: sus ciclos de vida, políticas de backup y superficies de acceso no son los mismos.
 
@@ -128,10 +128,11 @@ Esta ADR no habilita el modo offline. El almacén hace posible implementar un ve
 3. [x] Capturar respuestas versionadas de root, reproducirlas con go-tuf y persistir solo cuando el updater oficial confirma la misma versión (PR #23).
 4. [x] Implementar el esquema de generaciones SQLite v2, migración sin pérdida de root-chain v1, metadata por rol/delegación, manifiesto SHA-256 y high-water con procedencia inmutable (PR #25).
 5. [x] Implementar `CommitGeneration`/`LoadActiveGeneration` con root binding, CAS, guardas de rollback/equivocation, commit atómico y validación de integridad de metadata y evidencia histórica (PR #25).
-6. [ ] Integrar el updater online con staging: obtener bytes exactos autenticados por go-tuf, resolver los roles delegados que la aplicación necesita y solo entonces llamar a `CommitGeneration`; no declarar completo un grafo que no se haya recorrido.
-7. [ ] Añadir tests de terminación abrupta real, crash/restart, corrupción, rollback, disco lleno y concurrencia entre procesos en Windows/macOS/Linux.
-8. [ ] Implementar el validador offline explícito y su reporte de assurance.
-9. [ ] Completar SBOM, avisos/licencias y política de actualización de go-tuf/Sigstore.
+6. [x] Conectar `TUFClient` con la captura de bytes exactos de go-tuf, revalidación mediante `trustedmetadata` y `CommitGeneration` después de resolver descriptores (PR #27).
+7. [ ] Implementar staging aislado antes del refresh y restauración validada desde SQLite; no confundir la caché online del updater con una generación durable.
+8. [ ] Añadir tests de terminación abrupta real, crash/restart, corrupción, rollback, disco lleno y concurrencia entre procesos en Windows/macOS/Linux.
+9. [ ] Implementar el validador offline explícito y su reporte de assurance.
+10. [ ] Completar SBOM, avisos/licencias y política de actualización de go-tuf/Sigstore.
 La implementación no se considera production-ready hasta que todas las pruebas de recuperación y anti-rollback estén verdes y el procedimiento de bootstrap/custodia de root esté aprobado.
 
 ## Implementación integrada y evidencia
