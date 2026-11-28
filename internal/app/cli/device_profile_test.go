@@ -18,11 +18,11 @@ func TestRunDeviceProfileJSONProducesReadOnlyReport(t *testing.T) {
 	}
 
 	var report struct {
-		CollectionStatus string                     `json:"collection_status"`
-		Observations     moduleprofile.Observations `json:"observations"`
-		Profile          moduleprofile.Profile      `json:"profile"`
-		SourceErrors     []platformprofile.SourceError `json:"source_errors"`
-		MutationsApplied bool                       `json:"mutations_applied"`
+		CollectionStatus string                         `json:"collection_status"`
+		Observations     moduleprofile.Observations     `json:"observations"`
+		Profile          moduleprofile.Profile          `json:"profile"`
+		SourceErrors     []platformprofile.SourceError   `json:"source_errors"`
+		MutationsApplied bool                           `json:"mutations_applied"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
 		t.Fatalf("invalid device profile JSON: %v; output=%s", err, stdout.String())
