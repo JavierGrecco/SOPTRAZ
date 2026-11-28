@@ -229,16 +229,18 @@ func (store *Store) CommitGeneration(
 		}
 
 		_, err = tx.ExecContext(ctx,
-			"INSERT INTO role_high_water(repository_id, role_name, version, sha256, expires_at) "+
-				"VALUES(?, ?, ?, ?, ?) "+
+			"INSERT INTO role_high_water(repository_id, role_name, version, sha256, expires_at, source_generation_id) "+
+				"VALUES(?, ?, ?, ?, ?, ?) "+
 				"ON CONFLICT(repository_id, role_name) DO UPDATE SET "+
-				"version = excluded.version, sha256 = excluded.sha256, expires_at = excluded.expires_at "+
+				"version = excluded.version, sha256 = excluded.sha256, expires_at = excluded.expires_at, "+
+				"source_generation_id = excluded.source_generation_id "+
 				"WHERE excluded.version > role_high_water.version",
 			repositoryID,
 			role.Role,
 			role.Version,
 			roleSHA256,
 			expiresAt,
+			generationID,
 		)
 		if err != nil {
 			return Generation{}, fmt.Errorf("%w: actualizar high-water de %q: %v", ErrInvalidTrustStore, role.Role, err)
@@ -374,6 +376,9 @@ func (store *Store) LoadActiveGeneration(ctx context.Context, repositoryID strin
 	if err != nil {
 		return Generation{}, fmt.Errorf("%w: leer generación: %v", ErrInvalidTrustStore, err)
 	}
+	if roleCount < 3 || roleCount > MaxGenerationRoles {
+		return Generation{}, fmt.Errorf("%w: cantidad de roles fuera de límites", ErrGenerationCorrupt)
+	}
 	if parentID.Valid {
 		generation.ParentID = parentID.Int64
 	}
@@ -396,6 +401,7 @@ func (store *Store) LoadActiveGeneration(ctx context.Context, repositoryID strin
 	}
 
 	generation.Roles = make([]VerifiedRoleMetadata, 0, roleCount)
+	var totalRoleBytes int64
 	for rows.Next() {
 		var role VerifiedRoleMetadata
 		var expiresText, storedSHA256 string
@@ -411,6 +417,11 @@ func (store *Store) LoadActiveGeneration(ctx context.Context, repositoryID strin
 		if role.Version < 1 || len(role.Metadata) == 0 || int64(len(role.Metadata)) > maxRoleMetadataBytes(role.Role) {
 			_ = rows.Close()
 			return Generation{}, fmt.Errorf("%w: tamaño o versión inválidos en rol %q", ErrGenerationCorrupt, role.Role)
+		}
+		totalRoleBytes += int64(len(role.Metadata))
+		if totalRoleBytes > MaxGenerationTotalBytes {
+			_ = rows.Close()
+			return Generation{}, fmt.Errorf("%w: tamaño total de metadata excede el límite", ErrGenerationCorrupt)
 		}
 		digest := sha256.Sum256(role.Metadata)
 		if hex.EncodeToString(digest[:]) != storedSHA256 {
@@ -475,6 +486,49 @@ func (store *Store) LoadActiveGeneration(ctx context.Context, repositoryID strin
 	}
 	if err := parentRows.Close(); err != nil {
 		return Generation{}, fmt.Errorf("%w: cerrar delegaciones: %v", ErrGenerationCorrupt, err)
+	}
+
+	// Every persistent high-water value must be backed by the immutable metadata
+	// row from which it was raised, including roles omitted from the active
+	// generation. This prevents orphaned counters from outliving their evidence.
+	highWaterRows, err := tx.QueryContext(ctx,
+		"SELECT h.role_name, h.version, h.sha256, h.expires_at, h.source_generation_id, "+
+			"m.version, m.sha256, m.expires_at "+
+			"FROM role_high_water h LEFT JOIN generation_metadata m "+
+			"ON m.repository_id = h.repository_id AND m.generation_id = h.source_generation_id AND m.role_name = h.role_name "+
+			"WHERE h.repository_id = ? ORDER BY h.role_name",
+		repositoryID,
+	)
+	if err != nil {
+		return Generation{}, fmt.Errorf("%w: leer procedencia de high-water: %v", ErrInvalidTrustStore, err)
+	}
+	for highWaterRows.Next() {
+		var roleName, highWaterSHA, highWaterExpiry string
+		var sourceGenerationID, highWaterVersion int64
+		var evidenceVersion sql.NullInt64
+		var evidenceSHA, evidenceExpiry sql.NullString
+		if err := highWaterRows.Scan(
+			&roleName, &highWaterVersion, &highWaterSHA, &highWaterExpiry, &sourceGenerationID,
+			&evidenceVersion, &evidenceSHA, &evidenceExpiry,
+		); err != nil {
+			_ = highWaterRows.Close()
+			return Generation{}, fmt.Errorf("%w: leer procedencia de high-water: %v", ErrGenerationCorrupt, err)
+		}
+		if sourceGenerationID < 1 || sourceGenerationID > generation.ID ||
+			!evidenceVersion.Valid || !evidenceSHA.Valid || !evidenceExpiry.Valid ||
+			evidenceVersion.Int64 != highWaterVersion ||
+			evidenceSHA.String != highWaterSHA ||
+			evidenceExpiry.String != highWaterExpiry {
+			_ = highWaterRows.Close()
+			return Generation{}, fmt.Errorf("%w: high-water sin evidencia inmutable para rol %q", ErrGenerationCorrupt, roleName)
+		}
+	}
+	if err := highWaterRows.Err(); err != nil {
+		_ = highWaterRows.Close()
+		return Generation{}, fmt.Errorf("%w: recorrer procedencia de high-water: %v", ErrGenerationCorrupt, err)
+	}
+	if err := highWaterRows.Close(); err != nil {
+		return Generation{}, fmt.Errorf("%w: cerrar procedencia de high-water: %v", ErrGenerationCorrupt, err)
 	}
 
 	normalized, _, err := normalizeGenerationRoles(generation.Roles)
