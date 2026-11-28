@@ -246,6 +246,57 @@ func TestPanicReportIncludesStack(t *testing.T) {
 	}
 }
 
+func TestRetentionDoesNotDeleteReportsRecoveredDuringCurrentStartup(t *testing.T) {
+	directory := t.TempDir()
+	var recoveredPath string
+	for index := 0; index < maxRunReports+2; index++ {
+		logger, err := Open(directory, "retention-test")
+		if err != nil {
+			t.Fatalf("Open() run %d: %v", index, err)
+		}
+		if index == 0 {
+			recoveredPath = logger.Path()
+		}
+		if err := logger.Record(Event{
+			Severity: SeverityCritical,
+			Component: "test.retention",
+			Code: "test.retention",
+			Message: "retention fixture",
+		}); err != nil {
+			t.Fatalf("Record() run %d: %v", index, err)
+		}
+		if index == 0 {
+			// Leave the first report without a clean-shutdown marker.
+			logger.mu.Lock()
+			if err := logger.runLock.Unlock(); err != nil {
+				logger.mu.Unlock()
+				t.Fatalf("unlock crash fixture: %v", err)
+			}
+			if err := logger.file.Close(); err != nil {
+				logger.mu.Unlock()
+				t.Fatalf("close crash fixture: %v", err)
+			}
+			logger.closed = true
+			logger.mu.Unlock()
+			continue
+		}
+		if err := logger.Close(); err != nil {
+			t.Fatalf("Close() run %d: %v", index, err)
+		}
+	}
+	logger, err := Open(directory, "recovery-retention-test")
+	if err != nil {
+		t.Fatalf("Open() recovery: %v", err)
+	}
+	defer logger.Close()
+	if len(logger.RecoveredRuns()) != 1 || filepath.Clean(logger.RecoveredRuns()[0]) != filepath.Clean(recoveredPath) {
+		t.Fatalf("recovered reports = %v, want %q", logger.RecoveredRuns(), recoveredPath)
+	}
+	if _, err := os.Stat(recoveredPath); err != nil {
+		t.Fatalf("recovered report was removed by retention: %v", err)
+	}
+}
+
 func TestReportRetentionKeepsOnlyMostRecentThirtyRuns(t *testing.T) {
 	directory := t.TempDir()
 	for index := 0; index < maxRunReports+3; index++ {
