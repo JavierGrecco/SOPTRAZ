@@ -393,7 +393,6 @@ func TestTUFClientSerializesRefreshAgainstLookups(t *testing.T) {
 	}
 }
 
-
 // makeRotatedRootMetadata creates a consecutive v2 root that raises the new
 // root role threshold to two. Both the previously trusted key and the new key
 // must sign the transition, exercising TUF's old-root and new-root thresholds.
