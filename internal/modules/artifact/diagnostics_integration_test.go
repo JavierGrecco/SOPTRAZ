@@ -13,12 +13,13 @@ func TestResolverWritesSecurityIncidentToLocalDiagnosticsReport(t *testing.T) {
 	root := t.TempDir()
 	directory := t.TempDir()
 	trustedBytes := []byte("trusted artifact bytes")
-	writeArtifact(t, root, "osquery/5.24.1/linux-amd64/osqueryi", []byte("tampered artifact bytes"))
+	writeArtifact(t, root, "osquery/5.24.1/linux-amd64/osqueryi", []byte("trussed artifact bytes"))
 
 	logger, err := diagnostics.Open(directory, "integration-test")
 	if err != nil {
 		t.Fatalf("open local diagnostics: %v", err)
 	}
+	defer logger.Close()
 
 	resolver, err := NewResolverWithDiagnostics(root, logger)
 	if err != nil {
