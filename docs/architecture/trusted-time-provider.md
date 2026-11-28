@@ -1,6 +1,6 @@
 # Contrato de evidencia de tiempo confiable
 
-Estado: contrato puro de evidencia y DTO de diagnóstico implementados; adaptadores read-only Linux y Windows integrados; macOS, fuentes temporales autenticadas e integración TUF pendientes.  
+Estado: contrato puro de evidencia, política de aceptación en memoria y DTO de diagnóstico implementados; adaptadores read-only Linux y Windows integrados; proveedores criptográficos reales, persistencia anti-rollback e integración TUF pendientes.  
 Relacionado: [ADR-0020](../decisions/ADR-0020-trusted-time-and-clock-recovery.md).
 
 ## Alcance de esta primera entrega
@@ -16,6 +16,8 @@ El paquete internal/platform/trustedtime establece un límite pequeño y sin efe
 
 El paquete no incluye red, criptografía, almacenamiento, lectura del reloj, modificación del reloj del sistema ni selección automática de fuentes. No se agrega ninguna dependencia al binario.
 
+La política pura `AcceptancePolicy` ya realiza una primera selección en memoria sobre evidencias que los adaptadores declaran autenticadas o atestadas. No implementa el protocolo ni verifica firmas: el consumidor debe aprovisionar la lista de fuentes de forma independiente y el proveedor debe autenticar cada respuesta antes de devolverla.
+
 ## Semántica de la evidencia
 
 Earliest y Latest son los límites del intervalo informado por el proveedor. La anchura se obtiene mediante Interval.Uncertainty().
@@ -29,6 +31,20 @@ Clases de garantía:
 Tipos de fuente admitidos: system, nts, roughtime y custom. Los tipos integrados tienen una clase estructural fija: system/system, nts/authenticated y roughtime/attested. Cualquier combinación incoherente se rechaza; custom permite adaptadores propios que deben documentar su semántica y seguir las mismas obligaciones de confianza.
 
 Source.ID es un identificador local estable, no un valor copiado de la respuesta remota. OperatorID identifica quién administra realmente la fuente. Si está vacío, la independencia del operador es desconocida: dos hosts o nombres DNS diferentes no prueban que existan operadores independientes. TrustAnchorID identifica el ancla configurada fuera de la respuesta de tiempo y es obligatorio para las clases authenticated y attested.
+
+## Política pura de aceptación (primera capa)
+
+`AcceptancePolicy` separa la verificación protocolar de la decisión de selección:
+
+- La allowlist local fija cada `Source` completo: ID, operador administrativo, tipo, assurance, trust anchor y KeyID. Una respuesta no puede atribuirse otro operador o ancla.
+- Solo se admiten clases `authenticated` o `attested`; los datos `system` siguen disponibles para diagnóstico, no para este límite de confianza.
+- La configuración exige al menos dos operadores posibles, un mínimo configurable de operadores distintos por observación y límites positivos para la incertidumbre de cada fuente y del intervalo final.
+- Cada lote admite como máximo una observación por operador. Dos nombres DNS o dos fuentes configuradas del mismo operador nunca aumentan el conteo.
+- Calcula los grupos con mayor intersección común de intervalos. Acepta solo si existe un único grupo máximo que alcanza el mínimo configurado; dos grupos máximos disjuntos o ambiguos se rechazan.
+- La hora aceptada es la intersección conservadora del grupo, no el promedio de las horas afirmadas.
+- `LastAcceptedTrustedTime.Earliest` se puede aplicar como piso monotónico: un intervalo nuevo que termina antes se rechaza; si cruza el piso se recorta sin ampliar su límite superior.
+
+Esta capa no es un protocolo de consenso bizantino ni establece que una mayoría sea honesta. El mínimo, los operadores, las claves y la independencia administrativa requieren gobernanza externa. No comprueba frescura ni replay: cada proveedor debe hacer esas verificaciones usando los mecanismos de su protocolo (por ejemplo, nonce Roughtime) antes de devolver evidencia. Tampoco persiste el piso; el llamador todavía debe obtenerlo de almacenamiento protegido y afrontar el rollback de backups locales.
 
 ## Obligaciones del consumidor
 
@@ -60,6 +76,11 @@ El DTO no consulta el sistema operativo, no modifica el reloj y no puede actuali
 El adaptador Windows está implementado en modo read-only. Usa SCM local con `SC_MANAGER_CONNECT`, abre `W32Time` con `SERVICE_QUERY_STATUS` y consulta `SERVICE_STATUS_PROCESS` mediante `QueryServiceStatusEx`. Solo informa `ServiceState`: running=active, stopped/paused/no existe=inactive, transiciones o acceso denegado=unknown. `SynchronizationState` y `LastSyncAt` permanecen desconocidos/vacíos. Los errores SCM se convierten en `ErrSystemTimeDiagnosticsUnavailable` sin exponer detalles. No se eleva, no muestra UAC y no ejecuta `w32tm`, controles, configuración o lecturas de peers/registro.
 
 ## Lo que todavía no está implementado
+
+- Adaptadores criptográficos que hablen Roughtime/NTS, validen firmas/respuestas, nonces, replay y límites de protocolo.
+- Política operativa de provisión, independencia real de operadores, rotación/revocación de trust anchors y pruebas multioperador.
+- Persistencia SQLite v3 de LastAcceptedTrustedTime, evidencia y procedencia; rollback resistente a restauración de backups.
+- Conexión de la política a TUF y mecanismo de referencia temporal compatible con go-tuf.
 
 - Adaptador nativo de diagnóstico read-only para macOS timed; los adaptadores Linux (adjtimex) y Windows (W32Time vía SCM) y el DTO SystemTimeDiagnostics ya están implementados. Las señales de estos sistemas siguen clasificadas como system y no aportan autenticación criptográfica.
 - Pruebas de NTS y Roughtime en laboratorio, incluidas claves/raíces, nonce, replay, incertidumbre, fuentes contradictorias y rotación.
