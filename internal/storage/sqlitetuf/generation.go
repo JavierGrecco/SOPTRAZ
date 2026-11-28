@@ -493,7 +493,7 @@ func (store *Store) LoadActiveGeneration(ctx context.Context, repositoryID strin
 	// generation. This prevents orphaned counters from outliving their evidence.
 	highWaterRows, err := tx.QueryContext(ctx,
 		"SELECT h.role_name, h.version, h.sha256, h.expires_at, h.source_generation_id, "+
-			"m.version, m.sha256, m.expires_at "+
+			"m.version, m.sha256, m.expires_at, m.metadata_json "+
 			"FROM role_high_water h LEFT JOIN generation_metadata m "+
 			"ON m.repository_id = h.repository_id AND m.generation_id = h.source_generation_id AND m.role_name = h.role_name "+
 			"WHERE h.repository_id = ? ORDER BY h.role_name",
@@ -507,20 +507,24 @@ func (store *Store) LoadActiveGeneration(ctx context.Context, repositoryID strin
 		var sourceGenerationID, highWaterVersion int64
 		var evidenceVersion sql.NullInt64
 		var evidenceSHA, evidenceExpiry sql.NullString
+		var evidenceMetadata []byte
 		if err := highWaterRows.Scan(
 			&roleName, &highWaterVersion, &highWaterSHA, &highWaterExpiry, &sourceGenerationID,
-			&evidenceVersion, &evidenceSHA, &evidenceExpiry,
+			&evidenceVersion, &evidenceSHA, &evidenceExpiry, &evidenceMetadata,
 		); err != nil {
 			_ = highWaterRows.Close()
 			return Generation{}, fmt.Errorf("%w: leer procedencia de high-water: %v", ErrGenerationCorrupt, err)
 		}
+		evidenceDigest := sha256.Sum256(evidenceMetadata)
+		evidenceSHA256 := hex.EncodeToString(evidenceDigest[:])
 		if sourceGenerationID < 1 || sourceGenerationID > generation.ID ||
 			!evidenceVersion.Valid || !evidenceSHA.Valid || !evidenceExpiry.Valid ||
 			evidenceVersion.Int64 != highWaterVersion ||
 			evidenceSHA.String != highWaterSHA ||
-			evidenceExpiry.String != highWaterExpiry {
+			evidenceExpiry.String != highWaterExpiry ||
+			evidenceSHA256 != highWaterSHA {
 			_ = highWaterRows.Close()
-			return Generation{}, fmt.Errorf("%w: high-water sin evidencia inmutable para rol %q", ErrGenerationCorrupt, roleName)
+			return Generation{}, fmt.Errorf("%w: high-water sin evidencia inmutable íntegra para rol %q", ErrGenerationCorrupt, roleName)
 		}
 	}
 	if err := highWaterRows.Err(); err != nil {
