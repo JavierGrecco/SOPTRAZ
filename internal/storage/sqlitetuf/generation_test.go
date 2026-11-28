@@ -357,6 +357,24 @@ func TestOpenMigratesExistingVersionOneTrustDatabase(t *testing.T) {
 			t.Fatalf("apply legacy schema statement %d: %v", index+1, err)
 		}
 	}
+	legacyRootV2 := []byte("legacy-root-v2")
+	legacyRootV2SHA := digestHex(legacyRootV2)
+	if _, err := db.ExecContext(ctx,
+		"INSERT INTO root_chain(repository_id, version, previous_sha256, sha256, root_json, committed_at) "+
+			"VALUES(?, ?, ?, ?, ?, ?)",
+		"soptraz-tools", 2, anchorSHA, legacyRootV2SHA, legacyRootV2, "2026-11-28T00:01:00Z",
+	); err != nil {
+		_ = db.Close()
+		t.Fatalf("insert legacy root-chain rotation: %v", err)
+	}
+	if _, err := db.ExecContext(ctx,
+		"UPDATE repositories SET latest_root_version = 2, latest_root_sha256 = ? WHERE id = ?",
+		legacyRootV2SHA,
+		"soptraz-tools",
+	); err != nil {
+		_ = db.Close()
+		t.Fatalf("advance legacy latest-root: %v", err)
+	}
 	if err := db.Close(); err != nil {
 		t.Fatalf("close legacy database: %v", err)
 	}
@@ -378,8 +396,17 @@ func TestOpenMigratesExistingVersionOneTrustDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RootState() after v2 migration: %v", err)
 	}
-	if state.Version != 1 || state.SHA256 != anchorSHA {
-		t.Fatalf("root state lost by migration: %#v", state)
+	if state.Version != 2 || state.SHA256 != legacyRootV2SHA {
+		t.Fatalf("latest root state lost by migration: %#v", state)
+	}
+	chain, chainState, err := store.LoadRootChain(ctx, "soptraz-tools")
+	if err != nil {
+		t.Fatalf("LoadRootChain() after v2 migration: %v", err)
+	}
+	if chainState != state || len(chain) != 1 || chain[0].Version != 2 ||
+		chain[0].PreviousSHA256 != anchorSHA || chain[0].SHA256 != legacyRootV2SHA ||
+		string(chain[0].Metadata) != string(legacyRootV2) {
+		t.Fatalf("legacy root-chain changed during migration: state=%#v chain=%#v", chainState, chain)
 	}
 	activeID, err := store.ActiveGenerationID(ctx, "soptraz-tools")
 	if err != nil {
@@ -478,5 +505,41 @@ func TestRoleHighWaterCannotBeDeletedOrDowngradedThroughSQL(t *testing.T) {
 
 	if _, err := store.LoadActiveGeneration(ctx, "soptraz-tools"); err != nil {
 		t.Fatalf("LoadActiveGeneration() after rejected SQL mutations: %v", err)
+	}
+}
+
+
+func TestLoadActiveGenerationDetectsTamperedHighWaterEvidenceForOmittedRole(t *testing.T) {
+	ctx := context.Background()
+	store, _, anchor := openGenerationTestStore(t)
+	firstRoles := append(generationTestRoles(2, 3, 4), VerifiedRoleMetadata{
+		Role:      "legacy-maintenance",
+		Parents:   []string{"targets"},
+		Version:   8,
+		ExpiresAt: time.Date(2035, time.March, 20, 12, 0, 0, 0, time.UTC),
+		Metadata:  []byte("legacy-maintenance-v8"),
+	})
+	first, err := store.CommitGeneration(ctx, "soptraz-tools", 0, anchor, firstRoles)
+	if err != nil {
+		t.Fatalf("first CommitGeneration() error = %v", err)
+	}
+	if _, err := store.CommitGeneration(ctx, "soptraz-tools", first.ID, anchor, generationTestRoles(3, 4, 5)); err != nil {
+		t.Fatalf("second CommitGeneration() omitting role error = %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, "DROP TRIGGER generation_metadata_no_update"); err != nil {
+		t.Fatalf("drop immutable trigger for corruption fixture: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx,
+		"UPDATE generation_metadata SET metadata_json = ? "+
+			"WHERE repository_id = ? AND generation_id = ? AND role_name = ?",
+		[]byte("tampered-legacy-maintenance-v8"),
+		"soptraz-tools",
+		first.ID,
+		"legacy-maintenance",
+	); err != nil {
+		t.Fatalf("tamper omitted source-role evidence: %v", err)
+	}
+	if _, err := store.LoadActiveGeneration(ctx, "soptraz-tools"); !errors.Is(err, ErrGenerationCorrupt) {
+		t.Fatalf("LoadActiveGeneration() error = %v, want ErrGenerationCorrupt for omitted-role evidence", err)
 	}
 }
