@@ -72,14 +72,24 @@ type Logger struct {
 	recoveredRuns  []string
 }
 
+// DefaultDirectory returns the per-user local folder where incident reports
+// are stored. It does not create the directory or a report.
+func DefaultDirectory() (string, error) {
+	base, err := os.UserCacheDir()
+	if err != nil {
+		return "", fmt.Errorf("resolver carpeta local de diagnósticos: %w", err)
+	}
+	return filepath.Join(base, "SOPTRAZ", "diagnostics"), nil
+}
+
 // OpenDefault stores reports in the current user's local cache directory.
 // Reports remain local and are never uploaded by this package.
 func OpenDefault(version string) (*Logger, error) {
-	base, err := os.UserCacheDir()
+	directory, err := DefaultDirectory()
 	if err != nil {
-		return nil, fmt.Errorf("resolver carpeta local de diagnósticos: %w", err)
+		return nil, err
 	}
-	return Open(filepath.Join(base, "SOPTRAZ", "diagnostics"), version)
+	return Open(directory, version)
 }
 
 // Open creates a per-execution text report and recovers reports from previous
