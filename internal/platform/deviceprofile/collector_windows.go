@@ -49,23 +49,7 @@ type systemPowerStatus struct {
 // read-only APIs. A failure in one source is recorded and does not discard
 // useful observations from other sources.
 func Collect() Result {
-	result := Result{
-		Observations: moduleprofile.Observations{
-			Capabilities: moduleprofile.Capabilities{
-				BatteryPresent:   moduleprofile.Unknown,
-				Touch:            moduleprofile.Unknown,
-				Pen:              moduleprofile.Unknown,
-				PhysicalKeyboard: moduleprofile.Unknown,
-				KeyboardAttached: moduleprofile.Unknown,
-				DedicatedGPU:     moduleprofile.Unknown,
-				ThermalSensors:   moduleprofile.Unknown,
-				DockPresent:      moduleprofile.Unknown,
-				VirtualMachine:   moduleprofile.Unknown,
-				PowerSource:      moduleprofile.PowerSourceUnknown,
-				ConvertibleSlate: moduleprofile.SlateModeUnknown,
-			},
-		},
-	}
+	result := newUnknownResult()
 
 	rawSMBIOS, err := readRawSMBIOS()
 	if err != nil {
