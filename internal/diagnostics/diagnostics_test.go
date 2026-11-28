@@ -99,7 +99,7 @@ func TestImportantEventRedactsCommonSecretForms(t *testing.T) {
 		Component: "integration.http",
 		Code:      "http.request.failed",
 		Message:   "token=abc123 password:supersecret",
-		Cause:     "https://user:password@example.test/path?api_key=private",
+		Cause:     "https://user:password@example.test/path?api_key=private; Authorization: Bearer bearer-secret; access_token=private-token",
 	}); err != nil {
 		t.Fatalf("Record() error = %v", err)
 	}
