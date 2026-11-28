@@ -46,11 +46,11 @@ type TUFClientConfig struct {
 // persistentTUFTrust keeps the durable bootstrap identity and latest verified
 // root used to seed each new official go-tuf Updater.
 type persistentTUFTrust struct {
-	store         *sqlitetuf.Store
-	repositoryID  string
-	rootState     sqlitetuf.RootState
+	store          *sqlitetuf.Store
+	repositoryID   string
+	rootState      sqlitetuf.RootState
 	latestRootJSON []byte
-	capture       *rootMetadataCaptureTransport
+	capture        *rootMetadataCaptureTransport
 }
 
 // TUFClient wraps the official go-tuf Updater. The Updater is not safe for
