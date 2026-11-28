@@ -466,7 +466,17 @@ func (client *TUFClient) finishPersistentRefresh(
 
 	candidates, captureErr := persistence.capture.take()
 	if captureErr != nil {
-		recordTUFDiagnostic(client.diagnostics, diagnostics.SeverityError, "tuf.root_capture_failed", "refresh", "No se pudieron capturar de forma íntegra los bytes de root.json para su persistencia.", "fallo de captura de respuesta")
+		severity := diagnostics.SeverityError
+		code := "tuf.root_capture_failed"
+		message := "No se pudieron capturar de forma íntegra los bytes de root.json para su persistencia."
+		cause := "fallo de captura de respuesta"
+		if errors.Is(captureErr, ErrConflictingRootCapture) {
+			severity = diagnostics.SeverityCritical
+			code = "tuf.root_equivocation_detected"
+			message = "El repositorio entregó contenidos diferentes para una misma versión de root.json."
+			cause = "equivocación de metadata TUF"
+		}
+		recordTUFDiagnostic(client.diagnostics, severity, code, "refresh", message, cause)
 		if refreshErr != nil {
 			return fmt.Errorf("actualizar metadata TUF: %v; capturar root para persistencia: %w", refreshErr, captureErr)
 		}

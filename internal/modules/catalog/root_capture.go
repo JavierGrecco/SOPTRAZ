@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +14,8 @@ import (
 
 	"github.com/JavierGrecco/SOPTRAZ/internal/storage/sqlitetuf"
 )
+
+var ErrConflictingRootCapture = errors.New("respuestas de root TUF en conflicto")
 
 // capturedRootMetadata is the exact response body returned for a versioned
 // TUF root request. It is only a candidate until go-tuf and the persistent
@@ -127,7 +130,7 @@ func (transport *rootMetadataCaptureTransport) recordRoot(version int64, metadat
 	defer transport.mu.Unlock()
 	if previous, ok := transport.roots[version]; ok {
 		if !bytes.Equal(previous, metadata) && transport.captureErr == nil {
-			transport.captureErr = fmt.Errorf("el repositorio devolvió bytes distintos para root.json v%d", version)
+			transport.captureErr = fmt.Errorf("%w: el repositorio devolvió bytes distintos para root.json v%d", ErrConflictingRootCapture, version)
 		}
 		return
 	}

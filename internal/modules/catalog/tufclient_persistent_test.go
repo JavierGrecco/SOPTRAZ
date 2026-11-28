@@ -48,6 +48,27 @@ func persistentClientConfig(metadataURL, cacheRoot string) TUFClientConfig {
 	}
 }
 
+
+func TestRootMetadataCaptureDetectsConflictingBytesForSameVersion(t *testing.T) {
+	transport := &rootMetadataCaptureTransport{roots: make(map[int64][]byte)}
+	transport.recordRoot(2, []byte("root-v2-first"))
+	transport.recordRoot(2, []byte("root-v2-first"))
+	roots, err := transport.take()
+	if err != nil {
+		t.Fatalf("identical duplicate root response returned an error: %v", err)
+	}
+	if len(roots) != 1 || roots[0].version != 2 {
+		t.Fatalf("identical duplicate capture = %#v, want one version-2 root", roots)
+	}
+
+	transport.recordRoot(2, []byte("root-v2-first"))
+	transport.recordRoot(2, []byte("different-root-v2"))
+	_, err = transport.take()
+	if !errors.Is(err, ErrConflictingRootCapture) {
+		t.Fatalf("conflicting root capture error = %v, want ErrConflictingRootCapture", err)
+	}
+}
+
 func TestPersistentTUFClientReplaysStoredRootAfterRestartWhenLaterMetadataFails(t *testing.T) {
 	fixture := makeDelegatedRepositoryFixture(t)
 	rootV2 := makeRotatedRootMetadata(t, fixture, true)
