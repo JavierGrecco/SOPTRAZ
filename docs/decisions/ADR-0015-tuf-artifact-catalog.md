@@ -1,6 +1,6 @@
 # ADR-0015: Catálogo autenticado de artefactos con TUF/go-tuf v2
 
-- Estado: Primera capa online con resolución de targets delegados implementada; bootstrap de root productivo, persistencia anti-rollback y política offline pendientes.
+- Estado: Primera capa online con targets delegados y retención in-process del root verificado implementadas; bootstrap de root productivo, store durable anti-rollback y política offline pendientes.
 - Fecha: 2026-11-27
 - Relacionada: ADR-0007, ADR-0009, ADR-0014, Issue #5 (catálogo), Issue #4 (supervisor).
 
@@ -56,3 +56,10 @@ Field es offline-first. La confianza no puede depender de descargar una clave ju
 El diseño detallado de generaciones de metadata, high-water marks, commit transaccional, recuperación de backups, limitaciones de rollback de disco completo y validación offline se mantiene en [docs/architecture/tuf-state-persistence.md](../architecture/tuf-state-persistence.md). El documento es una especificación de arquitectura; no implica que el store transaccional o el modo offline estén implementados.
 
 La nueva prueba de integración del updater oficial para root rotation consecutiva (PR #14) cubre N→N+1 con thresholds antiguo/nuevo y rechazo cuando falta la firma del root anterior. Sigue pendiente completar bootstrap productivo, almacenamiento durable y offline seguro.
+
+
+## Estado de retención y almacenamiento durable
+
+PR #20 corrigió la recreación de `updater.Updater`: el cliente conserva como base del siguiente refresh la última raíz que go-tuf verificó, incluso si una fase posterior de timestamp/snapshot/targets falla. La corrección vive en memoria durante el proceso; no debe confundirse con persistencia entre reinicios.
+
+La decisión de almacenamiento durable se formaliza en [ADR-0017](ADR-0017-tuf-sqlite-trust-store.md): SQLite separado para cadena de root, generaciones de metadata, high-water marks y generación activa. La arquitectura de commits de root chain y generación completa es distinta para conservar una rotación verificada aunque falle metadata posterior. El almacén sigue pendiente de implementación y validación de crash/restart.
