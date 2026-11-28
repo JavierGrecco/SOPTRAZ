@@ -200,7 +200,6 @@ func TestPersistentRootReplayRejectsVersionAndDigestMismatch(t *testing.T) {
 	}
 }
 
-
 func TestPersistentRefreshDoesNotCommitRootBeforeOfficialUpdaterAcceptsIt(t *testing.T) {
 	fixture := makeDelegatedRepositoryFixture(t)
 	rootV2 := makeRotatedRootMetadata(t, fixture, true)
