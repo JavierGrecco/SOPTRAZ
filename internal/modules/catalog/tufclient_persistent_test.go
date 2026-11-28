@@ -293,18 +293,15 @@ func TestPersistentTUFClientCommitsVerifiedGenerationAndDelegationMetadata(t *te
 		t.Fatalf("NewPersistentTUFClient(): %v", err)
 	}
 
-	initial, err := store.LoadActiveGeneration(context.Background(), "test-repository")
+	initialID, err := store.ActiveGenerationID(context.Background(), "test-repository")
 	if err != nil {
-		t.Fatalf("load top-level generation: %v", err)
+		t.Fatalf("read initial active generation ID: %v", err)
 	}
-	if len(initial.Roles) != 3 {
-		t.Fatalf("initial generation has %d roles, want timestamp/snapshot/targets only", len(initial.Roles))
+	if initialID != 0 {
+		t.Fatalf("generation became active before a descriptor was resolved: %d", initialID)
 	}
-	initialID := initial.ID
-	for _, required := range []string{"timestamp", "snapshot", "targets"} {
-		if !hasGenerationRole(initial.Roles, required) {
-			t.Fatalf("initial generation is missing role %q", required)
-		}
+	if _, err := store.LoadActiveGeneration(context.Background(), "test-repository"); !errors.Is(err, sqlitetuf.ErrGenerationNotFound) {
+		t.Fatalf("LoadActiveGeneration() before descriptor resolution error = %v, want ErrGenerationNotFound", err)
 	}
 
 	verified, err := client.ResolveDescriptor(fixture.descriptor)
@@ -319,9 +316,9 @@ func TestPersistentTUFClientCommitsVerifiedGenerationAndDelegationMetadata(t *te
 	if err != nil {
 		t.Fatalf("load generation with delegated metadata: %v", err)
 	}
-	if delegated.ID != initialID+1 || len(delegated.Roles) != 4 {
-		t.Fatalf("delegated generation = ID %d with %d roles, want ID %d with 4 roles",
-			delegated.ID, len(delegated.Roles), initialID+1)
+	if delegated.ID != 1 || len(delegated.Roles) != 4 {
+		t.Fatalf("delegated generation = ID %d with %d roles, want first generation with 4 roles",
+			delegated.ID, len(delegated.Roles))
 	}
 	var delegatedRole *sqlitetuf.VerifiedRoleMetadata
 	for index := range delegated.Roles {
@@ -390,11 +387,8 @@ func TestPersistentTUFGenerationRejectsCacheBytesChangedAfterUpdaterAcceptedThem
 	if err := os.WriteFile(delegatedCache, []byte("{\"signed\":{\"_type\":\"targets\"}}"), 0o600); err != nil {
 		t.Fatalf("replace delegated cache fixture: %v", err)
 	}
-	client.mu.Lock()
-	err = client.persistGenerationLocked(client.updater)
-	client.mu.Unlock()
-	if err == nil {
-		t.Fatal("persistGenerationLocked() accepted cache bytes changed after go-tuf validation")
+	if _, err := client.CommitVerifiedGeneration(context.Background()); err == nil {
+		t.Fatal("CommitVerifiedGeneration() accepted cache bytes changed after go-tuf validation")
 	}
 	after, loadErr := store.LoadActiveGeneration(context.Background(), "test-repository")
 	if loadErr != nil {
