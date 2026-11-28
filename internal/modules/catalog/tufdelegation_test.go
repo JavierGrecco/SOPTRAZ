@@ -226,10 +226,10 @@ func TestResolveTargetPathRevisitsRoleForDifferentParents(t *testing.T) {
 			{Name: "right", Paths: []string{"packages/*/*/*"}},
 		}),
 		"left": syntheticTargetsRole(nil, []metadata.DelegatedRole{
-			{Name: "shared", Terminating: true, Paths: []string{"packages/*/*/*"}},
+			{Name: "shared", Paths: []string{"packages/*/*/*"}},
 		}),
 		"right": syntheticTargetsRole(nil, []metadata.DelegatedRole{
-			{Name: "shared", Terminating: true, Paths: []string{"packages/*/*/*"}},
+			{Name: "shared", Paths: []string{"packages/*/*/*"}},
 		}),
 		"shared": syntheticTargetsRole(nil, nil),
 	}
@@ -260,7 +260,7 @@ func TestResolveTargetPathSupportsSuccinctRoles(t *testing.T) {
 	bitLength := uint(5)
 	bin := uint32(digest[0])<<24 | uint32(digest[1])<<16 | uint32(digest[2])<<8 | uint32(digest[3])
 	bin >>= 32 - bitLength
-	roleName := fmt.Sprintf("bin-%x", bin)
+	roleName := fmt.Sprintf("bin-%02x", bin)
 
 	top := syntheticTargetsRole(nil, nil)
 	top.Signed.Delegations = &metadata.Delegations{
