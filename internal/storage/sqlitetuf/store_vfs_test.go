@@ -20,9 +20,9 @@ import (
 type injectedSQLiteVFS struct {
 	root string
 
-	mu                 sync.Mutex
-	failJournalWrite   bool
-	failJournalSync    bool
+	mu                  sync.Mutex
+	failJournalWrite    bool
+	failJournalSync     bool
 	journalWritesFailed int
 	journalSyncsFailed  int
 }
@@ -115,10 +115,10 @@ func (vfs *injectedSQLiteVFS) Open(name string, flags sqlitevfs.OpenFlag) (sqlit
 		return nil, 0, err
 	}
 	return &injectedSQLiteVFSFile{
-		File:           file,
-		owner:          vfs,
-		path:           path,
-		deleteOnClose:  flags&sqlitevfs.OpenDeleteOnClose != 0,
+		File:          file,
+		owner:         vfs,
+		path:          path,
+		deleteOnClose: flags&sqlitevfs.OpenDeleteOnClose != 0,
 	}, flags, nil
 }
 
