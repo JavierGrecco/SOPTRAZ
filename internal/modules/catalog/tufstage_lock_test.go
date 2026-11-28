@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/JavierGrecco/SOPTRAZ/internal/storage/sqlitetuf"
@@ -126,14 +127,16 @@ func TestTUFRepositoryLockHelperProcess(t *testing.T) {
 	if err != nil {
 		os.Exit(91)
 	}
-	if _, err := acquirePersistentTUFRepositoryLock(store, repositoryID); err != nil {
+	repositoryLock, err := acquirePersistentTUFRepositoryLock(store, repositoryID)
+	if err != nil || !repositoryLock.Locked() {
 		os.Exit(92)
 	}
 	if _, err := os.MkdirTemp(cacheRoot, tufMetadataStagePrefixForRepository(repositoryID)+"*"); err != nil {
 		os.Exit(93)
 	}
 
-	// Deliberately skip Close/Unlock to simulate kill or a fatal process exit.
+	// Keep the lock reachable until process exit; deliberately skip Close/Unlock.
+	runtime.KeepAlive(repositoryLock)
 	os.Exit(0)
 }
 
