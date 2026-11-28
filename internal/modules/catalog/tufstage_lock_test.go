@@ -220,11 +220,11 @@ func TestTUFRepositoryLockAndOrphanCleanupAfterAbruptProcessExit(t *testing.T) {
 		t.Fatalf("second process lock error = %v, want ErrTUFRepositoryInUse", err)
 	}
 
-	if err := os.WriteFile(releasePath, []byte("EXIT"), 0o600); err != nil {
-		t.Fatalf("release lock-owning child for abrupt exit: %v", err)
+	if err := command.Process.Kill(); err != nil {
+		t.Fatalf("terminate lock-owning child externally: %v", err)
 	}
-	if err := command.Wait(); err != nil {
-		t.Fatalf("abrupt lock helper returned error: %v", err)
+	if err := command.Wait(); err == nil {
+		t.Fatalf("externally terminated lock helper exited successfully")
 	}
 	processExited = true
 
