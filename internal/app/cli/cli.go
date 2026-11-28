@@ -197,7 +197,6 @@ func timeMechanismText(mechanism trustedtime.TimeMechanism) string {
 	}
 }
 
-
 func readContractFile(path string) ([]byte, error) {
 	file, err := os.Open(path)
 	if err != nil {
