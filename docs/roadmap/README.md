@@ -52,9 +52,9 @@ Runtime Go, registro local, IDs, acciones tipadas, permisos/riesgo, cancelación
 - [ ] Completar bootstrap/enrolamiento de root de producción y política de threshold/rotación/revocación; el cliente actual recibe un `TrustAnchor` ya fijado.
 - [x] Seleccionar almacenamiento durable para root chain, generaciones, high-water y active generation mediante SQLite separado (ADR-0017).
 - [x] Implementar la primera capa aislada del store SQLite para la cadena root: anchor/origen fijados, raíces append-only, enlaces SHA-256, versiones consecutivas, CAS transaccional, lectura consistente y reapertura (PR #22; CI completo de cinco jobs).
-- [x] Integrar el store con `NewPersistentTUFClient`: replay de toda la cadena desde el pin bootstrap, captura de respuestas `N.root.json`, confirmación de que el updater oficial aceptó la misma versión y commit CAS durable incluso si falla metadata posterior (PR #23; CI 5/5 en run 46093144315; PR en revisión).
+- [x] Integrar el store con `NewPersistentTUFClient`: replay de toda la cadena desde el pin bootstrap, captura de respuestas `N.root.json`, confirmación de que el updater oficial aceptó la misma versión y commit CAS durable incluso si falla metadata posterior (PR #23 integrado en `1988db9`; CI pre-merge 5/5 en run 46093570302).
 - [ ] Implementar staging y commits atómicos de generaciones completas, metadata por rol/delegación, high-water marks y `active_generation`; cubrir crash/restart real y concurrencia.
-- [ ] Integrar el updater con staging por generación y materialización de metadata por rol; el replay persistente de root desde el anchor ya está implementado en PR #23.
+- [ ] Integrar el updater con staging por generación y materialización de metadata por rol; el replay persistente de root desde el anchor ya está implementado e integrado en PR #23.
 - [ ] Completar resiliencia del updater: commits atómicos de generaciones, high-water durable por rol, recuperación crash/restart real y política de actualización de metadata no-root cacheada.
 - [ ] Definir modo offline que revalide metadata cacheada, vigente y anti-rollback; no usar TOFU ni UnsafeLocalMode como bypass.
 - [ ] Probar rotación root, thresholds, firma inválida, expiración, rollback/freeze, consistent snapshots, delegaciones y cache corrupta.
