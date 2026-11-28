@@ -128,7 +128,6 @@ func TestCleanupOrphanedStagesRejectsLockForDifferentRepository(t *testing.T) {
 }
 
 func TestCleanupOrphanedStagesRequiresExclusiveRepositoryLock(t *testing.T) {
-	store := openStageLockTestStore(t, filepath.Join(t.TempDir(), "catalog-trust.sqlite"))
 	cacheRoot := t.TempDir()
 	if _, err := os.MkdirTemp(cacheRoot, tufMetadataStagePrefixForRepository("repository-one")+"*"); err != nil {
 		t.Fatalf("create orphan stage: %v", err)
