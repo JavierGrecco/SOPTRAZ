@@ -1,8 +1,8 @@
 package sqlitetuf
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
