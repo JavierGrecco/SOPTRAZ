@@ -16,6 +16,7 @@ import (
 
 	"github.com/JavierGrecco/SOPTRAZ/internal/modules/artifact"
 	"github.com/JavierGrecco/SOPTRAZ/internal/storage/sqlitetuf"
+	"github.com/gofrs/flock"
 	tufconfig "github.com/theupdateframework/go-tuf/v2/metadata/config"
 	tufupdater "github.com/theupdateframework/go-tuf/v2/metadata/updater"
 )
@@ -23,6 +24,7 @@ import (
 var (
 	ErrInvalidTUFClientConfig = errors.New("configuración del cliente TUF inválida")
 	ErrTUFClientUnavailable   = errors.New("cliente TUF no inicializado")
+	ErrTUFRepositoryInUse     = errors.New("el repositorio TUF ya está siendo utilizado por otra instancia")
 )
 
 // TUFClientConfig defines bounded access to a TUF repository. The initial root
@@ -51,6 +53,7 @@ type persistentTUFTrust struct {
 	rootState      sqlitetuf.RootState
 	latestRootJSON []byte
 	capture        *rootMetadataCaptureTransport
+	repositoryLock *flock.Flock
 }
 
 // TUFClient wraps the official go-tuf Updater. The Updater is not safe for
@@ -101,6 +104,24 @@ func NewPersistentTUFClient(
 		return nil, fmt.Errorf("%w: MetadataURL: %v", ErrInvalidTUFClientConfig, err)
 	}
 
+	metadataCacheRoot, err := prepareCacheDirectory(clientConfig.MetadataCacheDir)
+	if err != nil {
+		return nil, fmt.Errorf("%w: MetadataCacheDir: %v", ErrInvalidTUFClientConfig, err)
+	}
+	repositoryLock, err := acquirePersistentTUFRepositoryLock(store, repositoryID)
+	if err != nil {
+		return nil, err
+	}
+	lockTransferred := false
+	defer func() {
+		if !lockTransferred {
+			_ = repositoryLock.Unlock()
+		}
+	}()
+	if _, err := cleanupOrphanedTUFStages(metadataCacheRoot, repositoryLock); err != nil {
+		return nil, fmt.Errorf("recuperar stages TUF anteriores: %w", err)
+	}
+
 	bootstrapRootJSON, bootstrapState, err := anchor.initialRootSnapshot()
 	if err != nil {
 		return nil, fmt.Errorf("%w: no se pudo obtener el root bootstrap: %v", ErrInvalidTUFClientConfig, err)
@@ -133,8 +154,14 @@ func NewPersistentTUFClient(
 		repositoryID:   repositoryID,
 		rootState:      sqlitetuf.RootState{Version: replayedState.Version, SHA256: replayedState.SHA256},
 		latestRootJSON: append([]byte(nil), currentRootJSON...),
+		repositoryLock: repositoryLock,
 	}
-	return newTUFClientFromRoot(currentRootJSON, clientConfig, persistence)
+	client, err := newTUFClientFromRoot(currentRootJSON, clientConfig, persistence)
+	if err != nil {
+		return nil, err
+	}
+	lockTransferred = true
+	return client, nil
 }
 
 // newTUFClientFromRoot contains the common bounded updater configuration.
@@ -322,6 +349,9 @@ func (client *TUFClient) refreshLocked() error {
 		return ErrTUFClientUnavailable
 	}
 	if client.persistence != nil {
+		if err := client.ensurePersistentRepositoryLockLocked(); err != nil {
+			return fmt.Errorf("adquirir exclusividad del repositorio TUF: %w", err)
+		}
 		if err := client.preparePersistentMetadataStage(); err != nil {
 			return fmt.Errorf("preparar caché aislada de metadata TUF: %w", err)
 		}
@@ -454,6 +484,28 @@ func (client *TUFClient) finishPersistentRefresh(
 	return nil
 }
 
+// ensurePersistentRepositoryLockLocked reacquires repository exclusivity after
+// Close() and reaps stages left by a process that terminated without Close().
+func (client *TUFClient) ensurePersistentRepositoryLockLocked() error {
+	if client == nil || client.persistence == nil || client.persistence.store == nil {
+		return ErrTUFClientUnavailable
+	}
+	if lock := client.persistence.repositoryLock; lock != nil && lock.Locked() {
+		return nil
+	}
+
+	lock, err := acquirePersistentTUFRepositoryLock(client.persistence.store, client.persistence.repositoryID)
+	if err != nil {
+		return err
+	}
+	if _, err := cleanupOrphanedTUFStages(client.metadataCacheRoot, lock); err != nil {
+		_ = lock.Unlock()
+		return fmt.Errorf("limpiar stages TUF abandonados: %w", err)
+	}
+	client.persistence.repositoryLock = lock
+	return nil
+}
+
 // preparePersistentMetadataStage creates a private working directory for one
 // updater attempt. Only the last committed SQLite generation is copied into it;
 // go-tuf still performs its normal online verification before using any cached
@@ -531,14 +583,16 @@ func (client *TUFClient) discardPersistentMetadataStage() error {
 		return nil
 	}
 	stageDir := client.metadataStageDir
+	if stageDir != "" {
+		if err := os.RemoveAll(stageDir); err != nil {
+			return err
+		}
+	}
 	client.metadataStageDir = ""
 	if client.config != nil && client.metadataCacheRoot != "" {
 		client.config.LocalMetadataDir = client.metadataCacheRoot
 	}
-	if stageDir == "" {
-		return nil
-	}
-	return os.RemoveAll(stageDir)
+	return nil
 }
 
 // Close releases the updater's private metadata workspace. The SQLite store
@@ -552,7 +606,16 @@ func (client *TUFClient) Close() error {
 	defer client.mu.Unlock()
 	client.updater = nil
 	client.resolvedTargets = make(map[string]struct{})
-	return client.discardPersistentMetadataStage()
+	if err := client.discardPersistentMetadataStage(); err != nil {
+		return fmt.Errorf("limpiar workspace de metadata TUF: %w", err)
+	}
+	if client.persistence != nil && client.persistence.repositoryLock != nil {
+		if err := client.persistence.repositoryLock.Unlock(); err != nil {
+			return fmt.Errorf("liberar lock del repositorio TUF: %w", err)
+		}
+		client.persistence.repositoryLock = nil
+	}
+	return nil
 }
 
 func (anchor *TrustAnchor) rootSnapshot() ([]byte, error) {
