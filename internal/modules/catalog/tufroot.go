@@ -31,11 +31,14 @@ type TrustState struct {
 // compiled into SOPTRAZ or installed through a separately verified enrollment
 // process; it must never be accepted from the catalogue or an untrusted UI.
 type TrustAnchor struct {
-	mu          sync.RWMutex
-	trusted     *trustedmetadata.TrustedMetadata
-	rootJSON    []byte
-	rootSHA256  [sha256.Size]byte
-	rootVersion int64
+	mu                 sync.RWMutex
+	trusted            *trustedmetadata.TrustedMetadata
+	rootJSON           []byte
+	rootSHA256         [sha256.Size]byte
+	rootVersion        int64
+	initialRootJSON    []byte
+	initialRootSHA256  [sha256.Size]byte
+	initialRootVersion int64
 }
 
 // NewPinnedTrustAnchor verifies the exact root bytes against a pre-established
@@ -67,10 +70,13 @@ func NewPinnedTrustAnchor(rootJSON []byte, expectedSHA256 string) (*TrustAnchor,
 	}
 
 	return &TrustAnchor{
-		trusted:     trusted,
-		rootJSON:    append([]byte(nil), rootJSON...),
-		rootSHA256:  digest,
-		rootVersion: trusted.Root.Signed.Version,
+		trusted:            trusted,
+		rootJSON:           append([]byte(nil), rootJSON...),
+		rootSHA256:         digest,
+		rootVersion:        trusted.Root.Signed.Version,
+		initialRootJSON:    append([]byte(nil), rootJSON...),
+		initialRootSHA256:  digest,
+		initialRootVersion: trusted.Root.Signed.Version,
 	}, nil
 }
 
@@ -143,5 +149,23 @@ func (anchor *TrustAnchor) VerifyAndRotateRoot(nextRootJSON []byte) (TrustState,
 	return TrustState{
 		Version: anchor.rootVersion,
 		SHA256:  hex.EncodeToString(anchor.rootSHA256[:]),
+	}, nil
+}
+
+// initialRootSnapshot returns the immutable bootstrap root and its independent
+// pin. TrustAnchor may rotate its current root in memory, but persistence replay
+// must always begin at the originally provisioned anchor.
+func (anchor *TrustAnchor) initialRootSnapshot() ([]byte, TrustState, error) {
+	if anchor == nil {
+		return nil, TrustState{}, fmt.Errorf("%w: ancla no inicializada", ErrInvalidTrustAnchor)
+	}
+	anchor.mu.RLock()
+	defer anchor.mu.RUnlock()
+	if len(anchor.initialRootJSON) == 0 || anchor.initialRootVersion < 1 {
+		return nil, TrustState{}, fmt.Errorf("%w: raíz bootstrap ausente", ErrInvalidTrustAnchor)
+	}
+	return append([]byte(nil), anchor.initialRootJSON...), TrustState{
+		Version: anchor.initialRootVersion,
+		SHA256:  hex.EncodeToString(anchor.initialRootSHA256[:]),
 	}, nil
 }

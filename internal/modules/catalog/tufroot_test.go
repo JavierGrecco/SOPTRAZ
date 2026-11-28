@@ -162,3 +162,34 @@ func TestTrustAnchorRejectsRootNotSignedByPreviouslyTrustedKey(t *testing.T) {
 		t.Fatalf("trust state changed after rejected update: %#v", state)
 	}
 }
+
+func TestTrustAnchorRetainsImmutableBootstrapRootAfterRotation(t *testing.T) {
+	oldKey := newTestSigningKey(t)
+	newKey := newTestSigningKey(t)
+	rootV1 := makeSignedRoot(t, 1, oldKey)
+	rootV2 := makeSignedRoot(t, 2, oldKey, newKey)
+	anchor, err := NewPinnedTrustAnchor(rootV1, rootPin(rootV1))
+	if err != nil {
+		t.Fatalf("NewPinnedTrustAnchor() error = %v", err)
+	}
+	if _, err := anchor.VerifyAndRotateRoot(rootV2); err != nil {
+		t.Fatalf("VerifyAndRotateRoot() error = %v", err)
+	}
+
+	initialJSON, initialState, err := anchor.initialRootSnapshot()
+	if err != nil {
+		t.Fatalf("initialRootSnapshot() error = %v", err)
+	}
+	currentState, err := anchor.State()
+	if err != nil {
+		t.Fatalf("State() error = %v", err)
+	}
+	if string(initialJSON) != string(rootV1) ||
+		initialState.Version != 1 ||
+		initialState.SHA256 != rootPin(rootV1) {
+		t.Fatalf("bootstrap snapshot changed after rotation: state=%#v", initialState)
+	}
+	if currentState.Version != 2 || currentState.SHA256 != rootPin(rootV2) {
+		t.Fatalf("current trust state = %#v, want rotated root v2", currentState)
+	}
+}
