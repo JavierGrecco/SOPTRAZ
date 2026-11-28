@@ -21,6 +21,8 @@ func TestNormalizePowerStatus(t *testing.T) {
 		{name: "unknown battery flag", ac: 255, batteryFlag: batteryFlagUnknown, wantBattery: moduleprofile.Unknown, wantPower: moduleprofile.PowerSourceUnknown},
 		{name: "zero battery flag remains unknown", ac: 1, batteryFlag: 0, wantBattery: moduleprofile.Unknown, wantPower: moduleprofile.PowerSourceAC},
 		{name: "unknown AC status", ac: 255, batteryFlag: batteryFlagLow, wantBattery: moduleprofile.Yes, wantPower: moduleprofile.PowerSourceUnknown},
+		{name: "offline without system battery", ac: 0, batteryFlag: batteryFlagNoSystem, wantBattery: moduleprofile.No, wantPower: moduleprofile.PowerSourceUnknown},
+		{name: "offline with unknown battery state", ac: 0, batteryFlag: batteryFlagUnknown, wantBattery: moduleprofile.Unknown, wantPower: moduleprofile.PowerSourceUnknown},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
