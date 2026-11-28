@@ -208,3 +208,37 @@ func containsWarning(warnings []string, expected string) bool {
 	}
 	return false
 }
+
+
+func TestClassifyMapsDocumentedSMBIOSChassisFamilies(t *testing.T) {
+	tests := []struct {
+		name       string
+		code       uint16
+		want       FormFactor
+		confidence Confidence
+	}{
+		{name: "desktop", code: 3, want: FormFactorDesktop, confidence: ConfidenceMedium},
+		{name: "low profile desktop", code: 4, want: FormFactorDesktop, confidence: ConfidenceMedium},
+		{name: "pizza box", code: 5, want: FormFactorDesktop, confidence: ConfidenceMedium},
+		{name: "mini tower", code: 6, want: FormFactorDesktop, confidence: ConfidenceMedium},
+		{name: "tower", code: 7, want: FormFactorDesktop, confidence: ConfidenceMedium},
+		{name: "laptop", code: 9, want: FormFactorNotebook, confidence: ConfidenceMedium},
+		{name: "notebook", code: 10, want: FormFactorNotebook, confidence: ConfidenceMedium},
+		{name: "sub notebook", code: 14, want: FormFactorNotebook, confidence: ConfidenceMedium},
+		{name: "handheld", code: 11, want: FormFactorHandheld, confidence: ConfidenceMedium},
+		{name: "all in one", code: 13, want: FormFactorAllInOne, confidence: ConfidenceMedium},
+		{name: "tablet", code: 30, want: FormFactorTablet, confidence: ConfidenceMedium},
+		{name: "convertible", code: 31, want: FormFactorConvertible, confidence: ConfidenceMedium},
+		{name: "detachable", code: 32, want: FormFactorDetachable, confidence: ConfidenceMedium},
+		{name: "generic portable", code: 8, want: FormFactorUnknown, confidence: ConfidenceLow},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			profile := Classify(Observations{SMBIOSChassisTypes: []uint16{test.code}})
+			if profile.FormFactor != test.want || profile.Confidence != test.confidence {
+				t.Fatalf("Classify(chassis=%d) = %s/%s, want %s/%s; warnings=%v",
+					test.code, profile.FormFactor, profile.Confidence, test.want, test.confidence, profile.Warnings)
+			}
+		})
+	}
+}
