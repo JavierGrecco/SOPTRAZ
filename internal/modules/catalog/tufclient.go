@@ -118,7 +118,7 @@ func NewPersistentTUFClient(
 			_ = repositoryLock.Unlock()
 		}
 	}()
-	if _, err := cleanupOrphanedTUFStages(metadataCacheRoot, repositoryLock); err != nil {
+	if _, err := cleanupOrphanedTUFStages(metadataCacheRoot, repositoryLock, repositoryID); err != nil {
 		return nil, fmt.Errorf("recuperar stages TUF anteriores: %w", err)
 	}
 
@@ -498,7 +498,7 @@ func (client *TUFClient) ensurePersistentRepositoryLockLocked() error {
 	if err != nil {
 		return err
 	}
-	if _, err := cleanupOrphanedTUFStages(client.metadataCacheRoot, lock); err != nil {
+	if _, err := cleanupOrphanedTUFStages(client.metadataCacheRoot, lock, client.persistence.repositoryID); err != nil {
 		_ = lock.Unlock()
 		return fmt.Errorf("limpiar stages TUF abandonados: %w", err)
 	}
@@ -532,7 +532,7 @@ func (client *TUFClient) preparePersistentMetadataStage() error {
 		return fmt.Errorf("%w: recuperar generación activa para el caché: %v", ErrGenerationCapture, loadErr)
 	}
 
-	stageDir, err := os.MkdirTemp(client.metadataCacheRoot, ".soptraz-tuf-stage-*")
+	stageDir, err := os.MkdirTemp(client.metadataCacheRoot, tufMetadataStagePrefixForRepository(client.persistence.repositoryID)+"*")
 	if err != nil {
 		return fmt.Errorf("crear directorio temporal privado: %w", err)
 	}
