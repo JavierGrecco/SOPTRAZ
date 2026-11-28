@@ -45,7 +45,7 @@ func TestTimeStatusTextReportIsReadOnlyAndExplicit(t *testing.T) {
 		"Mecanismo: kernel de Linux (adjtimex)",
 		"Última sincronización: desconocida",
 		"No es evidencia temporal criptográfica",
-		"no modifica",
+		"No modifica",
 	} {
 		if !strings.Contains(output, expected) {
 			t.Errorf("text report missing %q: %s", expected, output)
