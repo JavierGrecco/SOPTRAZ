@@ -6,13 +6,35 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/JavierGrecco/SOPTRAZ/internal/diagnostics"
 	"github.com/JavierGrecco/SOPTRAZ/internal/storage/sqlitetuf"
 	tufconfig "github.com/theupdateframework/go-tuf/v2/metadata/config"
 	tufupdater "github.com/theupdateframework/go-tuf/v2/metadata/updater"
 )
+
+
+type tufRecordingDiagnostics struct {
+	mu     sync.Mutex
+	events []diagnostics.Event
+	err    error
+}
+
+func (recorder *tufRecordingDiagnostics) Record(event diagnostics.Event) error {
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+	recorder.events = append(recorder.events, event)
+	return recorder.err
+}
+
+func (recorder *tufRecordingDiagnostics) snapshot() []diagnostics.Event {
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+	return append([]diagnostics.Event(nil), recorder.events...)
+}
 
 func persistentClientConfig(metadataURL, cacheRoot string) TUFClientConfig {
 	return TUFClientConfig{
@@ -184,14 +206,24 @@ func TestPersistentTUFClientRejectsStoredRootWithoutValidTUFSignatures(t *testin
 		t.Fatalf("write corrupt-but-well-linked fixture into storage layer: %v", err)
 	}
 
+	recorder := &tufRecordingDiagnostics{}
+	config := persistentClientConfig(server.URL+"/metadata", t.TempDir())
+	config.Diagnostics = recorder
 	_, err = NewPersistentTUFClient(
 		anchor,
-		persistentClientConfig(server.URL+"/metadata", t.TempDir()),
+		config,
 		store,
 		"test-repository",
 	)
 	if err == nil || !errors.Is(err, ErrInvalidTUFClientConfig) || !strings.Contains(err.Error(), "autenticar la cadena") {
 		t.Fatalf("NewPersistentTUFClient() error = %v, want fail-closed root-chain authentication error", err)
+	}
+	events := recorder.snapshot()
+	if len(events) != 1 || events[0].Severity != diagnostics.SeverityCritical || events[0].Code != "tuf.root_chain_replay_rejected" {
+		t.Fatalf("root replay rejection diagnostics = %#v, want one CRITICAL tuf.root_chain_replay_rejected", events)
+	}
+	if strings.Contains(events[0].Message, server.URL) || strings.Contains(events[0].Cause, server.URL) {
+		t.Fatalf("diagnostic exposed repository URL: %#v", events[0])
 	}
 	requestsMu.Lock()
 	defer requestsMu.Unlock()
@@ -480,9 +512,12 @@ func TestPersistentRefreshFailurePreservesCommittedGenerationAndDiscardsAttempt(
 	if err != nil {
 		t.Fatalf("create pinned anchor: %v", err)
 	}
+	recorder := &tufRecordingDiagnostics{}
+	config := persistentClientConfig(server.URL+"/metadata", cacheRoot)
+	config.Diagnostics = recorder
 	client, err := NewPersistentTUFClient(
 		anchor,
-		persistentClientConfig(server.URL+"/metadata", cacheRoot),
+		config,
 		store,
 		"test-repository",
 	)
@@ -506,6 +541,9 @@ func TestPersistentRefreshFailurePreservesCommittedGenerationAndDiscardsAttempt(
 	delete(fixture.metadata, "timestamp.json")
 	if err := client.Refresh(); err == nil {
 		t.Fatal("Refresh() succeeded after the repository timestamp was removed")
+	}
+	if events := recorder.snapshot(); len(events) != 0 {
+		t.Fatalf("ordinary metadata availability failure was recorded as a trust incident: %#v", events)
 	}
 	if _, err := os.Stat(previousStage); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("previous staging workspace was not replaced after refresh failure: %v", err)

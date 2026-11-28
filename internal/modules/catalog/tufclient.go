@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/JavierGrecco/SOPTRAZ/internal/diagnostics"
 	"github.com/JavierGrecco/SOPTRAZ/internal/modules/artifact"
 	"github.com/JavierGrecco/SOPTRAZ/internal/storage/sqlitetuf"
 	tufconfig "github.com/theupdateframework/go-tuf/v2/metadata/config"
@@ -25,6 +26,12 @@ var (
 	ErrTUFClientUnavailable   = errors.New("cliente TUF no inicializado")
 	ErrTUFRepositoryInUse     = errors.New("el repositorio TUF ya está siendo utilizado por otra instancia")
 )
+
+// TUFDiagnosticRecorder receives selected TUF trust and persistence incidents.
+// Implementations must support concurrent calls; recording is best-effort.
+type TUFDiagnosticRecorder interface {
+	Record(diagnostics.Event) error
+}
 
 // TUFClientConfig defines bounded access to a TUF repository. The initial root
 // is never read from this config: it must come from a TrustAnchor that was
@@ -42,6 +49,9 @@ type TUFClientConfig struct {
 	// AllowInsecureLoopbackHTTP is intended for local deterministic tests only.
 	// Plain HTTP to non-loopback hosts is always rejected.
 	AllowInsecureLoopbackHTTP bool
+	// Diagnostics is optional. Network availability failures and expected
+	// descriptor errors are not reported as trust incidents.
+	Diagnostics TUFDiagnosticRecorder
 }
 
 // persistentTUFTrust keeps the durable bootstrap identity and latest verified
@@ -65,6 +75,31 @@ type TUFClient struct {
 	resolvedTargets   map[string]struct{}
 	metadataCacheRoot string
 	metadataStageDir  string
+	diagnostics       TUFDiagnosticRecorder
+}
+
+
+func recordTUFDiagnostic(
+	recorder TUFDiagnosticRecorder,
+	severity diagnostics.Severity,
+	code string,
+	operation string,
+	message string,
+	cause string,
+) {
+	if recorder == nil {
+		return
+	}
+	// Never include repository URLs, local paths, raw metadata or provider errors.
+	// Diagnostics is best-effort and must not replace the original TUF failure.
+	_ = recorder.Record(diagnostics.Event{
+		Severity:  severity,
+		Component: "catalog.tuf",
+		Operation: operation,
+		Code:      code,
+		Message:   message,
+		Cause:     cause,
+	})
 }
 
 // NewTUFClient builds a bounded production-mode TUF client from a previously
@@ -133,18 +168,28 @@ func NewPersistentTUFClient(
 		AnchorVersion: bootstrapState.Version,
 		AnchorSHA256:  bootstrapState.SHA256,
 	}); err != nil {
+		if errors.Is(err, sqlitetuf.ErrRepositoryConflict) {
+			recordTUFDiagnostic(clientConfig.Diagnostics, diagnostics.SeverityCritical, "tuf.repository_binding_conflict", "bootstrap", "La identidad o el ancla del repositorio persistido no coincide con la configuración confiable.", "conflicto de identidad del repositorio")
+		} else if errors.Is(err, sqlitetuf.ErrInvalidTrustStore) {
+			recordTUFDiagnostic(clientConfig.Diagnostics, diagnostics.SeverityError, "tuf.trust_store_registration_failed", "bootstrap", "No se pudo registrar el repositorio en el almacén SQLite de confianza.", "fallo del almacén local")
+		}
 		return nil, fmt.Errorf("%w: registrar el ancla persistente: %v", ErrInvalidTUFClientConfig, err)
 	}
 
 	records, storedState, err := store.LoadRootChain(ctx, repositoryID)
 	if err != nil {
+		if errors.Is(err, sqlitetuf.ErrInvalidTrustStore) {
+			recordTUFDiagnostic(clientConfig.Diagnostics, diagnostics.SeverityError, "tuf.trust_store_read_failed", "bootstrap", "No se pudo leer de forma consistente el estado de confianza persistido.", "fallo de lectura SQLite")
+		}
 		return nil, fmt.Errorf("%w: cargar la cadena de raíces persistida: %v", ErrInvalidTUFClientConfig, err)
 	}
 	currentRootJSON, replayedState, err := replayStoredRootChain(bootstrapRootJSON, bootstrapState, records)
 	if err != nil {
+		recordTUFDiagnostic(clientConfig.Diagnostics, diagnostics.SeverityCritical, "tuf.root_chain_replay_rejected", "bootstrap", "El almacén contiene una cadena de raíces que no puede autenticarse desde el pin bootstrap.", "cadena de confianza persistida inválida")
 		return nil, fmt.Errorf("%w: no se pudo autenticar la cadena de raíces persistida: %v", ErrInvalidTUFClientConfig, err)
 	}
 	if replayedState.Version != storedState.Version || replayedState.SHA256 != storedState.SHA256 {
+		recordTUFDiagnostic(clientConfig.Diagnostics, diagnostics.SeverityCritical, "tuf.root_high_water_mismatch", "bootstrap", "El high-water persistido no coincide con la cadena de raíces autenticada.", "estado anti-rollback inconsistente")
 		return nil, fmt.Errorf("%w: el high-water persistido no coincide con la cadena autenticada", ErrInvalidTUFClientConfig)
 	}
 
@@ -274,6 +319,7 @@ func newTUFClientFromRoot(
 		persistence:       persistence,
 		resolvedTargets:   make(map[string]struct{}),
 		metadataCacheRoot: metadataCache,
+		diagnostics:       clientConfig.Diagnostics,
 	}
 	if err := client.refreshLocked(); err != nil {
 		return nil, err
@@ -318,6 +364,11 @@ func (client *TUFClient) ResolveDescriptor(descriptor artifact.Descriptor) (Veri
 		if persistErr != nil {
 			delete(client.resolvedTargets, descriptor.RelativePath)
 			client.updater = nil
+			if errors.Is(persistErr, ErrGenerationCapture) {
+				recordTUFDiagnostic(client.diagnostics, diagnostics.SeverityCritical, "tuf.generation_verification_rejected", "commit-generation", "Los bytes de metadata no pudieron reproducirse contra el estado autenticado de go-tuf.", "divergencia del estado de metadata")
+			} else {
+				recordTUFDiagnostic(client.diagnostics, diagnostics.SeverityError, "tuf.generation_commit_failed", "commit-generation", "No se pudo confirmar la generación autenticada en el almacén SQLite.", "fallo de persistencia local")
+			}
 			return VerifiedTarget{}, fmt.Errorf("persistir generación autenticada para %q: %w", descriptor.RelativePath, persistErr)
 		}
 	}
@@ -416,6 +467,7 @@ func (client *TUFClient) finishPersistentRefresh(
 
 	candidates, captureErr := persistence.capture.take()
 	if captureErr != nil {
+		recordTUFDiagnostic(client.diagnostics, diagnostics.SeverityError, "tuf.root_capture_failed", "refresh", "No se pudieron capturar de forma íntegra los bytes de root.json para su persistencia.", "fallo de captura de respuesta")
 		if refreshErr != nil {
 			return fmt.Errorf("actualizar metadata TUF: %v; capturar root para persistencia: %w", refreshErr, captureErr)
 		}
@@ -431,6 +483,9 @@ func (client *TUFClient) finishPersistentRefresh(
 		currentState,
 		candidates,
 	)
+	if verifyErr != nil {
+		recordTUFDiagnostic(client.diagnostics, diagnostics.SeverityCritical, "tuf.root_rotation_rejected", "refresh", "Una root recibida no satisface la secuencia o la verificación criptográfica requerida.", "rotación de raíz rechazada")
+	}
 
 	// Do not commit a captured candidate merely because a second replay accepts
 	// it. First prove that the official updater consumed and accepted the same
@@ -441,9 +496,11 @@ func (client *TUFClient) finishPersistentRefresh(
 		if refreshErr != nil {
 			return fmt.Errorf("actualizar metadata TUF: %w", refreshErr)
 		}
+		recordTUFDiagnostic(client.diagnostics, diagnostics.SeverityCritical, "tuf.updater_root_missing", "refresh", "go-tuf no devolvió una raíz confiable después del refresh.", "invariante de confianza incumplida")
 		return fmt.Errorf("%w: updater TUF no devolvió una raíz confiable", ErrTUFClientUnavailable)
 	}
 	if trusted.Root.Signed.Version != latestState.Version {
+		recordTUFDiagnostic(client.diagnostics, diagnostics.SeverityCritical, "tuf.updater_root_mismatch", "refresh", "La versión root aceptada por go-tuf no coincide con la cadena candidata capturada.", "divergencia entre updater y transporte")
 		return fmt.Errorf("%w: go-tuf quedó en root v%d y la cadena candidata en root v%d",
 			ErrTUFClientUnavailable, trusted.Root.Signed.Version, latestState.Version)
 	}
@@ -458,10 +515,12 @@ func (client *TUFClient) finishPersistentRefresh(
 		)
 		cancel()
 		if err != nil {
+			recordTUFDiagnostic(client.diagnostics, diagnostics.SeverityError, "tuf.root_persist_failed", "refresh", "No se pudo confirmar la rotación de raíces verificada en SQLite.", "fallo de persistencia local")
 			return fmt.Errorf("persistir cadena de raíces TUF verificada: %w", err)
 		}
 		expected := sqlitetuf.RootState{Version: latestState.Version, SHA256: latestState.SHA256}
 		if committed != expected {
+			recordTUFDiagnostic(client.diagnostics, diagnostics.SeverityCritical, "tuf.root_commit_mismatch", "refresh", "SQLite devolvió un estado distinto del high-water de raíces verificado.", "invariante de commit incumplida")
 			return fmt.Errorf("%w: SQLite confirmó %#v pero se esperaba %#v",
 				ErrTUFClientUnavailable, committed, expected)
 		}
