@@ -152,7 +152,6 @@ func (anchor *TrustAnchor) VerifyAndRotateRoot(nextRootJSON []byte) (TrustState,
 	}, nil
 }
 
-
 // initialRootSnapshot returns the immutable bootstrap root and its independent
 // pin. TrustAnchor may rotate its current root in memory, but persistence replay
 // must always begin at the originally provisioned anchor.
