@@ -16,7 +16,6 @@ import (
 
 	"github.com/JavierGrecco/SOPTRAZ/internal/modules/artifact"
 	"github.com/JavierGrecco/SOPTRAZ/internal/storage/sqlitetuf"
-	"github.com/gofrs/flock"
 	tufconfig "github.com/theupdateframework/go-tuf/v2/metadata/config"
 	tufupdater "github.com/theupdateframework/go-tuf/v2/metadata/updater"
 )
@@ -53,7 +52,7 @@ type persistentTUFTrust struct {
 	rootState      sqlitetuf.RootState
 	latestRootJSON []byte
 	capture        *rootMetadataCaptureTransport
-	repositoryLock *flock.Flock
+	repositoryLock tufRepositoryLock
 }
 
 // TUFClient wraps the official go-tuf Updater. The Updater is not safe for
