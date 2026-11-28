@@ -84,6 +84,18 @@ La ejecución posterior al arreglo de imports es [#12](https://github.com/Javier
 | [#60](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46075788299) | `ecf0c01` | Cinco jobs verdes; la CLI combina JSON Schema con validación semántica Go y rechaza traversal y URLs con credenciales. |
 | [#61](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46076562159) | `079d240` | Cinco jobs verdes con Go 1.27.4; se prueba rechazo de rutas terminadas en `/`. |
 
+## Ejecuciones adicionales del PR #48 (2026-11-28)
+
+Estas ejecuciones son posteriores al alcance histórico de 65 runs cerrado el 27-11-2026; se registran por separado y no cambian aquel recuento.
+
+| Run | SHA | Resultado | Causa / verificación |
+|---|---|---|---|
+| [#346](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46167386331) | `10a52eb` | Falló formato | Cuatro archivos Go nuevos tenían líneas vacías redundantes y el mapa de esquemas necesitaba alineación `gofmt`. Fuzzing e higiene pasaron; la matriz de plataformas se detuvo en el paso de formato. |
+| [#347](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46167477978) | `28aee40` | **6/6 aprobados** | Se corrigió formato y pasaron Windows, macOS, Ubuntu, Race Detector, fuzzing e higiene. Esta ejecución es previa al último ajuste de un fixture de control-character. |
+| [#348](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46167625438) | `cf28693` | **6/6 aprobados** | Head actual del PR #48: Windows, macOS, Ubuntu, Race Detector, fuzzing e higiene. Incluye la prueba que inyecta un carácter de control real en un argumento fijo y verifica su rechazo. |
+
+El primer intento #346 no se cuenta como aprobación. La validación final del PR #48 es #348, ejecutada sobre el SHA exacto `cf28693af55d148078da0a03024ed8d9913b3d90`.
+
 ## Causas raíz y correcciones permanentes
 
 ### 1. Formato Go
