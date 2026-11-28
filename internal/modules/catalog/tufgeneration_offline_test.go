@@ -26,16 +26,28 @@ type persistedDelegatedFixture struct {
 }
 
 func createPersistedDelegatedFixture(t *testing.T) persistedDelegatedFixture {
-	return createPersistedDelegatedFixtureVariant(t, false)
+	return createPersistedDelegatedFixtureVariant(t, false, false)
 }
 
 func createPersistedDelegatedFixtureWithRootRotation(t *testing.T) persistedDelegatedFixture {
-	return createPersistedDelegatedFixtureVariant(t, true)
+	return createPersistedDelegatedFixtureVariant(t, true, false)
 }
 
-func createPersistedDelegatedFixtureVariant(t *testing.T, rotateRoot bool) persistedDelegatedFixture {
+func createPersistedDelegatedFixtureWithLongerRootExpiry(t *testing.T) persistedDelegatedFixture {
+	return createPersistedDelegatedFixtureVariant(t, false, true)
+}
+
+func createPersistedDelegatedFixtureVariant(t *testing.T, rotateRoot, extendRootExpiry bool) persistedDelegatedFixture {
 	t.Helper()
 	fixture := makeDelegatedRepositoryFixture(t)
+	if extendRootExpiry {
+		root, err := metadata.Root().FromBytes(fixture.rootJSON)
+		if err != nil {
+			t.Fatalf("parse fixture root for longer expiry: %v", err)
+		}
+		root.Signed.Expires = root.Signed.Expires.Add(24 * time.Hour)
+		fixture.rootJSON = signedMetadataBytes(t, root, fixture.rootSigner)
+	}
 	if rotateRoot {
 		fixture.metadata["2.root.json"] = makeRotatedRootMetadata(t, fixture, true)
 	}
@@ -320,6 +332,43 @@ func TestReplayOfflineTargetMetadataRejectsTamperedDelegatedBytes(t *testing.T) 
 	)
 	if err == nil {
 		t.Fatal("replayOfflineTargetMetadata() accepted altered delegated metadata bytes")
+	}
+}
+
+
+func TestReplayOfflineTargetMetadataRejectsTimestampAtExactExpiryBoundary(t *testing.T) {
+	fixture := createPersistedDelegatedFixtureWithLongerRootExpiry(t)
+	defer fixture.server.Close()
+	snapshot, rootJSON, rootState := loadPersistedFixtureSnapshot(t, fixture)
+
+	var timestampExpiry time.Time
+	for _, role := range snapshot.Generation.Roles {
+		if role.Role == metadata.TIMESTAMP {
+			timestampExpiry = role.ExpiresAt
+			break
+		}
+	}
+	if timestampExpiry.IsZero() {
+		t.Fatal("persisted generation is missing timestamp expiry")
+	}
+	root, err := metadata.Root().FromBytes(rootJSON)
+	if err != nil {
+		t.Fatalf("parse bootstrap root: %v", err)
+	}
+	if !root.Signed.Expires.After(timestampExpiry) {
+		t.Fatalf("fixture root expiry %s must be later than timestamp expiry %s", root.Signed.Expires, timestampExpiry)
+	}
+
+	_, err = replayOfflineTargetMetadata(
+		snapshot,
+		rootJSON,
+		rootState,
+		timestampExpiry,
+		fixture.repository.targetPath,
+		4,
+	)
+	if err == nil || !errors.Is(err, ErrOfflineGenerationReplay) {
+		t.Fatalf("replayOfflineTargetMetadata() at timestamp expiry boundary = %v, want ErrOfflineGenerationReplay", err)
 	}
 }
 
