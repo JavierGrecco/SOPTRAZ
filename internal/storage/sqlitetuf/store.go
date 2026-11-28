@@ -79,7 +79,8 @@ type RootRecord struct {
 // data. The SQLite file is a local durability boundary, not a hardware-backed
 // anti-rollback anchor.
 type Store struct {
-	db *sql.DB
+	db   *sql.DB
+	path string
 }
 
 // Open creates or opens a dedicated catalog-trust SQLite database. It uses a
@@ -108,7 +109,7 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 
-	store := &Store{db: db}
+	store := &Store{db: db, path: absolutePath}
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("%w: conectar con SQLite: %v", ErrInvalidTrustStore, err)
@@ -648,6 +649,16 @@ func (store *Store) LoadRootChain(ctx context.Context, repositoryID string) ([]R
 		return nil, RootState{}, fmt.Errorf("%w: confirmar lectura consistente: %v", ErrInvalidTrustStore, err)
 	}
 	return chain, latest, nil
+}
+
+// DatabasePath returns the absolute path used to open this store. It is exposed
+// so higher-level repository coordination can place a stable OS-level lock
+// beside the trust database without taking ownership of SQLite itself.
+func (store *Store) DatabasePath() string {
+	if store == nil {
+		return ""
+	}
+	return store.path
 }
 
 // Close releases the underlying SQLite connection.
