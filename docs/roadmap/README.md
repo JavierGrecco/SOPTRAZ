@@ -46,35 +46,11 @@ Runtime Go, registro local, IDs, acciones tipadas, permisos/riesgo, cancelación
 
 ## M1.4 — Catálogo autenticado de artefactos
 
-- [x] Seleccionar TUF/go-tuf v2 por ADR-0015; descartar el módulo legacy v0.x.
-- [ ] Fijar root.json inicial en SOPTRAZ y definir threshold, rotación y revocación de claves.
-- [x] Validar la cadena root fijada → timestamp → snapshot → targets y rechazar metadata fuera de orden, vencida, alterada o excesiva (sesión determinista de pruebas; aún no es cliente de producción).
-- [x] Vincular descriptor artifact v1 completo en `targets.custom` con igualdad exacta de ID, versión, SO/arquitectura, licencia, procedencia, ruta, tamaño y SHA-256 frente al target firmado.
-- [x] Incorporar primera capa online `TUFClient` sobre el `updater.Updater` oficial: resuelve roles delegados, valida descriptor firmado y serializa accesos; límites HTTP/metadata, redirects desactivados y pruebas de integración con repo TUF delegado. No descarga ni ejecuta binarios.
-- [ ] Completar bootstrap/enrolamiento de root de producción y política de threshold/rotación/revocación; el cliente actual recibe un `TrustAnchor` ya fijado.
-- [x] Seleccionar almacenamiento durable para root chain, generaciones, high-water y active generation mediante SQLite separado (ADR-0017).
-- [x] Implementar la primera capa aislada del store SQLite para la cadena root: anchor/origen fijados, raíces append-only, enlaces SHA-256, versiones consecutivas, CAS transaccional, lectura consistente y reapertura (PR #22; CI completo de cinco jobs).
-- [x] Integrar el store con `NewPersistentTUFClient`: replay de toda la cadena desde el pin bootstrap, captura de respuestas `N.root.json`, confirmación de que el updater oficial aceptó la misma versión y commit CAS durable incluso si falla metadata posterior (PR #23 integrado en `1988db9`; CI pre-merge 5/5 en run 46093570302).
-- [x] Implementar el esquema SQLite v2 para generaciones inmutables, metadata por rol/delegación, manifiesto SHA-256, high-water por rol con procedencia inmutable y puntero `active_generation` (PR #25 integrado en `e4341ab`).
-- [x] Implementar `CommitGeneration`/`LoadActiveGeneration`: root binding, CAS, commit atómico de blobs/relaciones/high-water/puntero y readback con verificación de hashes y manifiesto (PR #25; CI 5/5 en run 46095086164).
-- [x] Conectar `TUFClient` con `CommitGeneration`: capturar los bytes exactos cacheados por go-tuf, contrastarlos con el estado confiable en memoria, reproducir timestamp/snapshot/targets y las delegaciones recorridas con `trustedmetadata`, y activar mediante CAS transaccional (PR #27 integrado como `4983f7d`; CI pre-merge y post-merge 5/5).
-- [x] Aislar cada refresh persistente en un workspace privado y rehidratarlo desde la generación SQLite activa cuando coincide con la root vigente; el updater online oficial revalida la metadata y un fallo descarta el stage sin cambiar la generación confirmada. `TUFClient.Close()` elimina el workspace (PR #29). Esto no habilita offline.
-- [ ] Completar resiliencia: terminación abrupta real y limpieza segura de stages huérfanos, recuperación tras caída en cada etapa, disco lleno, lock y escritores multi-proceso, y política de actualización de metadata no-root cacheada.
-- [x] Definir el contrato puro `internal/platform/trustedtime`: intervalo de incertidumbre, procedencia, ancla, identidad de clave y SHA-256 de la atestación, sin I/O ni dependencias externas.
-- [x] Definir el DTO puro `SystemTimeDiagnostics` separado de `Evidence`, con estados independientes de servicio/sincronización, unknown explícito y timestamps UTC canónicos.
-- [x] Implementar el lector Linux read-only del estado del kernel con `golang.org/x/sys/unix.Adjtimex` y `Modes=0`; probar mapeo de estados, contexto cancelado, errores sanitizados y que el código no solicita ajustes. No se obtiene identidad de servidor ni hora de última sincronización.
-- [x] Implementar consulta read-only del estado de W32Time mediante Service Control Manager con SC_MANAGER_CONNECT y SERVICE_QUERY_STATUS; sin elevación, UAC, w32tm ni controles sobre el servicio.
-- [ ] Mantener SynchronizationState=unknown en Windows hasta disponer de una señal no privilegiada y fiable de sincronización efectiva; no inferirla del estado activo de W32Time.
-- [ ] Implementar diagnóstico macOS timed sin leer estado cacheado privado; sincronización unknown hasta disponer de API pública verificable.
-- [x] Ampliar el perfil de dispositivo read-only a Linux (DMI y fuentes de alimentación sysfs) y macOS (familia normalizada de `hw.model`), manteniendo las capacidades no consultadas como unknown; sin comandos externos ni mutaciones.
-- [ ] Auditar POC aisladas de NTS/Roughtime, política de operadores independientes, anclas y rotación antes de seleccionar dependencias.
-- [ ] Integrar evidencia aceptada con la política de recuperación online, persistencia SQLite v3 y un mecanismo de referencia temporal compatible con go-tuf.
-- [ ] Implementar modo offline estricto que revalide metadata cacheada, vigente y anti-rollback con evidencia temporal suficiente. Si offline falla y hay red, descartar la sesión y repetir online desde cero; nunca aceptar metadata expirada ni mezclar resultados.
-- [ ] Mantener cualquier modo histórico de metadata expirada separado, solo de auditoría y sin autorizar instalación/ejecución.
-- [ ] Probar rotación root, thresholds, firma inválida, expiración, rollback/freeze, consistent snapshots, delegaciones, cache corrupta, recuperación de reloj y fallback online completo tras un fallo offline.
-- [x] Configurar el fetcher inicial con timeout HTTP, límites de metadata, redirects desactivados, reintentos acotados y sincronización del Updater.
-- [ ] Probar expiración/rollback/rotación y persistencia cacheada en reinicios, caída de red, recuperación temporal y `TrustedTimeUnavailable` cuando no haya evidencia suficiente.
-- [ ] Revisar SBOM, licencia Apache-2.0 y dependencias transitivas de go-tuf v2.5.0.
+M1.4 permanece **abierto**. El estado real, el orden de implementación, los resultados CI, las ramas y los criterios para retirar una tarea están centralizados en la [guía de trabajo activo y continuidad](active-work.md). No mantener una segunda checklist técnica aquí.
+
+**Hitos integrados en main:** cliente online oficial con go-tuf v2.5.0; root-chain persistente desde un pin bootstrap; store SQLite v2 de generaciones, high-water y delegaciones; captura/replay online de metadata; staging aislado por refresh; y snapshot SQLite consistente de lectura offline (PR #49). El snapshot todavía no autentica firmas ni habilita offline.
+
+**Trabajo en revisión:** PR #50 (draft) comparte el replay criptográfico, añade resolución canónica de delegaciones según go-tuf y una primitiva interna para revalidar metadata desde un snapshot SQLite sin red. No debe confundirse con `OfflineCatalogVerifier`: siguen pendientes la integración de la política temporal ADR-0020, la orquestación final, el binding del descriptor artifact v1 y la aceptación de seguridad. El catálogo no descarga, instala ni ejecuta binarios.
 
 ## M1.5 — Supervisor seguro de procesos y registro de módulos
 
