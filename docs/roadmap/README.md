@@ -63,7 +63,7 @@ Runtime Go, registro local, IDs, acciones tipadas, permisos/riesgo, cancelación
 - [ ] Integrar y aceptar la coordinación de clientes TUF y recuperación de stages huérfanos propuesta en PR #31, tras revisar locks/crash en Windows, macOS y Linux.
 - [ ] Completar resiliencia física: ENOSPC real, fallos de escritura/sync y recuperación en cada límite de transacción; mantener pruebas multi-proceso.
 - [ ] Completar resiliencia: terminación abrupta real y limpieza segura de stages huérfanos, recuperación tras caída en cada etapa, disco lleno, lock y escritores multi-proceso, y política de actualización de metadata no-root cacheada.
-- [x] Definir el contrato puro `internal/platform/trustedtime`: intervalo de incertidumbre, procedencia y `TrustedTimeProvider`, sin I/O ni dependencias externas.
+- [x] Definir el contrato puro `internal/platform/trustedtime`: intervalos de incertidumbre, procedencia, ancla, identidad de clave y SHA-256 de la atestación, con validaciones estructurales sin I/O ni dependencias externas.
 - [ ] Implementar proveedores nativos de solo lectura y diagnóstico separado del reloj del sistema para Windows, macOS y Linux.
 - [ ] Auditar POC aisladas de NTS/Roughtime, política de operadores independientes, anclas y rotación antes de seleccionar dependencias.
 - [ ] Integrar evidencia aceptada con la política de recuperación online, persistencia SQLite v3 y un mecanismo de referencia temporal compatible con go-tuf.
