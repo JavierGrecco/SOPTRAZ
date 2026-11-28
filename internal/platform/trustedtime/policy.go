@@ -10,13 +10,13 @@ import (
 const MaxPolicySources = 64
 
 var (
-	ErrInvalidAcceptancePolicy = errors.New("política de tiempo confiable inválida")
-	ErrUntrustedTimeSource     = errors.New("fuente de tiempo no autorizada")
-	ErrDuplicateTimeSource     = errors.New("fuente u operador temporal duplicado")
+	ErrInvalidAcceptancePolicy  = errors.New("política de tiempo confiable inválida")
+	ErrUntrustedTimeSource      = errors.New("fuente de tiempo no autorizada")
+	ErrDuplicateTimeSource      = errors.New("fuente u operador temporal duplicado")
 	ErrInsufficientTimeEvidence = errors.New("evidencia temporal insuficiente")
-	ErrConflictingTimeEvidence = errors.New("evidencias temporales contradictorias")
-	ErrTimeUncertaintyExceeded = errors.New("incertidumbre temporal superior al límite")
-	ErrTrustedTimeRollback     = errors.New("la evidencia temporal retrocede respecto del último tiempo aceptado")
+	ErrConflictingTimeEvidence  = errors.New("evidencias temporales contradictorias")
+	ErrTimeUncertaintyExceeded  = errors.New("incertidumbre temporal superior al límite")
+	ErrTrustedTimeRollback      = errors.New("la evidencia temporal retrocede respecto del último tiempo aceptado")
 )
 
 // AcceptancePolicy is an in-memory allowlist and interval-consensus policy.
@@ -29,9 +29,9 @@ var (
 // boundary. Freshness and protocol authentication (including nonce/replay
 // checks) remain obligations of each provider before Observe returns.
 type AcceptancePolicy struct {
-	TrustedSources         []Source
-	MinDistinctOperators   int
-	MaxSourceUncertainty   time.Duration
+	TrustedSources          []Source
+	MinDistinctOperators    int
+	MaxSourceUncertainty    time.Duration
 	MaxAggregateUncertainty time.Duration
 }
 
