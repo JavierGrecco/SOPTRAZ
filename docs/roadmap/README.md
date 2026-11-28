@@ -2,6 +2,8 @@
 
 El roadmap prioriza una vertical funcional confiable antes de ampliar herramientas.
 
+**Plan director:** [estrategia de entrega, estado, puertas de aceptación y mapa de integraciones](strategy-and-integration-plan.md).
+
 ## Fase 0 — Fundación
 
 - [x] Crear repositorio y README.
