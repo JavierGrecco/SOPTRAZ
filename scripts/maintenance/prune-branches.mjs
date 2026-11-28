@@ -37,8 +37,8 @@ export function decideBranch(branch, {
   return { delete: false, reason: "unmerged or exclusive commits remain" };
 }
 
-function refPath(name) {
-  return name.split("/").map(encodeURIComponent).join("/");
+function branchParam(name) {
+  return encodeURIComponent(name);
 }
 
 async function main() {
@@ -132,7 +132,7 @@ async function main() {
 
     // Re-read the branch immediately before deletion. GitHub's delete-ref API
     // has no expected-SHA lease, so a changed ref must always be preserved.
-    const live = await request(`/branches/${refPath(name)}`, { allow404: true });
+    const live = await request(`/branches/${branchParam(name)}`, { allow404: true });
     if (!live) {
       console.log(`SKIP ${name}: branch disappeared during cleanup`);
       skipped += 1;
@@ -162,7 +162,7 @@ async function main() {
       continue;
     }
 
-    await request(`/git/refs/heads/${refPath(name)}`, { method: "DELETE" });
+    await request(`/git/refs/heads/${branchParam(name)}`, { method: "DELETE" });
     console.log(`DELETED ${name} (${decision.reason})`);
     deleted += 1;
   }
