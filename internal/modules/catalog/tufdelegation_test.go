@@ -186,3 +186,100 @@ func TestResolveTargetPathEnforcesDelegationLimit(t *testing.T) {
 		t.Fatalf("resolveTargetPath() error = %v, want delegation limit error", err)
 	}
 }
+
+
+func TestResolveTargetPathUsesDepthFirstPreOrder(t *testing.T) {
+	targetPath := "packages/tool/1.0/tool"
+	roles := map[string]*metadata.Metadata[metadata.TargetsType]{
+		metadata.TARGETS: syntheticTargetsRole(nil, []metadata.DelegatedRole{
+			{Name: "first", Paths: []string{"packages/*/*/*"}},
+			{Name: "second", Terminating: true, Paths: []string{"packages/*/*/*"}},
+		}),
+		"first": syntheticTargetsRole(nil, []metadata.DelegatedRole{
+			{Name: "nested", Terminating: true, Paths: []string{"packages/*/*/*"}},
+		}),
+		"nested": syntheticTargetsRole([]string{targetPath}, nil),
+		"second": syntheticTargetsRole([]string{targetPath}, nil),
+	}
+
+	resolved, err := resolveTargetPath(targetPath, 8, syntheticRoleLoader(roles))
+	if err != nil {
+		t.Fatalf("resolveTargetPath() error = %v", err)
+	}
+	if resolved.role != "nested" {
+		t.Fatalf("resolved role = %q, want nested role before later sibling", resolved.role)
+	}
+	want := []string{metadata.TARGETS, "first", "nested"}
+	got := make([]string, 0, len(resolved.visited))
+	for _, visit := range resolved.visited {
+		got = append(got, visit.role)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("pre-order walk = %#v, want %#v", got, want)
+	}
+}
+
+func TestResolveTargetPathRevisitsRoleForDifferentParents(t *testing.T) {
+	targetPath := "packages/tool/1.0/tool"
+	roles := map[string]*metadata.Metadata[metadata.TargetsType]{
+		metadata.TARGETS: syntheticTargetsRole(nil, []metadata.DelegatedRole{
+			{Name: "left", Paths: []string{"packages/*/*/*"}},
+			{Name: "right", Paths: []string{"packages/*/*/*"}},
+		}),
+		"left": syntheticTargetsRole(nil, []metadata.DelegatedRole{
+			{Name: "shared", Terminating: true, Paths: []string{"packages/*/*/*"}},
+		}),
+		"right": syntheticTargetsRole(nil, []metadata.DelegatedRole{
+			{Name: "shared", Terminating: true, Paths: []string{"packages/*/*/*"}},
+		}),
+		"shared": syntheticTargetsRole(nil, nil),
+	}
+	var sharedParents []string
+	loader := func(roleName, parentRole string) (*metadata.Metadata[metadata.TargetsType], error) {
+		if roleName == "shared" {
+			sharedParents = append(sharedParents, parentRole)
+		}
+		role, ok := roles[roleName]
+		if !ok {
+			return nil, fmt.Errorf("metadata %q missing (parent %q)", roleName, parentRole)
+		}
+		return role, nil
+	}
+
+	_, err := resolveTargetPath(targetPath, 8, loader)
+	if !errors.Is(err, ErrTargetPathNotFound) {
+		t.Fatalf("resolveTargetPath() error = %v, want target-not-found after both paths", err)
+	}
+	if !reflect.DeepEqual(sharedParents, []string{"left", "right"}) {
+		t.Fatalf("shared role parent visits = %#v, want left then right", sharedParents)
+	}
+}
+
+func TestResolveTargetPathSupportsSuccinctRoles(t *testing.T) {
+	targetPath := "packages/tool/1.0/tool"
+	digest := sha256.Sum256([]byte(targetPath))
+	bitLength := uint(5)
+	bin := uint32(digest[0])<<24 | uint32(digest[1])<<16 | uint32(digest[2])<<8 | uint32(digest[3])
+	bin >>= 32 - bitLength
+	roleName := fmt.Sprintf("bin-%x", bin)
+
+	top := syntheticTargetsRole(nil, nil)
+	top.Signed.Delegations = &metadata.Delegations{
+		SuccinctRoles: &metadata.SuccinctRoles{
+			BitLength:  int(bitLength),
+			NamePrefix: "bin",
+		},
+	}
+	roles := map[string]*metadata.Metadata[metadata.TargetsType]{
+		metadata.TARGETS: top,
+		roleName:         syntheticTargetsRole([]string{targetPath}, nil),
+	}
+
+	resolved, err := resolveTargetPath(targetPath, 8, syntheticRoleLoader(roles))
+	if err != nil {
+		t.Fatalf("resolveTargetPath() error = %v", err)
+	}
+	if resolved.role != roleName {
+		t.Fatalf("resolved role = %q, want succinct bin %q", resolved.role, roleName)
+	}
+}
