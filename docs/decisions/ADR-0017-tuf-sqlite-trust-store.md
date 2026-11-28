@@ -1,6 +1,6 @@
 # ADR-0017: Almacén durable de confianza TUF en SQLite
 
-- Estado: Aceptada. Root-chain persistente (PR #22/#23), store de generaciones SQLite v2 (PR #25), captura/revalidación online desde `TUFClient` (PR #27) y staging privado rehidratado desde SQLite (PR #29) están integrados en `main`. La generación se compromete después de resolver descriptores y solo incluye roles delegados realmente recorridos. Siguen pendientes cleanup tras crash, concurrencia multi-proceso, fallos físicos, modo offline, bootstrap de producción y ancla anti-rollback externa.
+- Estado: Aceptada. Root-chain persistente (PR #22/#23), store de generaciones SQLite v2 (PR #25), captura/revalidación online desde `TUFClient` (PR #27), staging privado (PR #29) y lock OS por repositorio con recuperación de stages huérfanos (PR #31) están implementados en esta rama. La generación se compromete después de resolver descriptores y solo incluye roles delegados realmente recorridos. Siguen pendientes resiliencia ante fallos físicos, modo offline, bootstrap de producción y ancla anti-rollback externa.
 - Fecha: 2026-11-28
 - Relacionada: ADR-0011, ADR-0015, Issue #5 (M1.4), Issue #4 (M1.5).
 - Alcance: estado de confianza, metadata TUF autenticada, high-water marks y generaciones del catálogo. No incluye targets ejecutables.
@@ -182,9 +182,9 @@ La implementación no se considera production-ready hasta que todas las pruebas 
 
 ## Límites y siguientes hitos
 
-- El updater online usa un stage privado reconstruido desde SQLite en vez de escribir en la carpeta base de caché. El stage no es el registro autoritativo y no se conserva automáticamente tras un cierre abrupto.
+- El updater online usa un stage privado reconstruido desde SQLite en vez de escribir en la carpeta base de caché. Un lock OS por repositorio impide que dos procesos lo manipulen a la vez; tras un kill, el siguiente proceso adquiere el lock y elimina los stages huérfanos de ese repositorio.
 - No existe todavía un verificador offline explícito que consuma una generación revalidada sin red. La reconstrucción del stage se usa únicamente como caché del updater online. `UnsafeLocalMode` permanece deshabilitado.
 - La generación contiene metadata top-level y roles delegados recorridos por los descriptores resueltos; los roles nunca consultados no se presentan como verificados ni como parte de un grafo completo.
-- La re-apertura de SQLite y reconstrucción de un nuevo stage están cubiertas. Faltan pruebas de terminación abrupta entre etapas, limpieza segura de stages huérfanos, disco lleno, errores de fsync/sidecar y escritores concurrentes en procesos distintos.
+- La re-apertura de SQLite, reconstrucción de stage y recuperación tras kill de un proceso con lock activo están cubiertas por pruebas de proceso hijo. Faltan disco lleno, fallos de fsync/sidecar y recuperación en todos los límites de la transacción SQLite.
 - El estado SQLite local no protege frente a restaurar una imagen completa antigua del mismo disco. Sigue pendiente un TPM/contador monotónico o witness externo para elevar el assurance anti-rollback.
 - El bootstrap de confianza y la custodia/rotación de claves de producción siguen abiertos. No se declara M1.4 cerrado hasta completar recuperación, bootstrap y verificación offline.
