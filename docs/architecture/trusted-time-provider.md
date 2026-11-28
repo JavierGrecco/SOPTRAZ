@@ -1,7 +1,7 @@
 # Contrato de evidencia de tiempo confiable
 
 Estado: contrato puro implementado; proveedores e integración TUF pendientes.  
-Relacionado: ADR-0020 (decisions/ADR-0020-trusted-time-and-clock-recovery.md).
+Relacionado: [ADR-0020](../decisions/ADR-0020-trusted-time-and-clock-recovery.md).
 
 ## Alcance de esta primera entrega
 
@@ -28,7 +28,7 @@ Clases de garantía:
 
 Tipos de fuente admitidos: system, nts, roughtime y custom. Estos valores describen el mecanismo; no determinan por sí solos que una fuente sea aceptable.
 
-Source.ID es un identificador local estable, no un valor copiado de la respuesta remota. OperatorID identifica quién administra realmente la fuente. Si está vacío, la independencia del operador es desconocida: dos hosts o nombres DNS diferentes no prueban que existan operadores independientes. TrustAnchorID, cuando corresponda, referencia una ancla configurada fuera de la respuesta de tiempo.
+Source.ID es un identificador local estable, no un valor copiado de la respuesta remota. OperatorID identifica quién administra realmente la fuente. Si está vacío, la independencia del operador es desconocida: dos hosts o nombres DNS diferentes no prueban que existan operadores independientes. TrustAnchorID identifica el ancla configurada fuera de la respuesta de tiempo y es obligatorio para las clases authenticated y attested.
 
 ## Obligaciones del consumidor
 

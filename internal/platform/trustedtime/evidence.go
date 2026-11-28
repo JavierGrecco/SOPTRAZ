@@ -49,7 +49,8 @@ const (
 // from an untrusted server response. OperatorID is the administrative
 // operator, not merely a DNS name or IP address. An empty OperatorID means
 // operator independence is unknown. TrustAnchorID names a locally configured
-// anchor when one was used; it must never be learned from the time response.
+// anchor; it is required for authenticated and attested assertions and must
+// never be learned from the time response.
 type Source struct {
 	ID            string
 	OperatorID    string
@@ -58,8 +59,8 @@ type Source struct {
 	TrustAnchorID string
 }
 
-// Interval is a closed UTC time interval asserted by a provider. Earliest and
-// Latest describe the uncertainty bounds; they are not a confidence score.
+// Interval bounds two instants on the UTC timeline as asserted by a provider.
+// Earliest and Latest describe uncertainty; Canonical returns both in UTC.
 type Interval struct {
 	Earliest time.Time
 	Latest   time.Time
