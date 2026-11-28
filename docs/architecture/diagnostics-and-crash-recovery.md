@@ -35,7 +35,7 @@ Cada ejecución crea un informe temporal `soptraz-run-*.txt`; si termina normalm
 
 ## Recuperación de terminaciones inesperadas
 
-Al comenzar, SOPTRAZ inspecciona informes de ejecuciones anteriores. Un lock de sistema operativo por archivo distingue una ejecución todavía activa de una que abandonó el proceso sin ejecutar `Close()`. Un lock adicional serializa la inspección y creación de informes entre varios procesos.
+Al comenzar, SOPTRAZ inspecciona informes de ejecuciones anteriores. Cada informe tiene un archivo lateral `.lock` independiente del TXT: el bloqueo nunca se aplica al propio archivo que recibe escrituras. Esto es importante en Windows, donde un lock por rango de bytes sobre el TXT impediría escribir desde otro descriptor. El lock lateral distingue una ejecución todavía activa de una que abandonó el proceso sin ejecutar `Close()`. Un lock adicional serializa la inspección y creación de informes entre varios procesos.
 
 Si no existe `CIERRE NORMAL` ni una marca previa `RECUPERACIÓN REGISTRADA`, SOPTRAZ añade al informe anterior un evento `runtime.unexpected_shutdown` y una marca de recuperación. Así el mismo incidente se notifica una sola vez y no se presenta en cada inicio como un fallo nuevo. La causa se deja expresamente como indeterminada: puede haber sido un `kill`, un panic/fatal, un corte de energía o una terminación del sistema. El informe recuperado queda protegido frente a la limpieza de retención durante ese arranque.
 

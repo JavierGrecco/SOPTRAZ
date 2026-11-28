@@ -133,7 +133,12 @@ func Open(directory, version string) (*Logger, error) {
 		return nil, fmt.Errorf("proteger informe de diagnóstico: %w", err)
 	}
 
-	runLock := flock.New(file.Name(), flock.SetPermissions(0o600))
+	runLock, err := openLockFile(reportLockPath(file.Name()))
+	if err != nil {
+		_ = file.Close()
+		_ = os.Remove(file.Name())
+		return nil, err
+	}
 	locked, err := runLock.TryLock()
 	if err != nil || !locked {
 		_ = file.Close()
@@ -154,6 +159,7 @@ func Open(directory, version string) (*Logger, error) {
 		_ = runLock.Unlock()
 		_ = file.Close()
 		_ = os.Remove(file.Name())
+		_ = os.Remove(runLock.Path())
 		return nil, err
 	}
 	return logger, nil
@@ -307,6 +313,10 @@ func (logger *Logger) Close() error {
 	if removeRoutineReport {
 		if err := os.Remove(logger.path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			result = errors.Join(result, fmt.Errorf("retirar informe sin incidencias: %w", err))
+		} else if logger.runLock != nil {
+			if err := os.Remove(logger.runLock.Path()); err != nil && !errors.Is(err, os.ErrNotExist) {
+				result = errors.Join(result, fmt.Errorf("retirar lock lateral del informe rutinario: %w", err))
+			}
 		}
 	}
 	if startupLock != nil {
@@ -436,6 +446,10 @@ func acquireStartupLock(directory string) (*flock.Flock, error) {
 	return lock, nil
 }
 
+func reportLockPath(reportPath string) string {
+	return reportPath + ".lock"
+}
+
 func openLockFile(path string) (*flock.Flock, error) {
 	info, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -456,7 +470,7 @@ func openLockFile(path string) (*flock.Flock, error) {
 	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 		return nil, fmt.Errorf("el lock local debe ser un archivo regular")
 	}
-	return flock.New(path, flock.SetPermissions(0o600)), nil
+	return flock.New(path, flock.SetFlag(os.O_CREATE|os.O_RDWR), flock.SetPermissions(0o600)), nil
 }
 
 func recoverPreviousRuns(directory string) ([]string, error) {
@@ -479,7 +493,7 @@ func recoverPreviousRuns(directory string) ([]string, error) {
 			return recovered, fmt.Errorf("el informe anterior %q no es un archivo regular", name)
 		}
 
-		lock, err := openLockFile(path)
+		lock, err := openLockFile(reportLockPath(path))
 		if err != nil {
 			return recovered, err
 		}
@@ -609,7 +623,8 @@ func pruneOldRunReports(directory string, keep int, protectedPaths []string) err
 		if _, keepForRecovery := protected[filepath.Clean(report.path)]; keepForRecovery {
 			continue
 		}
-		lock, err := openLockFile(report.path)
+		lockPath := reportLockPath(report.path)
+		lock, err := openLockFile(lockPath)
 		if err != nil {
 			return err
 		}
@@ -628,6 +643,9 @@ func pruneOldRunReports(directory string, keep int, protectedPaths []string) err
 		// race the unlock-to-remove interval.
 		if err := os.Remove(report.path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("eliminar informe antiguo por retención: %w", err)
+		}
+		if err := os.Remove(lockPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("eliminar lock lateral de informe antiguo: %w", err)
 		}
 		remaining--
 	}

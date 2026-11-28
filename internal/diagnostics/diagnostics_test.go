@@ -18,6 +18,12 @@ func TestOpenCreatesPrivatePlainTextReportAndCleanCloseMarker(t *testing.T) {
 		t.Fatalf("Open() error = %v", err)
 	}
 	path := logger.Path()
+	if logger.runLock == nil || logger.runLock.Path() != reportLockPath(path) {
+		t.Fatalf("run lock path = %q, want separate sidecar %q", logger.runLock.Path(), reportLockPath(path))
+	}
+	if _, err := os.Stat(logger.runLock.Path()); err != nil {
+		t.Fatalf("stat report lock sidecar: %v", err)
+	}
 	if filepath.Ext(path) != ".txt" {
 		t.Fatalf("report extension = %q, want .txt", filepath.Ext(path))
 	}
@@ -259,11 +265,15 @@ func TestRoutineExecutionDoesNotLeaveAnEmptyReport(t *testing.T) {
 		t.Fatalf("Open() error = %v", err)
 	}
 	path := logger.Path()
+	lockPath := logger.runLock.Path()
 	if err := logger.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("routine execution left an empty report behind; stat error = %v", err)
+	}
+	if _, err := os.Stat(lockPath); !os.IsNotExist(err) {
+		t.Fatalf("routine execution left a stale report lock behind; stat error = %v", err)
 	}
 }
 

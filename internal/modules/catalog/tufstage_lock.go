@@ -79,7 +79,7 @@ func acquireTUFFileLock(lockPath string) (*flock.Flock, error) {
 		return nil, fmt.Errorf("el archivo de lock TUF debe ser un archivo regular, no un symlink ni un archivo especial")
 	}
 
-	lock := flock.New(lockPath, flock.SetPermissions(0o600))
+	lock := flock.New(lockPath, flock.SetFlag(os.O_CREATE|os.O_RDWR), flock.SetPermissions(0o600))
 	locked, err := lock.TryLock()
 	if err != nil {
 		_ = lock.Close()
