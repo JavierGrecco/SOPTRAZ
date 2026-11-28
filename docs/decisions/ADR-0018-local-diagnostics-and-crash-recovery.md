@@ -1,6 +1,6 @@
 # ADR-0018: Informes locales de diagnóstico y recuperación de ejecución
 
-- Estado: Aceptada; primera implementación en PR #31.
+- Estado: Aceptada; primera implementación integrada en PR #31.
 - Fecha: 2026-11-28.
 - Relacionada: ADR-0001, ADR-0006, ADR-0012 y ADR-0017.
 - Alcance: diagnóstico de fallos de proceso y ciclo de vida del runtime local de SOPTRAZ.
@@ -21,8 +21,9 @@ SOPTRAZ debe distinguir los errores esperados de entrada/configuración de los d
 6. Si falta esa marca, el siguiente arranque identifica una ejecución inconclusa y añade `runtime.unexpected_shutdown`, dejando la causa como indeterminada.
 7. Usar locks de sistema operativo en informes individuales y un lock breve de arranque para distinguir procesos todavía activos y evitar carreras durante la recuperación.
 8. No recopilar automáticamente argumentos, variables de entorno, archivos ni payloads. Aplicar redacción de credenciales en los campos estructurados.
-9. Los informes quedan locales, con tamaño máximo de 4 MiB por archivo y retención de los últimos 30. Las ejecuciones sin incidencias eliminan el informe temporal al cerrar.
-10. Si el almacenamiento de diagnósticos no está disponible, SOPTRAZ informa el problema por stderr y continúa; logging no puede ser requisito para iniciar el producto.
+9. Los informes quedan locales. Los eventos estructurados tienen límites de tamaño; los volcados nativos excesivos se recortan al siguiente inicio. Se conservan hasta 30 informes sin eliminar el que acaba de recuperarse durante ese inicio. Las ejecuciones sin incidencias eliminan el informe temporal al cerrar.
+10. El comando `soptraz diagnostics-path` permite encontrar la ubicación local sin memorizar rutas específicas.
+11. Si el almacenamiento de diagnósticos no está disponible, SOPTRAZ informa el problema por stderr y continúa; logging no puede ser requisito para iniciar el producto.
 
 ## Alternativas consideradas
 
@@ -42,4 +43,4 @@ SOPTRAZ debe distinguir los errores esperados de entrada/configuración de los d
 
 ## Evidencia y límites de la primera implementación
 
-PR #31 incorpora el logger local, salida fatal del runtime Go, recuperación de ejecuciones sin cierre normal, redacción básica, tamaño y retención, e integración en `cmd/soptraz`. Las pruebas cubren cierre limpio, INFO/WARN excluidos, credenciales redactadas, panic con stack, ejecución activa simultánea y terminación abrupta simulada mediante un proceso hijo que omite `Close()`.
+PR #31 incorpora el logger local, salida fatal del runtime Go, recuperación idempotente de ejecuciones sin cierre normal, redacción básica, límites y retención, integración en `cmd/soptraz` y `soptraz diagnostics-path`. Las pruebas cubren cierre limpio, INFO/WARN excluidos, credenciales redactadas, panic con stack, salida de panic fatal desde otra goroutine a un TXT, ejecución activa simultánea, kill real de un proceso hijo y preservación del informe recién recuperado.
