@@ -163,7 +163,6 @@ func TestTrustAnchorRejectsRootNotSignedByPreviouslyTrustedKey(t *testing.T) {
 	}
 }
 
-
 func TestTrustAnchorRetainsImmutableBootstrapRootAfterRotation(t *testing.T) {
 	oldKey := newTestSigningKey(t)
 	newKey := newTestSigningKey(t)
