@@ -206,7 +206,6 @@ func TestValidateDocumentRejectsInvalidUTF8(t *testing.T) {
 	}
 }
 
-
 func TestProcessProfileRejectsShellAndUnknownExecutionFields(t *testing.T) {
 	raw := string(readExample(t, "process-profile.example.json"))
 	for _, candidate := range []string{

@@ -286,7 +286,6 @@ func TestDeviceProfileReportRetainsObservedFormFactorEvidence(t *testing.T) {
 	}
 }
 
-
 func TestValidateAcceptsReadOnlyProcessProfileExample(t *testing.T) {
 	examplePath := filepath.Join("..", "..", "..", "examples", "contracts", "process-profile.example.json")
 	raw, err := os.ReadFile(examplePath)

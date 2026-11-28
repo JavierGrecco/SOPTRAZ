@@ -133,7 +133,6 @@ func TestProcessProfileDoesNotExpandShellMetacharacters(t *testing.T) {
 	}
 }
 
-
 func TestProcessProfileRejectsAggregateArgumentLimit(t *testing.T) {
 	profile := validProcessProfile()
 	profile.FixedArguments = []string{

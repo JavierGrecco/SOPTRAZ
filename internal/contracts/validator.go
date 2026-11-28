@@ -19,11 +19,11 @@ var schemaFS embed.FS
 const MaxDocumentBytes = 1 << 20
 
 var schemaFiles = map[string]string{
-	"manifest":     "schemas/module-manifest.schema.json",
-	"action":       "schemas/action-definition.schema.json",
-	"intervention": "schemas/intervention.schema.json",
-	"event":        "schemas/intervention-event.schema.json",
-	"checkpoint":   "schemas/audit-checkpoint.schema.json",
+	"manifest":        "schemas/module-manifest.schema.json",
+	"action":          "schemas/action-definition.schema.json",
+	"intervention":    "schemas/intervention.schema.json",
+	"event":           "schemas/intervention-event.schema.json",
+	"checkpoint":      "schemas/audit-checkpoint.schema.json",
 	"artifact":        "schemas/artifact-descriptor.schema.json",
 	"process-profile": "schemas/process-profile.schema.json",
 }
