@@ -25,163 +25,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Remove only branches proven safe to delete
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test branch deletion policy
+        run: node --test scripts/maintenance/prune-branches.test.mjs
+      - name: Prune only branches proven safe to delete
         env:
           GITHUB_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          GITHUB_REF: ${{ github.ref }}
+          WORKFLOW_REF: ${{ github.ref }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
-        run: |
-          node <<'NODE'
-          const repository = process.env.REPOSITORY;
-          const defaultBranch = process.env.DEFAULT_BRANCH || "main";
-          const token = process.env.GITHUB_TOKEN;
-          const dryRun = process.env.DRY_RUN === "true";
-          const currentRef = process.env.GITHUB_REF || "";
-
-          if (!repository || !token) {
-            throw new Error("Missing repository or GitHub token");
-          }
-          if (currentRef !== `refs/heads/${defaultBranch}`) {
-            throw new Error(`Refusing to prune from non-default branch: ${currentRef}`);
-          }
-
-          const api = `https://api.github.com/repos/${repository}`;
-          const headers = {
-            Authorization: `Bearer ${token}`,
-            Accept: "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-          };
-
-          async function request(path, options = {}) {
-            const response = await fetch(`${api}${path}`, {
-              ...options,
-              headers: { ...headers, ...(options.headers || {}) },
-            });
-            if (response.status === 404 && options.allow404) {
-              return null;
-            }
-            if (!response.ok) {
-              const body = await response.text();
-              throw new Error(`${options.method || "GET"} ${path}: HTTP ${response.status}: ${body}`);
-            }
-            if (response.status === 204) return null;
-            const body = await response.text();
-            return body ? JSON.parse(body) : null;
-          }
-
-          async function listAll(path) {
-            const results = [];
-            for (let page = 1; ; page += 1) {
-              const separator = path.includes("?") ? "&" : "?";
-              const batch = await request(`${path}${separator}per_page=100&page=${page}`);
-              if (!Array.isArray(batch)) {
-                throw new Error(`Expected an array from ${path}`);
-              }
-              results.push(...batch);
-              if (batch.length < 100) return results;
-            }
-          }
-
-          function refPath(name) {
-            return name.split("/").map(encodeURIComponent).join("/");
-          }
-
-          const [branches, pullRequests] = await Promise.all([
-            listAll("/branches"),
-            listAll("/pulls?state=all"),
-          ]);
-
-          const openRefs = new Set(
-            pullRequests
-              .filter(pr => pr.state === "open" && pr.head?.repo?.full_name === repository)
-              .map(pr => pr.head.ref)
-          );
-          const mergedByRef = new Map();
-          for (const pr of pullRequests) {
-            if (pr.merged_at && pr.head?.repo?.full_name === repository) {
-              const items = mergedByRef.get(pr.head.ref) || [];
-              items.push(pr);
-              mergedByRef.set(pr.head.ref, items);
-            }
-          }
-
-          let deleted = 0;
-          let skipped = 0;
-          for (const branch of branches) {
-            const name = branch.name;
-            const listedSHA = branch.commit?.sha;
-
-            if (name === defaultBranch) {
-              console.log(`KEEP ${name}: default branch`);
-              skipped += 1;
-              continue;
-            }
-            if (branch.protected) {
-              console.log(`KEEP ${name}: protected branch`);
-              skipped += 1;
-              continue;
-            }
-            if (openRefs.has(name)) {
-              console.log(`KEEP ${name}: open pull request`);
-              skipped += 1;
-              continue;
-            }
-            if (!listedSHA) {
-              console.log(`KEEP ${name}: branch SHA unavailable`);
-              skipped += 1;
-              continue;
-            }
-
-            const mergedPullRequests = mergedByRef.get(name) || [];
-            const exactMergedPR = mergedPullRequests.find(pr => pr.head?.sha === listedSHA);
-            let safeReason = "";
-
-            if (exactMergedPR) {
-              safeReason = `merged PR #${exactMergedPR.number} at exact head SHA`;
-            } else {
-              // A branch with unmatched post-merge commits is deleted only if
-              // GitHub proves that it contains no commits absent from main.
-              const comparison = await request(
-                `/compare/${encodeURIComponent(defaultBranch + "..." + name)}`
-              );
-              if (comparison.ahead_by === 0 &&
-                  (comparison.status === "behind" || comparison.status === "identical")) {
-                safeReason = `no commits ahead of ${defaultBranch}`;
-              }
-            }
-
-            if (!safeReason) {
-              console.log(`KEEP ${name}: unmerged or exclusive commits remain`);
-              skipped += 1;
-              continue;
-            }
-
-            // Re-read the live branch immediately before deletion. GitHub's
-            // delete-ref endpoint has no expected-SHA lease, so fail closed
-            // when the ref changed after the inventory was collected.
-            const live = await request(`/branches/${refPath(name)}`, { allow404: true });
-            if (!live) {
-              console.log(`SKIP ${name}: branch disappeared during cleanup`);
-              skipped += 1;
-              continue;
-            }
-            if (live.commit?.sha !== listedSHA || live.protected) {
-              console.log(`KEEP ${name}: branch changed or became protected`);
-              skipped += 1;
-              continue;
-            }
-
-            if (dryRun) {
-              console.log(`DRY-RUN delete ${name} (${safeReason})`);
-              continue;
-            }
-
-            await request(`/git/refs/heads/${refPath(name)}`, { method: "DELETE" });
-            console.log(`DELETED ${name} (${safeReason})`);
-            deleted += 1;
-          }
-
-          console.log(`Branch hygiene finished: deleted=${deleted}, skipped=${skipped}, dry_run=${dryRun}`);
-          NODE
+        run: node scripts/maintenance/prune-branches.mjs
