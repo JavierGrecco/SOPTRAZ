@@ -346,7 +346,7 @@ func captureAndVerifyGenerationMetadata(
 	for _, roleName := range roleNames {
 		role := roleValues[roleName]
 		parents := make([]string, 0, len(parentsByRole[roleName]))
-		for parent := range parentsByRole[roleName] {
+		for _, parent := range parentsByRole[roleName] {
 			parents = append(parents, parent)
 		}
 		sort.Strings(parents)
