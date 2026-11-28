@@ -265,3 +265,22 @@ func TestOpenCreatesPrivateParentDirectoryWhereSupported(t *testing.T) {
 		t.Fatalf("trust-store directory permissions = %o, want no group/other access where supported", info.Mode().Perm())
 	}
 }
+
+func TestDatabasePathReturnsAbsoluteResolvedPath(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "nested", "catalog-trust.sqlite")
+	store, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer store.Close()
+
+	got := store.DatabasePath()
+	want, err := filepath.Abs(path)
+	if err != nil {
+		t.Fatalf("Abs() error = %v", err)
+	}
+	if got != want {
+		t.Fatalf("DatabasePath() = %q, want %q", got, want)
+	}
+}
