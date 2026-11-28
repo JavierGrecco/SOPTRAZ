@@ -28,8 +28,8 @@ const (
 	MaxRootsPerCommit      = 256
 	maxRepositoryIDLength  = 128
 	maxRepositoryURLLength = 2048
-	MaxRootChainRecords     = 4096
-	MaxRootChainBytes       = 64 * 1024 * 1024
+	MaxRootChainRecords    = 4096
+	MaxRootChainBytes      = 64 * 1024 * 1024
 )
 
 var (
