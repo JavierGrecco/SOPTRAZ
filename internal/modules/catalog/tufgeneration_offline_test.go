@@ -26,8 +26,19 @@ type persistedDelegatedFixture struct {
 }
 
 func createPersistedDelegatedFixture(t *testing.T) persistedDelegatedFixture {
+	return createPersistedDelegatedFixtureVariant(t, false)
+}
+
+func createPersistedDelegatedFixtureWithRootRotation(t *testing.T) persistedDelegatedFixture {
+	return createPersistedDelegatedFixtureVariant(t, true)
+}
+
+func createPersistedDelegatedFixtureVariant(t *testing.T, rotateRoot bool) persistedDelegatedFixture {
 	t.Helper()
 	fixture := makeDelegatedRepositoryFixture(t)
+	if rotateRoot {
+		fixture.metadata["2.root.json"] = makeRotatedRootMetadata(t, fixture, true)
+	}
 	server, requests, requestsMu := startDelegatedMetadataServer(t, fixture)
 	store, err := sqlitetuf.Open(context.Background(), filepath.Join(t.TempDir(), "offline-tuf.sqlite"))
 	if err != nil {
@@ -140,6 +151,63 @@ func TestReplayOfflineTargetMetadataMatchesGoTUFWithoutNetwork(t *testing.T) {
 	fixture.requestsMu.Unlock()
 	if requestCountAfter != requestCountBefore {
 		t.Fatalf("offline replay attempted network activity: requests before=%d after=%d", requestCountBefore, requestCountAfter)
+	}
+}
+
+
+func TestReplayOfflineTargetMetadataReplaysRootRotationFromIndependentBootstrap(t *testing.T) {
+	fixture := createPersistedDelegatedFixtureWithRootRotation(t)
+	snapshot, bootstrapRootJSON, bootstrapState := loadPersistedFixtureSnapshot(t, fixture)
+
+	if bootstrapState.Version != 1 {
+		t.Fatalf("independent bootstrap version = %d, want 1", bootstrapState.Version)
+	}
+	if snapshot.Repository.AnchorVersion != 1 {
+		t.Fatalf("persisted anchor version = %d, want original bootstrap v1", snapshot.Repository.AnchorVersion)
+	}
+	if snapshot.LatestRoot.Version != 2 || snapshot.Generation.Root.Version != 2 {
+		t.Fatalf("snapshot latest/generation root = %#v/%#v, want v2",
+			snapshot.LatestRoot, snapshot.Generation.Root)
+	}
+	if len(snapshot.RootChain) != 1 || snapshot.RootChain[0].Version != 2 {
+		t.Fatalf("persisted root chain = %#v, want one consecutive v2 rotation", snapshot.RootChain)
+	}
+
+	officialTarget, err := fixture.client.updater.GetTargetInfo(fixture.repository.targetPath)
+	if err != nil {
+		t.Fatalf("official updater GetTargetInfo(): %v", err)
+	}
+
+	fixture.server.Close()
+	fixture.requestsMu.Lock()
+	requestCountBefore := len(*fixture.requests)
+	fixture.requestsMu.Unlock()
+
+	result, err := replayOfflineTargetMetadata(
+		snapshot,
+		bootstrapRootJSON,
+		bootstrapState,
+		time.Now().UTC(),
+		fixture.repository.targetPath,
+		4,
+	)
+	if err != nil {
+		t.Fatalf("offline replay after root rotation: %v", err)
+	}
+	if result.trusted.Root == nil || result.trusted.Root.Signed.Version != 2 {
+		t.Fatalf("offline replay trusted root = %#v, want rotated root v2", result.trusted.Root)
+	}
+	if result.resolution.role != "osquery" || !reflect.DeepEqual(result.resolution.target, officialTarget) {
+		t.Fatalf("offline delegated target differs from updater: role=%q target=%#v official=%#v",
+			result.resolution.role, result.resolution.target, officialTarget)
+	}
+
+	fixture.requestsMu.Lock()
+	requestCountAfter := len(*fixture.requests)
+	fixture.requestsMu.Unlock()
+	if requestCountAfter != requestCountBefore {
+		t.Fatalf("offline root-chain replay performed network activity: requests before=%d after=%d",
+			requestCountBefore, requestCountAfter)
 	}
 }
 
