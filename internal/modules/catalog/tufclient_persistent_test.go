@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/JavierGrecco/SOPTRAZ/internal/storage/sqlitetuf"
+	tufconfig "github.com/theupdateframework/go-tuf/v2/metadata/config"
+	tufupdater "github.com/theupdateframework/go-tuf/v2/metadata/updater"
 )
 
 func persistentClientConfig(metadataURL, cacheRoot string) TUFClientConfig {
@@ -195,5 +197,74 @@ func TestPersistentRootReplayRejectsVersionAndDigestMismatch(t *testing.T) {
 		if _, _, err := replayStoredRootChain(fixture.rootJSON, bootstrapState, []sqlitetuf.RootRecord{record}); err == nil {
 			t.Fatalf("replayStoredRootChain() accepted invalid record %#v", record)
 		}
+	}
+}
+
+
+func TestPersistentRefreshDoesNotCommitRootBeforeOfficialUpdaterAcceptsIt(t *testing.T) {
+	fixture := makeDelegatedRepositoryFixture(t)
+	rootV2 := makeRotatedRootMetadata(t, fixture, true)
+	bootstrapAnchor, err := NewPinnedTrustAnchor(fixture.rootJSON, rootPin(fixture.rootJSON))
+	if err != nil {
+		t.Fatalf("create bootstrap trust anchor: %v", err)
+	}
+	_, bootstrapState, err := bootstrapAnchor.initialRootSnapshot()
+	if err != nil {
+		t.Fatalf("read bootstrap root: %v", err)
+	}
+
+	store, err := sqlitetuf.Open(context.Background(), filepath.Join(t.TempDir(), "catalog-trust.sqlite"))
+	if err != nil {
+		t.Fatalf("open persistent trust store: %v", err)
+	}
+	defer store.Close()
+	const repositoryID = "test-repository"
+	const metadataURL = "https://metadata.example.test/repository"
+	if err := store.RegisterRepository(context.Background(), sqlitetuf.RepositoryConfig{
+		ID:            repositoryID,
+		MetadataURL:   metadataURL,
+		AnchorVersion: bootstrapState.Version,
+		AnchorSHA256:  bootstrapState.SHA256,
+	}); err != nil {
+		t.Fatalf("register repository: %v", err)
+	}
+
+	cacheRoot := t.TempDir()
+	cfg, err := tufconfig.New(metadataURL, fixture.rootJSON)
+	if err != nil {
+		t.Fatalf("create updater config: %v", err)
+	}
+	cfg.LocalMetadataDir = filepath.Join(cacheRoot, "metadata")
+	cfg.LocalTargetsDir = filepath.Join(cacheRoot, "targets")
+	officialUpdater, err := tufupdater.New(cfg)
+	if err != nil {
+		t.Fatalf("create official updater: %v", err)
+	}
+	capture, err := newRootMetadataCaptureTransport(metadataURL, nil)
+	if err != nil {
+		t.Fatalf("create root capture transport: %v", err)
+	}
+	capture.recordRoot(2, rootV2)
+
+	client := &TUFClient{
+		config: cfg,
+		persistence: &persistentTUFTrust{
+			store:          store,
+			repositoryID:   repositoryID,
+			rootState:      sqlitetuf.RootState{Version: bootstrapState.Version, SHA256: bootstrapState.SHA256},
+			latestRootJSON: append([]byte(nil), fixture.rootJSON...),
+			capture:        capture,
+		},
+	}
+	if err := client.finishPersistentRefresh(officialUpdater, nil); err == nil {
+		t.Fatal("finishPersistentRefresh() accepted a captured root the official updater had not accepted")
+	}
+
+	chain, state, err := store.LoadRootChain(context.Background(), repositoryID)
+	if err != nil {
+		t.Fatalf("load trust state after rejected promotion: %v", err)
+	}
+	if state.Version != bootstrapState.Version || state.SHA256 != bootstrapState.SHA256 || len(chain) != 0 {
+		t.Fatalf("unaccepted root was committed: state=%#v chain=%#v", state, chain)
 	}
 }
