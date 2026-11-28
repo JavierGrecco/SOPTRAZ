@@ -8,6 +8,7 @@ import (
 
 	"github.com/JavierGrecco/SOPTRAZ/internal/buildinfo"
 	"github.com/JavierGrecco/SOPTRAZ/internal/contracts"
+	"github.com/JavierGrecco/SOPTRAZ/internal/diagnostics"
 	"github.com/JavierGrecco/SOPTRAZ/internal/modules/artifact"
 	"github.com/JavierGrecco/SOPTRAZ/internal/platform/host"
 )
@@ -48,6 +49,18 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return 0
 	case "device-profile":
 		return runDeviceProfile(args, stdout, stderr)
+	case "diagnostics-path":
+		if len(args) != 1 {
+			fmt.Fprintln(stderr, "uso: soptraz diagnostics-path")
+			return 2
+		}
+		directory, err := diagnostics.DefaultDirectory()
+		if err != nil {
+			fmt.Fprintf(stderr, "no se pudo resolver la carpeta de diagnósticos: %v\\n", err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "Carpeta de informes técnicos: %s\\n", directory)
+		return 0
 	case "validate":
 		if len(args) != 3 {
 			fmt.Fprintln(stderr, "uso: soptraz validate <manifest|action|intervention|event|checkpoint|artifact> <archivo.json>")
@@ -117,6 +130,7 @@ func writeUsage(w io.Writer) {
 	fmt.Fprintln(w, "  soptraz version [--json]")
 	fmt.Fprintln(w, "  soptraz host-info [--json]")
 	fmt.Fprintln(w, "  soptraz device-profile [--json]")
+	fmt.Fprintln(w, "  soptraz diagnostics-path")
 	fmt.Fprintln(w, "  soptraz validate <manifest|action|intervention|event|checkpoint|artifact> <archivo.json>")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "La CLI inicial solo expone información de lectura y validación. No modifica el equipo.")
