@@ -1,6 +1,7 @@
 package deviceprofile
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 )
@@ -239,5 +240,49 @@ func TestClassifyMapsDocumentedSMBIOSChassisFamilies(t *testing.T) {
 					test.code, profile.FormFactor, profile.Confidence, test.want, test.confidence, profile.Warnings)
 			}
 		})
+	}
+}
+
+
+func TestTriStateJSONUsesExplicitStrings(t *testing.T) {
+	tests := []struct {
+		state TriState
+		want  string
+	}{
+		{state: Unknown, want: "\"unknown\""},
+		{state: No, want: "\"no\""},
+		{state: Yes, want: "\"yes\""},
+	}
+	for _, test := range tests {
+		raw, err := json.Marshal(test.state)
+		if err != nil {
+			t.Fatalf("Marshal(%v) error = %v", test.state, err)
+		}
+		if string(raw) != test.want {
+			t.Errorf("Marshal(%v) = %s, want %s", test.state, raw, test.want)
+		}
+		var decoded TriState
+		if err := json.Unmarshal(raw, &decoded); err != nil {
+			t.Fatalf("Unmarshal(%s) error = %v", raw, err)
+		}
+		if decoded != test.state {
+			t.Errorf("Unmarshal(%s) = %v, want %v", raw, decoded, test.state)
+		}
+	}
+}
+
+func TestTriStateJSONRejectsNumbersAndUnknownValues(t *testing.T) {
+	for _, raw := range []string{"0", "1", "2", "\"maybe\"", "null", "true"} {
+		var decoded TriState
+		if err := json.Unmarshal([]byte(raw), &decoded); err == nil {
+			t.Errorf("Unmarshal(%s) unexpectedly succeeded", raw)
+		}
+	}
+}
+
+func TestTriStateJSONRejectsOutOfRangeValue(t *testing.T) {
+	raw, err := json.Marshal(TriState(99))
+	if err == nil {
+		t.Fatalf("Marshal(invalid state) = %s, want error", raw)
 	}
 }
