@@ -295,3 +295,52 @@ func TestNormalizeObservationsFillsOmittedEnumsAsUnknown(t *testing.T) {
 		t.Fatalf("convertible slate mode = %q, want explicit unknown", normalized.Capabilities.ConvertibleSlate)
 	}
 }
+
+func TestClassifyUsesPlatformSpecificEvidenceSources(t *testing.T) {
+	profile := Classify(Observations{
+		DeviceForm:         FormFactorNotebook,
+		SMBIOSChassisTypes: []uint16{10},
+		EvidenceSources: EvidenceSources{
+			DeviceForm:         "macos.sysctl.hw.model",
+			SMBIOSChassisTypes: "linux.sysfs.dmi.chassis_type",
+		},
+	})
+	if profile.FormFactor != FormFactorNotebook {
+		t.Fatalf("form factor = %q, want notebook", profile.FormFactor)
+	}
+	want := map[string]bool{
+		"macos.sysctl.hw.model":        false,
+		"linux.sysfs.dmi.chassis_type": false,
+	}
+	for _, evidence := range profile.Evidence {
+		if _, ok := want[evidence.Source]; ok {
+			want[evidence.Source] = true
+		}
+	}
+	for source, found := range want {
+		if !found {
+			t.Errorf("missing platform evidence source %q: %#v", source, profile.Evidence)
+		}
+	}
+}
+
+func TestClassifyDefaultsLegacyEvidenceSourcesToWindows(t *testing.T) {
+	profile := Classify(Observations{
+		DeviceForm:         FormFactorNotebook,
+		SMBIOSChassisTypes: []uint16{10},
+	})
+	want := map[string]bool{
+		evidenceDeviceForm: false,
+		evidenceSMBIOS:     false,
+	}
+	for _, evidence := range profile.Evidence {
+		if _, ok := want[evidence.Source]; ok {
+			want[evidence.Source] = true
+		}
+	}
+	for source, found := range want {
+		if !found {
+			t.Errorf("missing legacy source %q: %#v", source, profile.Evidence)
+		}
+	}
+}
