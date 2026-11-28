@@ -215,7 +215,7 @@ No se restaurará automáticamente una generación vieja para “hacer que el pr
 - Alterar hora hacia delante/atrás y casos de expiración en el límite.
 - Rotación root N→N+1, múltiple rotación, threshold y firma duplicada.
 - Delegación ausente, hash/length incorrectos, delegación no autorizada o no terminating.
-- Transacciones SQLite interrumpidas, WAL recovery, disco lleno, permisos insuficientes y dos procesos concurrentes.
+- Transacciones SQLite interrumpidas, WAL recovery, capacidad agotada (`SQLITE_FULL`, ahora cubierto mediante `max_page_count`), ENOSPC físico del filesystem (pendiente), permisos insuficientes y dos procesos concurrentes.
 - Reinicio con caché incompleta o versiones metadata inconsistentes.
 - Pruebas en Windows, macOS y Ubuntu; race detector, fuzzing de metadata y pruebas específicas de persistencia.
 
@@ -236,7 +236,7 @@ No se restaurará automáticamente una generación vieja para “hacer que el pr
 3. [x] Seleccionar almacenamiento SQLite separado y contrato de root chain/generaciones/high-water mediante ADR-0017.
 4. [x] Implementar store de root-chain (PR #22), replay/commit persistente de `TUFClient` (PR #23), store de generaciones/high-water (PR #25) y captura/revalidación online desde `TUFClient` (PR #27).
 5. [x] Implementar staging aislado por generación antes del refresh y restauración validada desde SQLite (PR #29); coordinar procesos por repositorio y limpiar stages huérfanos bajo lock exclusivo (PR #31).
-6. [ ] Completar pruebas de fallos físicos: disco lleno real, errores de sync/journal y recuperación frente a interrupción en los límites del commit. Ya están cubiertos el cierre abrupto de un proceso con lock, la recuperación de stages y la reversión inyectada de commits tardíos de roots y generaciones.
+6. [x] Cubrir `SQLITE_FULL` mediante `max_page_count`, cierres abruptos de proceso con lock y reversión de commits tardíos de roots/generaciones. [ ] Completar pruebas de fallos físicos: ENOSPC real del filesystem, errores de sync/journal y recuperación frente a interrupción en los límites físicos del commit.
 7. [ ] Implementar el verificador offline local usando `trustedmetadata` y validación de delegaciones; no usar `UnsafeLocalMode`.
 8. [ ] Añadir ancla monotónica por plataforma o witness externo cuando esté disponible, manteniendo un nivel local explícito cuando no lo esté.
 9. [ ] Completar SBOM, avisos/licencias y política de actualización de go-tuf/Sigstore.
@@ -264,5 +264,5 @@ Este documento registra el diseño de seguridad y las decisiones que faltan. La 
 - PR #29 agrega un workspace privado por refresh persistente, rehidratado desde SQLite solo cuando la generación activa coincide con la root durable. El updater oficial revalida online y no escribe en la carpeta base; un refresh fallido descarta el stage. `TUFClient.Close()` limpia el workspace.
 - La matriz pre-merge de PR #27 pasó 5/5 en [run 46097598736](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46097598736); el CI post-merge de `main` también pasó 5/5 en [run 46097718344](https://github.com/JavierGrecco/SOPTRAZ/actions/runs/46097718344): Windows, macOS, Ubuntu, Race Detector y fuzzing.
 - La generación contiene metadata top-level y los roles delegados recorridos por los descriptores resueltos; no afirma que todo el grafo del repositorio esté cargado. No se crea una generación en el constructor ni por `Refresh()` sin descriptores resueltos.
-- PR #31 implementa locks OS por repositorio, protección del archivo de lock contra symlinks/reparse points en Linux/macOS/Windows y limpieza de stages huérfanos tras terminación abrupta. La CI multiplataforma y las pruebas de lock entre procesos están verdes. Siguen pendientes las pruebas de disco lleno y fallos físicos de sync/journal, además de un validador offline explícito. `UnsafeLocalMode` sigue deshabilitado.
+- PR #31 implementa locks OS por repositorio, protección del archivo de lock contra symlinks/reparse points en Linux/macOS/Windows y limpieza de stages huérfanos tras terminación abrupta. La CI multiplataforma y las pruebas de lock entre procesos están verdes. `SQLITE_FULL` queda cubierto con límite de páginas; siguen pendientes ENOSPC físico, fallos de sync/journal y un validador offline explícito. `UnsafeLocalMode` sigue deshabilitado.
 - No existe protección fuerte frente a restauración de una imagen antigua completa del mismo disco sin TPM/contador monotónico o witness externo. Bootstrap y custodia de claves de producción siguen pendientes.

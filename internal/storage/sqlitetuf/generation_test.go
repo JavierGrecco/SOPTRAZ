@@ -2,10 +2,12 @@ package sqlitetuf
 
 import (
 	"context"
+	"bytes"
 	"database/sql"
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -578,6 +580,66 @@ func TestGenerationCommitRollsBackAllRowsWhenActivationFails(t *testing.T) {
 	}
 	if generations != 0 || metadataRows != 0 || highWaterRows != 0 {
 		t.Fatalf("partial generation escaped rollback: generations=%d metadata=%d high-water=%d",
+			generations, metadataRows, highWaterRows)
+	}
+}
+
+func TestGenerationCommitRollsBackWhenDatabasePageLimitReached(t *testing.T) {
+	ctx := context.Background()
+	store, _, anchor := openGenerationTestStore(t)
+
+	// VACUUM removes reusable free pages so the page limit forces a genuine
+	// SQLite SQLITE_FULL response instead of relying on a synthetic trigger.
+	if _, err := store.db.ExecContext(ctx, "VACUUM"); err != nil {
+		t.Fatalf("vacuum trust store before capacity test: %v", err)
+	}
+	var pageCount, freePages int
+	if err := store.db.QueryRowContext(ctx, "PRAGMA page_count").Scan(&pageCount); err != nil {
+		t.Fatalf("read page_count: %v", err)
+	}
+	if err := store.db.QueryRowContext(ctx, "PRAGMA freelist_count").Scan(&freePages); err != nil {
+		t.Fatalf("read freelist_count: %v", err)
+	}
+	if pageCount < 1 || freePages != 0 {
+		t.Fatalf("vacuum left unexpected database pages: page_count=%d freelist_count=%d", pageCount, freePages)
+	}
+
+	var appliedLimit int
+	if err := store.db.QueryRowContext(ctx, fmt.Sprintf("PRAGMA max_page_count = %d", pageCount)).Scan(&appliedLimit); err != nil {
+		t.Fatalf("set maximum database page count: %v", err)
+	}
+	if appliedLimit != pageCount {
+		t.Fatalf("max_page_count = %d, want %d", appliedLimit, pageCount)
+	}
+
+	roles := generationTestRoles(2, 2, 2)
+	roles[2].Metadata = bytes.Repeat([]byte("x"), MaxTargetsMetadataSize)
+	if _, err := store.CommitGeneration(ctx, "soptraz-tools", 0, anchor, roles); err == nil {
+		t.Fatal("CommitGeneration() succeeded despite the enforced SQLite page limit")
+	} else if !strings.Contains(strings.ToLower(err.Error()), "full") {
+		t.Fatalf("CommitGeneration() error = %v, want SQLite SQLITE_FULL", err)
+	}
+
+	activeID, err := store.ActiveGenerationID(ctx, "soptraz-tools")
+	if err != nil {
+		t.Fatalf("ActiveGenerationID() after SQLITE_FULL: %v", err)
+	}
+	if activeID != 0 {
+		t.Fatalf("active generation after SQLITE_FULL = %d, want 0", activeID)
+	}
+
+	var generations, metadataRows, highWaterRows int
+	for query, destination := range map[string]*int{
+		"SELECT COUNT(*) FROM generations WHERE repository_id = ?":         &generations,
+		"SELECT COUNT(*) FROM generation_metadata WHERE repository_id = ?": &metadataRows,
+		"SELECT COUNT(*) FROM role_high_water WHERE repository_id = ?":     &highWaterRows,
+	} {
+		if err := store.db.QueryRowContext(ctx, query, "soptraz-tools").Scan(destination); err != nil {
+			t.Fatalf("count rows after SQLITE_FULL: %v", err)
+		}
+	}
+	if generations != 0 || metadataRows != 0 || highWaterRows != 0 {
+		t.Fatalf("partial generation escaped SQLITE_FULL rollback: generations=%d metadata=%d high-water=%d",
 			generations, metadataRows, highWaterRows)
 	}
 }
