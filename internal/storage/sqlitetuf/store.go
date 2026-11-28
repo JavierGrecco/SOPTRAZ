@@ -285,6 +285,11 @@ func (store *Store) migrateV2(ctx context.Context) error {
 			"FOREIGN KEY(repository_id) REFERENCES repositories(id), " +
 			"FOREIGN KEY(repository_id, source_generation_id, role_name) " +
 			"REFERENCES generation_metadata(repository_id, generation_id, role_name))",
+		"CREATE TRIGGER role_high_water_no_update BEFORE UPDATE ON role_high_water " +
+			"WHEN NEW.version <= OLD.version " +
+			"BEGIN SELECT RAISE(ABORT, 'SOPTRAZ TUF role high-water is strictly monotonic'); END",
+		"CREATE TRIGGER role_high_water_no_delete BEFORE DELETE ON role_high_water " +
+			"BEGIN SELECT RAISE(ABORT, 'SOPTRAZ TUF role high-water is permanent'); END",
 		"CREATE TABLE active_generations (" +
 			"repository_id TEXT PRIMARY KEY, " +
 			"generation_id INTEGER NOT NULL CHECK(generation_id >= 1), " +
