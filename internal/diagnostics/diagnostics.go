@@ -34,7 +34,7 @@ var (
 	ErrLoggerClosed = errors.New("logger de diagnósticos cerrado")
 	ErrInvalidEvent = errors.New("evento de diagnóstico inválido")
 
-	secretAssignmentPattern = regexp.MustCompile(`(?i)\b(password|passwd|token|access[_-]?token|refresh[_-]?token|access[_-]?key|api[_-]?key|client[_-]?secret|private[_-]?key|secret|authorization)\b(\s*[:=]\s*)[^\s,;]+`)
+	secretAssignmentPattern = regexp.MustCompile(`(?i)(\b(?:password|passwd|token|access[_-]?token|refresh[_-]?token|id[_-]?token|access[_-]?key|api[_-]?key|client[_-]?secret|private[_-]?key|secret|authorization|cookie|set-cookie|credential|credentials)\b["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^,;]*)`)
 	urlCredentialsPattern   = regexp.MustCompile(`(?i)(https?://)[^/\s@]+@`)
 	authorizationPattern    = regexp.MustCompile(`(?i)(authorization\s*[:=]\s*)(?:bearer|basic)\s+[^\s,;]+`)
 	bearerPattern           = regexp.MustCompile(`(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+`)
@@ -415,7 +415,7 @@ func cleanField(value string) string {
 	value = authorizationPattern.ReplaceAllString(value, "${1}[OCULTO]")
 	value = bearerPattern.ReplaceAllString(value, "Bearer [OCULTO]")
 	value = querySecretPattern.ReplaceAllString(value, "${1}[OCULTO]")
-	value = secretAssignmentPattern.ReplaceAllString(value, "${1}${2}[OCULTO]")
+	value = secretAssignmentPattern.ReplaceAllString(value, "${1}\"[OCULTO]\"")
 	if len(value) > 4096 {
 		value = value[:4096] + "…"
 	}
@@ -505,6 +505,9 @@ func recoverPreviousRuns(directory string) ([]string, error) {
 			return recovered, fmt.Errorf("consultar ejecución previa %q: %w", name, err)
 		}
 		if !locked {
+			if unlockErr := lock.Unlock(); unlockErr != nil {
+				return recovered, fmt.Errorf("cerrar handle de informe activo %q: %w", name, unlockErr)
+			}
 			continue // A different SOPTRAZ process still owns this execution log.
 		}
 
@@ -639,6 +642,9 @@ func pruneOldRunReports(directory string, keep int, protectedPaths []string) err
 			return fmt.Errorf("bloquear informe antiguo para retención: %w", err)
 		}
 		if !locked {
+			if unlockErr := lock.Unlock(); unlockErr != nil {
+				return fmt.Errorf("cerrar handle del informe en uso para retención: %w", unlockErr)
+			}
 			continue // Never remove a report owned by a running process.
 		}
 		if err := lock.Unlock(); err != nil {
