@@ -56,11 +56,12 @@ type persistentTUFTrust struct {
 // TUFClient wraps the official go-tuf Updater. The Updater is not safe for
 // concurrent use, so all refresh/lookup operations are serialized here.
 type TUFClient struct {
-	mu          sync.Mutex
-	config      *tufconfig.UpdaterConfig
-	updater     *tufupdater.Updater
-	persistence    *persistentTUFTrust
+	mu              sync.Mutex
+	config          *tufconfig.UpdaterConfig
+	updater         *tufupdater.Updater
+	persistence     *persistentTUFTrust
 	resolvedTargets map[string]struct{}
+	maxDelegations  int
 }
 
 // NewTUFClient builds a bounded production-mode TUF client from a previously
@@ -245,6 +246,7 @@ func newTUFClientFromRoot(
 		config:          cfg,
 		persistence:     persistence,
 		resolvedTargets: make(map[string]struct{}),
+		maxDelegations:  maxDelegations,
 	}
 	if err := client.refreshLocked(); err != nil {
 		return nil, err
@@ -282,6 +284,13 @@ func (client *TUFClient) ResolveDescriptor(descriptor artifact.Descriptor) (Veri
 		client.resolvedTargets = make(map[string]struct{})
 	}
 	client.resolvedTargets[descriptor.RelativePath] = struct{}{}
+	if client.persistence != nil {
+		if err := client.persistGenerationLocked(client.updater); err != nil {
+			delete(client.resolvedTargets, descriptor.RelativePath)
+			client.updater = nil
+			return VerifiedTarget{}, fmt.Errorf("persistir generación autenticada para %q: %w", descriptor.RelativePath, err)
+		}
+	}
 	return verified, nil
 }
 
@@ -426,6 +435,9 @@ func (client *TUFClient) finishPersistentRefresh(
 	}
 	if refreshErr != nil {
 		return fmt.Errorf("actualizar metadata TUF: %w", refreshErr)
+	}
+	if err := client.persistGenerationLocked(officialUpdater); err != nil {
+		return fmt.Errorf("persistir generación TUF autenticada: %w", err)
 	}
 	client.updater = officialUpdater
 	return nil
