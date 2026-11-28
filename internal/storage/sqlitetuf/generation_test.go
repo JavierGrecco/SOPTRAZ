@@ -542,3 +542,43 @@ func TestLoadActiveGenerationDetectsTamperedHighWaterEvidenceForOmittedRole(t *t
 		t.Fatalf("LoadActiveGeneration() error = %v, want ErrGenerationCorrupt for omitted-role evidence", err)
 	}
 }
+
+
+func TestGenerationCommitRollsBackAllRowsWhenActivationFails(t *testing.T) {
+	ctx := context.Background()
+	store, _, anchor := openGenerationTestStore(t)
+
+	if _, err := store.db.ExecContext(ctx,
+		"CREATE TRIGGER reject_active_generation BEFORE INSERT ON active_generations "+
+			"BEGIN SELECT RAISE(ABORT, 'simulated active-generation pointer failure'); END",
+	); err != nil {
+		t.Fatalf("create activation failure trigger: %v", err)
+	}
+
+	if _, err := store.CommitGeneration(ctx, "soptraz-tools", 0, anchor, generationTestRoles(2, 2, 2)); err == nil {
+		t.Fatal("CommitGeneration() succeeded despite forced activation failure")
+	}
+
+	activeID, err := store.ActiveGenerationID(ctx, "soptraz-tools")
+	if err != nil {
+		t.Fatalf("ActiveGenerationID() after failed activation: %v", err)
+	}
+	if activeID != 0 {
+		t.Fatalf("active generation after failed activation = %d, want 0", activeID)
+	}
+
+	var generations, metadataRows, highWaterRows int
+	for query, destination := range map[string]*int{
+		"SELECT COUNT(*) FROM generations WHERE repository_id = ?":         &generations,
+		"SELECT COUNT(*) FROM generation_metadata WHERE repository_id = ?": &metadataRows,
+		"SELECT COUNT(*) FROM role_high_water WHERE repository_id = ?":     &highWaterRows,
+	} {
+		if err := store.db.QueryRowContext(ctx, query, "soptraz-tools").Scan(destination); err != nil {
+			t.Fatalf("count rows after failed activation: %v", err)
+		}
+	}
+	if generations != 0 || metadataRows != 0 || highWaterRows != 0 {
+		t.Fatalf("partial generation escaped rollback: generations=%d metadata=%d high-water=%d",
+			generations, metadataRows, highWaterRows)
+	}
+}

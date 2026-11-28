@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -282,5 +283,65 @@ func TestDatabasePathReturnsAbsoluteResolvedPath(t *testing.T) {
 	}
 	if got != want {
 		t.Fatalf("DatabasePath() = %q, want %q", got, want)
+	}
+}
+
+
+func TestTrustStoreUsesExtraSynchronousRollbackJournal(t *testing.T) {
+	store, _ := openTestStore(t)
+	ctx := context.Background()
+
+	var journalMode string
+	if err := store.db.QueryRowContext(ctx, "PRAGMA journal_mode").Scan(&journalMode); err != nil {
+		t.Fatalf("read journal_mode: %v", err)
+	}
+	if !strings.EqualFold(journalMode, "delete") {
+		t.Fatalf("journal_mode = %q, want DELETE", journalMode)
+	}
+
+	var synchronous int
+	if err := store.db.QueryRowContext(ctx, "PRAGMA synchronous").Scan(&synchronous); err != nil {
+		t.Fatalf("read synchronous: %v", err)
+	}
+	if synchronous != 3 {
+		t.Fatalf("synchronous = %d, want 3 (EXTRA)", synchronous)
+	}
+}
+
+func TestCommitVerifiedRootsRollsBackWhenLatestRootUpdateFails(t *testing.T) {
+	ctx := context.Background()
+	store, _ := openTestStore(t)
+	_, anchor := registerTestRepository(t, store)
+
+	if _, err := store.db.ExecContext(ctx,
+		"CREATE TRIGGER reject_latest_root_update "+
+			"BEFORE UPDATE OF latest_root_version, latest_root_sha256 ON repositories "+
+			"BEGIN SELECT RAISE(ABORT, 'simulated latest-root pointer failure'); END",
+	); err != nil {
+		t.Fatalf("create latest-root failure trigger: %v", err)
+	}
+
+	_, err := store.CommitVerifiedRoots(ctx, "soptraz-tools", anchor, []VerifiedRoot{{
+		Version:        anchor.Version + 1,
+		PreviousSHA256: anchor.SHA256,
+		Metadata:       []byte("verified-root-v2"),
+	}})
+	if err == nil {
+		t.Fatal("CommitVerifiedRoots() succeeded despite forced latest-root update failure")
+	}
+
+	state, err := store.RootState(ctx, "soptraz-tools")
+	if err != nil {
+		t.Fatalf("RootState() after failed commit: %v", err)
+	}
+	if state != anchor {
+		t.Fatalf("root state after failed commit = %#v, want bootstrap anchor %#v", state, anchor)
+	}
+	chain, loadedState, err := store.LoadRootChain(ctx, "soptraz-tools")
+	if err != nil {
+		t.Fatalf("LoadRootChain() after failed commit: %v", err)
+	}
+	if len(chain) != 0 || loadedState != anchor {
+		t.Fatalf("partial root rotation escaped rollback: chain=%d state=%#v", len(chain), loadedState)
 	}
 }

@@ -154,9 +154,11 @@ func (store *Store) configure(ctx context.Context) error {
 	pragmas := []string{
 		"PRAGMA foreign_keys = ON",
 		fmt.Sprintf("PRAGMA busy_timeout = %d", busyTimeoutMS),
-		"PRAGMA synchronous = FULL",
 		"PRAGMA trusted_schema = OFF",
 		"PRAGMA journal_mode = DELETE",
+		// EXTRA adds a directory sync after DELETE-mode rollback journal removal.
+		// This narrows the power-loss window immediately after a committed write.
+		"PRAGMA synchronous = EXTRA",
 	}
 	for _, statement := range pragmas {
 		if _, err := store.db.ExecContext(ctx, statement); err != nil {
