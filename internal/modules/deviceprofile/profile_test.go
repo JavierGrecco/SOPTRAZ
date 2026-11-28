@@ -285,3 +285,14 @@ func TestTriStateJSONRejectsOutOfRangeValue(t *testing.T) {
 		t.Fatalf("Marshal(invalid state) = %s, want error", raw)
 	}
 }
+
+
+func TestNormalizeObservationsFillsOmittedEnumsAsUnknown(t *testing.T) {
+	normalized := NormalizeObservations(Observations{})
+	if normalized.Capabilities.PowerSource != PowerSourceUnknown {
+		t.Fatalf("power source = %q, want explicit unknown", normalized.Capabilities.PowerSource)
+	}
+	if normalized.Capabilities.ConvertibleSlate != SlateModeUnknown {
+		t.Fatalf("convertible slate mode = %q, want explicit unknown", normalized.Capabilities.ConvertibleSlate)
+	}
+}
