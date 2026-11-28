@@ -36,9 +36,9 @@ var (
 	ErrRepositoryNotFound = errors.New("repositorio TUF no registrado")
 	ErrRepositoryConflict = errors.New("la configuración del repositorio TUF no coincide")
 	ErrTrustStateConflict = errors.New("el estado de confianza TUF cambió concurrentemente")
-	ErrInvalidRootChain  = errors.New("cadena de raíces TUF inválida")
-	ErrCorruptTrustStore = errors.New("el almacén de confianza TUF está dañado")
-	ErrSchemaTooNew      = errors.New("el esquema del almacén de confianza TUF es más reciente")
+	ErrInvalidRootChain   = errors.New("cadena de raíces TUF inválida")
+	ErrCorruptTrustStore  = errors.New("el almacén de confianza TUF está dañado")
+	ErrSchemaTooNew       = errors.New("el esquema del almacén de confianza TUF es más reciente")
 )
 
 // RepositoryConfig binds a durable trust record to one repository origin and
@@ -61,9 +61,9 @@ type RootState struct {
 // catalog layer using go-tuf trustedmetadata.UpdateRoot. This store deliberately
 // does not reimplement or replace that cryptographic verification.
 type VerifiedRoot struct {
-	Version         int64
-	PreviousSHA256  string
-	Metadata        []byte
+	Version        int64
+	PreviousSHA256 string
+	Metadata       []byte
 }
 
 // RootRecord is an immutable root-chain entry returned by LoadRootChain.
