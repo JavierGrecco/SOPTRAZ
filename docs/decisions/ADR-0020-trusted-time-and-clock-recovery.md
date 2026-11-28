@@ -110,6 +110,26 @@ La validación offline seguirá exigiendo metadata íntegra, firmas válidas, de
 
 Por lo tanto, no se promete verificación offline indefinida después de apagar el equipo. Sin RTC/contador seguro o una atestación reciente, es imposible demostrar con rigor que una metadata no expiró durante el período desconectado.
 
+### Offline estricto, verificación histórica y recuperación online
+
+Las discusiones de mantenedores de TUF distinguen dos usos diferentes que suelen llamarse "offline":
+
+1. **Offline estricto:** no se consulta el repositorio remoto, pero toda metadata local debe seguir vigente en el momento de la verificación. Se conserva la protección de expiración; lo único que se omite es el refresh remoto.
+2. **Verificación histórica con metadata expirada:** se comprueba la firma/cadena local aunque la metadata ya no esté vigente ahora. Esto sacrifica frescura y puede aceptar claves o artefactos que desde entonces fueron revocados o reemplazados. No equivale a un catálogo actual confiable.
+
+La comunidad discutió el segundo comportamiento en python-tuf para Sigstore. El PR #2472 del mantenedor `jku` implementaba una opción que desactivaba expiry checks y evitaba descargas, pero quedó cerrado sin integrarse. En la discusión se señaló que aceptar metadata vencida puede tener poco beneficio respecto de confiar directamente en una caché local de targets cuando la metadata local no es más confiable que esa caché; para que TUF aporte protección real se necesita también verificar la metadata local desde el root bootstrap y proteger su almacenamiento. El mantenedor también describió un posible "PessimisticUpdater": intentar offline estricto y, si faltan datos o están vencidos, reiniciar la operación completa online. Véanse [Offline TUF — jku](https://gist.github.com/jku/71d6feaacb6a0b4f81a393a41ff3522d), [python-tuf #2359](https://github.com/theupdateframework/python-tuf/issues/2359) y [python-tuf PR #2472](https://github.com/theupdateframework/python-tuf/pull/2472).
+
+**Decisión para SOPTRAZ:**
+
+- `OfflineCatalogVerifier` solo implementará offline estricto: sin red, con root bootstrap, generación y delegaciones revalidadas, tiempo suficiente y toda metadata vigente.
+- La verificación histórica de metadata expirada, si algún día se necesita para auditoría forense, será una operación separada de solo lectura. Deberá informar explícitamente que la evidencia fue válida en un intervalo pasado, no que el target esté actualmente autorizado. No devolverá `VerifiedTarget` ni habilitará descarga, instalación o ejecución.
+- La capa de aplicación podrá hacer un intento optimista offline. Si falla por expiración, evidencia temporal insuficiente o metadata/delegación ausente, descartará toda la sesión y cualquier resultado parcial. Si existe conectividad, solicitará recuperación temporal si corresponde, creará una sesión/updater online nuevo y repetirá desde el comienzo la resolución completa del descriptor y su cadena de delegación.
+- No se mezclará metadata offline vieja con metadata online nueva, ni se conservará un `VerifiedTarget` de la primera tentativa mientras se actualiza otra parte del grafo. El target solo se devuelve después de una validación completa y un commit durable de la generación vigente.
+- Si no hay conectividad o la recuperación temporal falla, el catálogo queda no disponible para esa operación. No se extiende `expires`, no se usa un `now` histórico y no se omite expiry.
+
+Esta estrategia mejora disponibilidad cuando el equipo está conectado pero la caché venció o el reloj necesita corregirse, manteniendo una única decisión de confianza para el target final.
+
+
 ### 6. Rotación y compromiso de las claves temporales
 
 Las claves que autoricen fuentes temporales deberán quedar ancladas en una raíz de confianza independiente y rotarse mediante un procedimiento autenticado. Una respuesta de tiempo adelantada podría causar denegación de servicio; una respuesta atrasada podría habilitar un freeze. La rotación de la clave de tiempo no se tratará como una corrección ordinaria del reloj.
@@ -141,6 +161,8 @@ La migración no debe convertir fechas de pared antiguas en evidencia temporal c
 11. Migración v2→v3: demostrar que timestamps locales antiguos no se convierten en anclas confiables.
 12. Windows, macOS y Ubuntu; Race Detector, fuzzing de parser/atestaciones y tests de concurrencia.
 13. Confirmar que el updater usa una sola referencia temporal por ciclo y que SOPTRAZ nunca llama a `UnsafeSetRefTime` en producción.
+14. Offline estricto fallido por expiración o delegación faltante: descartar toda la sesión y repetir online desde cero; comprobar que nunca se devuelve ni se conserva un `VerifiedTarget` parcial de la tentativa offline.
+15. Verificación histórica, si se implementa en el futuro, no debe producir un target apto para instalación/ejecución ni modificar el catálogo activo.
 
 ## Alternativas consideradas
 
@@ -163,6 +185,44 @@ La migración no debe convertir fechas de pared antiguas en evidencia temporal c
 - El estado SQLite v3 guarda procedencia/evidencia temporal, no solo un texto UTC.
 - La integración online directa de un tiempo autenticado requerirá una API soportada por go-tuf o que el sistema operativo esté corregido por un servicio temporal confiable.
 - La verificación offline no siempre estará disponible en máquinas sin reloj/contador seguro y desconectadas tras reiniciar.
+
+## Evaluación de candidatos de implementación (28-11-2026)
+
+Esta evaluación orienta una futura prueba de concepto. **No selecciona ni incorpora todavía una dependencia de producción.** La existencia de una implementación cliente no sustituye la revisión de criptografía, mantenimiento, interoperabilidad, fuentes, licencias y recuperación.
+
+### NTS en Go
+
+- `github.com/beevik/nts` implementa un cliente NTS para Go, con sesión NTS-KE sobre TLS y consultas NTP protegidas; expone `Response.Validate()` y configuración de timeout/dialer/resolver. La ficha consultada muestra `v0.3.3`, BSD-2-Clause y siete módulos importadores; la línea sigue en `v0.x`, por lo que no se trata como API estable ni como dependencia aceptada.
+- La propia documentación del paquete indica que hay pocos servidores públicos NTS y que NTP Pool no lo soporta actualmente. Una sesión NTS requiere primero un handshake TLS válido: por tanto, el paquete **no resuelve por sí solo el arranque con reloj gravemente incorrecto**.
+- Puede ser candidato a un adaptador NTS de laboratorio tras revisar el código de NTS-KE, manejo de cookies/nonce, validación de respuesta, incertidumbre y dispersiones reportadas, dependencias transitivas, fuzzing, compatibilidad Windows/macOS/Linux y comportamiento con certificados `notBefore`/ `notAfter` cuando el reloj está fuera de rango.
+- La aplicación no utilizará `InsecureSkipVerify` ni un callback equivalente para aceptar certificados vencidos o todavía no válidos. Una excepción temporal de validación TLS debilitaría el canal que debe recuperar la hora.
+
+Referencias: [paquete beevik/nts](https://pkg.go.dev/github.com/beevik/nts), [repositorio y documentación](https://github.com/beevik/nts).
+
+### Roughtime en Go
+
+- `github.com/cloudflare/roughtime` tiene licencia Apache-2.0; pkg.go.dev reporta 24 módulos importadores en la ficha consultada. Su documentación advierte que la API es inestable y que conserva compatibilidad con drafts del protocolo. El servicio público de Cloudflare está anunciado como beta y su clave pública puede cambiar. No se usará una clave recuperada dinámicamente por DNS como raíz de confianza.
+- `github.com/tannerryan/roughtime` declara soporte para RFC 10049 v1, incluye cliente/protocolo/tests, licencia BSD-2-Clause y requiere Go 1.27.4 o posterior. La página del repositorio observada tenía 45 commits, 12 estrellas y 3 forks. Es una opción interesante para un laboratorio alineado con el RFC final, pero su tamaño/adopción públicos no acreditan por sí mismos madurez, revisión independiente ni operación sostenida.
+- Para cualquier POC, las claves públicas se provisionarán de forma independiente y explícita; las consultas usarán nonce fresco y se comprobarán las firmas, el intervalo RADI/incertidumbre, vigencia, repetición y contradicciones entre operadores/endpoints. La firma acredita lo que el servidor afirmó, no que esa hora sea verdadera. La diversidad real de administración y de fuentes ascendentes debe revisarse; diferentes nombres DNS o IPs pueden compartir el mismo operador o reloj.
+- Antes de utilizarlo en producción deben existir pruebas de interop RFC 10049 v1, vectores oficiales, parser fuzzing, timeouts/backoff, UDP/TCP fallback, protección contra respuesta replay, rotación y revocación de claves y procedimiento de actualizar la lista de servidores mediante un canal autenticado.
+
+Referencias: [Cloudflare Roughtime Go](https://pkg.go.dev/github.com/cloudflare/roughtime), [estado y directrices de su ecosistema](https://github.com/cloudflare/roughtime), [Cloudflare Roughtime beta y claves](https://developers.cloudflare.com/time-services/roughtime/usage/), [implementación Go de RFC 10049](https://github.com/tannerryan/roughtime).
+
+### Servicios de tiempo integrados en los sistemas operativos
+
+- **Windows:** W32Time mantiene una jerarquía y selecciona muestras NTP. En un dominio AD DS, las respuestas del controlador de dominio pueden autenticarse con claves de sesión Kerberos; W32Time rechaza paquetes con firma incorrecta. Un equipo no unido a dominio normalmente usa `time.windows.com`; Microsoft indica que no puede garantizarse precisión cuando la conectividad es intermitente o inexistente. SOPTRAZ podrá informar fuente/estado del servicio, pero solo elevará assurance cuando pueda verificar el contexto autenticado concreto, no por el mero hecho de que W32Time esté activo.
+- **Linux/systemd:** `systemd-timesyncd` guarda una marca local después de sincronizar y puede avanzar aproximadamente el reloj al reiniciar para mantener monotonicidad sin RTC con batería. Implementa SNTP y el servicio no espera necesariamente a que se alcance una fuente exacta antes de continuar el arranque. Es una buena mitigación de disponibilidad/retroceso burdo, no una atestación criptográfica ni prueba de tiempo verdadero. El marcador `time-sync.target` es distinto del simple `time-set.target`.
+- **macOS:** SOPTRAZ debe consultar y reportar el estado del servicio nativo disponible en el sistema, pero no asumir que el servicio del SO proporciona NTS o una prueba criptográfica independiente en todas las versiones/configuraciones. La clasificación inicial será `system` salvo evidencia adicional comprobada.
+
+Referencias: [Microsoft — Windows Time Service](https://learn.microsoft.com/en-us/windows-server/networking/windows-time-service/how-the-windows-time-service-works), [systemd-timesyncd](https://www.freedesktop.org/software/systemd/man/latest/systemd-timesyncd.service.html), [systemd time synchronization targets](https://www.freedesktop.org/software/systemd/man/latest/systemd.special.html).
+
+### Selección de implementación
+
+1. Primera etapa: adaptar los proveedores del sistema operativo como clase `system`, solo para lectura/diagnóstico, sin cambiar el reloj ni elevar assurance por inferencia.
+2. Segunda etapa: auditar `beevik/nts` en una POC aislada después de definir el bootstrap temporal TLS; probar NTS con servidor de laboratorio propio/Chrony y, si se puede, un servidor público interoperable.
+3. Tercera etapa: probar Roughtime RFC 10049 v1 con vectores y servidores controlados; comparar al menos operadores realmente independientes antes de considerar fuentes públicas.
+4. No añadir ambos protocolos al binario principal hasta completar la revisión de dependencias, seguridad, licencia, mantenimiento, tamaño, builds Windows/macOS/Linux y política de rotación de claves.
+5. Ninguna prueba de laboratorio puede marcar M1.4 como cerrado por sí sola. Los resultados de tiempo quedan separados de la verificación TUF, y no se habilita offline ni se omite expiración.
 
 ## Referencias
 
