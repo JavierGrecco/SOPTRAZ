@@ -484,6 +484,10 @@ func recoverPreviousRuns(directory string) ([]string, error) {
 			_ = lock.Unlock()
 			return recovered, fmt.Errorf("leer cierre de informe previo %q: %w", name, readErr)
 		}
+		if err := trimOversizedReport(path, wasClean); err != nil {
+			_ = lock.Unlock()
+			return recovered, fmt.Errorf("limitar tamaño de informe previo %q: %w", name, err)
+		}
 		if !wasClean {
 			file, openErr := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0o600)
 			if openErr != nil {
@@ -598,4 +602,41 @@ func pruneOldRunReports(directory string, keep int) error {
 		remaining--
 	}
 	return nil
+}
+
+func trimOversizedReport(path string, wasClean bool) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	// Reserve space for a truncation note and, when present, the clean marker.
+	if info.Size() <= int64(maxLogBytes)-1024 {
+		return nil
+	}
+	file, err := os.OpenFile(path, os.O_RDWR, 0o600)
+	if err != nil {
+		return err
+	}
+	targetSize := int64(maxLogBytes) - 1024
+	if err := file.Truncate(targetSize); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if _, err := file.Seek(0, io.SeekEnd); err != nil {
+		_ = file.Close()
+		return err
+	}
+	_, writeErr := fmt.Fprintf(file,
+		"\n[INFORME TRUNCADO: se conservan los primeros %d bytes para limitar el tamaño local.]\n",
+		targetSize,
+	)
+	if writeErr == nil && wasClean {
+		_, writeErr = fmt.Fprintf(file, "CIERRE NORMAL: marca preservada tras truncar el informe %s\n",
+			time.Now().UTC().Format(time.RFC3339Nano))
+	}
+	if writeErr == nil {
+		writeErr = file.Sync()
+	}
+	closeErr := file.Close()
+	return errors.Join(writeErr, closeErr)
 }
