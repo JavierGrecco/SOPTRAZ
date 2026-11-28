@@ -104,6 +104,30 @@ func TestCleanupOrphanedStagesOnlyRemovesStagesForLockedRepository(t *testing.T)
 	}
 }
 
+func TestCleanupOrphanedStagesRejectsLockForDifferentRepository(t *testing.T) {
+	store := openStageLockTestStore(t, filepath.Join(t.TempDir(), "catalog-trust.sqlite"))
+	cacheRoot := t.TempDir()
+	firstStage, err := os.MkdirTemp(cacheRoot, tufMetadataStagePrefixForRepository("repository-one")+"*")
+	if err != nil {
+		t.Fatalf("create first repository stage: %v", err)
+	}
+	if _, err := os.MkdirTemp(cacheRoot, tufMetadataStagePrefixForRepository("repository-two")+"*"); err != nil {
+		t.Fatalf("create second repository stage: %v", err)
+	}
+	lock, err := acquirePersistentTUFRepositoryLock(store, "repository-one")
+	if err != nil {
+		t.Fatalf("acquire first repository lock: %v", err)
+	}
+	defer lock.Unlock()
+
+	if _, err := cleanupOrphanedTUFStages(cacheRoot, lock, "repository-two"); err == nil {
+		t.Fatal("cleanup accepted a lock owned by another repository")
+	}
+	if _, err := os.Stat(firstStage); err != nil {
+		t.Fatalf("mismatched cleanup changed the first repository stage: %v", err)
+	}
+}
+
 func TestCleanupOrphanedStagesRequiresExclusiveRepositoryLock(t *testing.T) {
 	store := openStageLockTestStore(t, filepath.Join(t.TempDir(), "catalog-trust.sqlite"))
 	cacheRoot := t.TempDir()
