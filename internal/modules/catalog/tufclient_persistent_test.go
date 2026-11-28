@@ -16,7 +16,6 @@ import (
 	tufupdater "github.com/theupdateframework/go-tuf/v2/metadata/updater"
 )
 
-
 type tufRecordingDiagnostics struct {
 	mu     sync.Mutex
 	events []diagnostics.Event

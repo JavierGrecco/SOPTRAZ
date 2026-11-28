@@ -78,7 +78,6 @@ type TUFClient struct {
 	diagnostics       TUFDiagnosticRecorder
 }
 
-
 func recordTUFDiagnostic(
 	recorder TUFDiagnosticRecorder,
 	severity diagnostics.Severity,
