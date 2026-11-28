@@ -4,6 +4,12 @@
 
 SOPTRAZ se diseña como un producto propio que aprovecha herramientas y proyectos maduros. Su núcleo coordina módulos especializados, procedimientos verificables e integraciones; no intenta reimplementar herramientas que ya resuelven bien una necesidad concreta.
 
+## Estado operativo y punto de entrada
+
+**Prioridad actual: M1.4 — catálogo autenticado TUF.** Ya existen el cliente online oficial, la cadena root persistente, las generaciones SQLite y una lectura offline consistente. El PR #50 añade el replay compartido, el resolver canónico de delegaciones y una primera primitiva interna de replay offline sin red. **Todavía no existe un `OfflineCatalogVerifier` de producción ni se autoriza descargar/ejecutar artefactos desde el catálogo.**
+
+La guía [Trabajo activo y continuidad](docs/roadmap/active-work.md) es el punto único para saber qué falta, qué ramas están abiertas, qué pruebas ejecutar y cómo retirar cada tarea una vez aceptada. Incluye la secuencia de M1.4 y el plan para recuperar los cambios útiles de [PR #31](https://github.com/JavierGrecco/SOPTRAZ/pull/31) sin fusionar su rama divergente en bloque.
+
 ## Ediciones previstas
 
 - **SOPTRAZ Field**: edición portátil, local y offline-first para técnicos.
@@ -38,8 +44,11 @@ Ambas ediciones compartirán contratos, procedimientos, motor de ejecución, dia
 
 ## Estado del proyecto
 
-**Etapa: fundación arquitectónica y núcleo inicial.** La CLI Go permite consultar versión, información no identificable del host, validar manifiestos, acciones, intervenciones, eventos, checkpoints y descriptores de artefactos, y generar un informe local de perfil del dispositivo mediante `soptraz device-profile [--json]`. Este inventario inicial es de solo lectura: consulta chasis SMBIOS, energía/batería, dispositivos touch/pen y estado convertible/dock cuando está disponible; conserva la incertidumbre como `unknown` y no aplica optimizaciones. El resolver local verifica archivos ya instalados bajo una raíz confinada. El catálogo TUF dispone de una primera capa online que autentica targets y delegaciones mediante go-tuf. PR #22 y #23 integran la root-chain persistente y `NewPersistentTUFClient`, que reproduce las raíces desde el pin bootstrap y conserva rotaciones verificadas aun cuando falle metadata posterior. PR #25 añade el store SQLite v2 de generaciones, metadata por rol, delegaciones, high-water con procedencia inmutable y `active_generation`. PR #27 conecta este store al flujo persistente de `TUFClient`: después de resolver un descriptor firmado, captura los bytes originales de la caché de go-tuf, los compara con el estado confiable en memoria, reproduce la cadena con `trustedmetadata` y activa la generación mediante el commit transaccional; evita commits redundantes y falla cerrado ante divergencias. Solo incluye delegaciones realmente recorridas, no declara completo el grafo del repositorio. PR #29 agrega un directorio de trabajo aislado por refresh persistente, rehidrata metadata desde la generación SQLite activa cuando su root coincide y deja que el updater online oficial vuelva a validarla; los refreshes fallidos descartan su stage y conservan la generación confirmada. `TUFClient.Close()` limpia el workspace. Siguen pendientes la limpieza segura de stages huérfanos tras una terminación abrupta, coordinación multi-proceso, recuperación ante fallos físicos, un verificador offline explícito, bootstrap/custodia de claves de producción y ancla anti-rollback externa. `UnsafeLocalMode` permanece deshabilitado. El catálogo aún no descarga ni ejecuta herramientas externas. El dominio de auditoría y su adaptador SQLite permiten anexar y verificar eventos encadenados por intervención; el decodificador JSON compartido rechaza claves duplicadas, UTF-8 inválido, escapes UTF-16 aislados, documentos concatenados y anidamiento excesivo, y el fuzzing comprueba la idempotencia del payload de auditoría. El primer bloque de checkpoint Ed25519 está implementado con resolución de claves mediante interfaz externa; la custodia real de claves y el anclaje remoto siguen pendientes. Todavía no hay reparaciones de sistemas ni UI de Field/Hub.
+**Etapa global: fundación arquitectónica y núcleo Go inicial.** SOPTRAZ es un producto en desarrollo, no una versión estable. La CLI y los componentes locales priorizan lectura, contratos, auditoría, validación y límites de seguridad. El perfil de dispositivo es read-only; todavía no hay UI Field/Hub terminada ni acciones de reparación mutantes habilitadas.
 
+**M1.4 permanece abierto.** La ruta online oficial, el trust store SQLite, las generaciones y el snapshot de lectura consistente están implementados. El replay compartido, el recorrido canónico y una primitiva interna de replay offline desde el snapshot SQLite están bajo revisión en PR #50. Siguen pendientes la orquestación completa `OfflineCatalogVerifier`, la integración con evidencia temporal ADR-0020, el binding del descriptor artifact v1 dentro del flujo offline, el bootstrap productivo de la root y la aceptación final. El detalle vivo y el orden correcto están en [Trabajo activo y continuidad](docs/roadmap/active-work.md), que prevalece sobre listas antiguas o comentarios de PR.
+
+**Separación de responsabilidades:** el catálogo autentica metadata y descriptores; no descarga, instala ni ejecuta binarios. M1.5 debe aportar un supervisor seguro y separado antes de que SOPTRAZ pueda ejecutar herramientas externas. No se debe presentar una caché SQLite válida estructuralmente como confianza criptográfica ni afirmar protección anti-rollback fuerte frente a la restauración integral de un disco sin un ancla externa/monotónica.
 
 ## Diagnóstico local del reloj
 
@@ -71,6 +80,10 @@ El comando es de solo lectura. Distingue estado del servicio y estado de sincron
 - [Calidad y pruebas](docs/quality/testing-strategy.md)
 - [Revisión de fallos de CI](docs/quality/ci-failure-review.md)
 - [Checkpoint firmado y exportación Field → Hub](docs/architecture/audit-checkpoint-design.md)
+- [Trabajo activo y guía de continuidad (punto de entrada del desarrollador)](docs/roadmap/active-work.md)
+- [ADR-0019 — Verificación offline explícita del catálogo TUF](docs/decisions/ADR-0019-offline-tuf-catalog-verifier.md)
+- [ADR-0020 — Tiempo confiable y recuperación del reloj](docs/decisions/ADR-0020-trusted-time-and-clock-recovery.md)
+- [ADR-0021 — Diagnóstico horario del sistema operativo](docs/decisions/ADR-0021-os-time-diagnostics.md)
 - [Roadmap](docs/roadmap/README.md)
 - [Registro de decisiones](docs/decisions/README.md)
 - [Contribución](CONTRIBUTING.md)

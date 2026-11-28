@@ -16,7 +16,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"slices"
 	"sort"
 
 	"github.com/JavierGrecco/SOPTRAZ/internal/storage/sqlitetuf"
@@ -28,12 +27,6 @@ var (
 	ErrGenerationPersistenceUnavailable = errors.New("persistencia de generaciones TUF no disponible")
 	ErrGenerationCapture                = errors.New("no se pudo capturar una generación TUF verificada")
 )
-
-type generationDelegationVisit struct {
-	role   string
-	parent string
-	path   []string
-}
 
 // CommitVerifiedGeneration persists the exact metadata bytes authenticated by
 // the current official go-tuf Updater. Call it after resolving every target
@@ -261,73 +254,8 @@ func captureAndVerifyGenerationMetadata(
 		roleValues[roleName] = parsed
 	}
 
-	// Replay exact bytes from a clean trust state. The reference time is copied
-	// from the official updater so the replay tests the same expiry instant.
-	replayed, err := trustedmetadata.New(rootJSON)
-	if err != nil {
-		return nil, fmt.Errorf("%w: reconstruir estado root: %v", ErrGenerationCapture, err)
-	}
-	replayed.RefTime = trusted.RefTime
-	if _, err := replayed.UpdateTimestamp(timestampBytes); err != nil {
-		return nil, fmt.Errorf("%w: revalidar timestamp con go-tuf: %v", ErrGenerationCapture, err)
-	}
-	if _, err := replayed.UpdateSnapshot(snapshotBytes, false); err != nil {
-		return nil, fmt.Errorf("%w: revalidar snapshot con go-tuf: %v", ErrGenerationCapture, err)
-	}
-	if _, err := replayed.UpdateTargets(targetsBytes); err != nil {
-		return nil, fmt.Errorf("%w: revalidar targets con go-tuf: %v", ErrGenerationCapture, err)
-	}
-	if !reflect.DeepEqual(replayed.Timestamp, trusted.Timestamp) ||
-		!reflect.DeepEqual(replayed.Snapshot, trusted.Snapshot) ||
-		!reflect.DeepEqual(replayed.Targets[metadata.TARGETS], trusted.Targets[metadata.TARGETS]) {
-		return nil, fmt.Errorf("%w: el replay top-level no coincide con el updater oficial", ErrGenerationCapture)
-	}
-
-	pending := make([]string, 0, len(selectedRoles)-1)
-	for _, roleName := range roleNames {
-		if roleName != metadata.TARGETS {
-			pending = append(pending, roleName)
-		}
-	}
-	verified := map[string]bool{metadata.TARGETS: true}
-	for len(pending) > 0 {
-		progress := false
-		remaining := make([]string, 0, len(pending))
-		for _, roleName := range pending {
-			parents := parentsByRole[roleName]
-			ready := len(parents) > 0
-			for _, parent := range parents {
-				if !verified[parent] {
-					ready = false
-					break
-				}
-			}
-			if !ready {
-				remaining = append(remaining, roleName)
-				continue
-			}
-
-			for _, parent := range parents {
-				if _, err := replayed.UpdateDelegatedTargets(roleBytes[roleName], roleName, parent); err != nil {
-					return nil, fmt.Errorf("%w: revalidar delegación %q desde %q: %v",
-						ErrGenerationCapture, roleName, parent, err)
-				}
-			}
-			if !reflect.DeepEqual(replayed.Targets[roleName], roleValues[roleName]) {
-				return nil, fmt.Errorf("%w: replay del rol delegado %q no coincide con go-tuf", ErrGenerationCapture, roleName)
-			}
-			verified[roleName] = true
-			progress = true
-		}
-		if !progress {
-			return nil, fmt.Errorf("%w: delegaciones no verificables o grafo incompleto", ErrGenerationCapture)
-		}
-		pending = remaining
-	}
-	if len(verified) != len(selectedRoles) {
-		return nil, fmt.Errorf("%w: faltan roles delegados verificados", ErrGenerationCapture)
-	}
-
+	// Persist only exact role bytes that were also authenticated by the official
+	// updater. The same replay primitive is used by the future offline verifier.
 	result := make([]sqlitetuf.VerifiedRoleMetadata, 0, 2+len(selectedRoles))
 	result = append(result,
 		sqlitetuf.VerifiedRoleMetadata{
@@ -345,10 +273,7 @@ func captureAndVerifyGenerationMetadata(
 	)
 	for _, roleName := range roleNames {
 		role := roleValues[roleName]
-		parents := make([]string, 0, len(parentsByRole[roleName]))
-		for _, parent := range parentsByRole[roleName] {
-			parents = append(parents, parent)
-		}
+		parents := append([]string(nil), parentsByRole[roleName]...)
 		sort.Strings(parents)
 		result = append(result, sqlitetuf.VerifiedRoleMetadata{
 			Role:      roleName,
@@ -357,6 +282,21 @@ func captureAndVerifyGenerationMetadata(
 			ExpiresAt: role.Signed.Expires,
 			Metadata:  append([]byte(nil), roleBytes[roleName]...),
 		})
+	}
+
+	replayed, err := replayVerifiedGeneration(rootJSON, rootState, trusted.RefTime, result, maxDelegations)
+	if err != nil {
+		return nil, fmt.Errorf("%w: replay go-tuf de la generación: %w", ErrGenerationCapture, err)
+	}
+	if !reflect.DeepEqual(replayed.Root, trusted.Root) ||
+		!reflect.DeepEqual(replayed.Timestamp, trusted.Timestamp) ||
+		!reflect.DeepEqual(replayed.Snapshot, trusted.Snapshot) {
+		return nil, fmt.Errorf("%w: el replay top-level no coincide con el updater oficial", ErrGenerationCapture)
+	}
+	for _, roleName := range roleNames {
+		if !reflect.DeepEqual(replayed.Targets[roleName], trusted.Targets[roleName]) {
+			return nil, fmt.Errorf("%w: el replay delegado %q no coincide con el updater oficial", ErrGenerationCapture, roleName)
+		}
 	}
 	return result, nil
 }
@@ -412,62 +352,33 @@ func collectResolvedDelegations(
 	parentSets := make(map[string]map[string]bool)
 	selected := map[string]bool{metadata.TARGETS: true}
 	for _, targetPath := range targetPaths {
-		stack := []generationDelegationVisit{{
-			role:   metadata.TARGETS,
-			parent: metadata.ROOT,
-		}}
-		visitedRoles := 0
-		found := false
-
-		for visitedRoles <= maxDelegations && len(stack) > 0 {
-			visit := stack[len(stack)-1]
-			stack = stack[:len(stack)-1]
-			if slices.Contains(visit.path, visit.role) {
-				continue
-			}
-
-			role, ok := trusted.Targets[visit.role]
-			if !ok || role == nil {
-				return nil, nil, fmt.Errorf("%w: go-tuf no conserva el rol recorrido %q", ErrGenerationCapture, visit.role)
-			}
-			selected[visit.role] = true
-			if visit.role != metadata.TARGETS {
-				if visit.parent == "" || visit.parent == metadata.ROOT {
-					return nil, nil, fmt.Errorf("%w: rol delegado %q sin padre targets", ErrGenerationCapture, visit.role)
+		resolution, err := resolveTargetPath(
+			targetPath,
+			maxDelegations,
+			func(roleName, parentRole string) (*metadata.Metadata[metadata.TargetsType], error) {
+				role, ok := trusted.Targets[roleName]
+				if !ok || role == nil {
+					return nil, fmt.Errorf("go-tuf no conserva el rol recorrido %q desde %q", roleName, parentRole)
 				}
-				if parentSets[visit.role] == nil {
-					parentSets[visit.role] = make(map[string]bool)
-				}
-				parentSets[visit.role][visit.parent] = true
-			}
-
-			if target, ok := role.Signed.Targets[targetPath]; ok && target != nil {
-				found = true
-				break
-			}
-			visitedRoles++
-
-			if role.Signed.Delegations == nil {
-				continue
-			}
-			childRoles := make([]generationDelegationVisit, 0)
-			childPath := append(append([]string(nil), visit.path...), visit.role)
-			for _, delegated := range role.Signed.Delegations.GetRolesForTarget(targetPath) {
-				childRoles = append(childRoles, generationDelegationVisit{
-					role:   delegated.Name,
-					parent: visit.role,
-					path:   childPath,
-				})
-				if delegated.Terminating {
-					stack = stack[:0]
-					break
-				}
-			}
-			slices.Reverse(childRoles)
-			stack = append(stack, childRoles...)
+				return role, nil
+			},
+		)
+		if err != nil {
+			return nil, nil, fmt.Errorf("%w: no se pudo reproducir la ruta %q: %w", ErrGenerationCapture, targetPath, err)
 		}
-		if !found {
-			return nil, nil, fmt.Errorf("%w: no se pudo reproducir el recorrido delegado del target %q", ErrGenerationCapture, targetPath)
+
+		for _, visit := range resolution.visited {
+			selected[visit.role] = true
+			if visit.role == metadata.TARGETS {
+				continue
+			}
+			if visit.parent == "" || visit.parent == metadata.ROOT {
+				return nil, nil, fmt.Errorf("%w: rol delegado %q sin padre targets", ErrGenerationCapture, visit.role)
+			}
+			if parentSets[visit.role] == nil {
+				parentSets[visit.role] = make(map[string]bool)
+			}
+			parentSets[visit.role][visit.parent] = true
 		}
 	}
 
