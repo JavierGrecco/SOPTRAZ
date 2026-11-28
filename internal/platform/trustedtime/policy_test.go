@@ -25,8 +25,8 @@ func policyTestSource(id, operator string) Source {
 
 func policyTestEvidence(source Source, start, end time.Time) Evidence {
 	return Evidence{
-		Interval: Interval{Earliest: start, Latest: end},
-		Source:   source,
+		Interval:       Interval{Earliest: start, Latest: end},
+		Source:         source,
 		EvidenceSHA256: strings.Repeat("a", 64),
 	}
 }
