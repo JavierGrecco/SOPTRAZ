@@ -662,35 +662,70 @@ func trimOversizedReport(path, endMarker string) error {
 	if err != nil {
 		return err
 	}
-	// Reserve space for a truncation note and, when present, the clean marker.
-	if info.Size() <= int64(maxLogBytes)-1024 {
+	// Leave room for recovery metadata that may be appended after trimming.
+	maxContentSize := int64(maxLogBytes) - 1024
+	if info.Size() <= maxContentSize {
 		return nil
 	}
 	file, err := os.OpenFile(path, os.O_RDWR, 0o600)
 	if err != nil {
 		return err
 	}
-	targetSize := int64(maxLogBytes) - 1024
-	if err := file.Truncate(targetSize); err != nil {
-		_ = file.Close()
+	closeOnError := func(cause error) error {
+		return errors.Join(cause, file.Close())
+	}
+
+	markerLine := ""
+	if endMarker != "" {
+		markerLine = fmt.Sprintf("%s marca preservada tras truncar el informe %s\n",
+			endMarker, time.Now().UTC().Format(time.RFC3339Nano))
+	}
+	const truncationNote = "\n[INFORME TRUNCADO: se conserva el encabezado y la cola final de la traza; el contenido intermedio se omitió.]\n"
+	available := maxContentSize - int64(len(truncationNote)) - int64(len(markerLine))
+	if available <= 0 {
+		return closeOnError(fmt.Errorf("no hay espacio para preservar el encabezado y la cola del informe"))
+	}
+	tailSize := int64(maxCrashTailBytes)
+	if tailSize > available/2 {
+		tailSize = available / 2
+	}
+	headSize := available - tailSize
+
+	// Read both ends before truncating: Go's fatal runtime stack is commonly
+	// written at the end of the crash-output file, after the initial context.
+	head := make([]byte, headSize)
+	if _, err := io.ReadFull(io.NewSectionReader(file, 0, headSize), head); err != nil {
+		return closeOnError(fmt.Errorf("leer encabezado del informe: %w", err))
+	}
+	tail := make([]byte, tailSize)
+	if _, err := io.ReadFull(io.NewSectionReader(file, info.Size()-tailSize, tailSize), tail); err != nil {
+		return closeOnError(fmt.Errorf("leer cola de la traza del informe: %w", err))
+	}
+
+	if err := file.Truncate(0); err != nil {
+		return closeOnError(err)
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return closeOnError(err)
+	}
+	writeChunk := func(chunk []byte) error {
+		if len(chunk) == 0 {
+			return nil
+		}
+		written, err := file.Write(chunk)
+		if err == nil && written != len(chunk) {
+			return io.ErrShortWrite
+		}
 		return err
 	}
-	if _, err := file.Seek(0, io.SeekEnd); err != nil {
-		_ = file.Close()
-		return err
-	}
-	_, writeErr := fmt.Fprintf(file,
-		"\n[INFORME TRUNCADO: se conservan los primeros %d bytes para limitar el tamaño local.]\n",
-		targetSize,
-	)
-	if writeErr == nil && endMarker != "" {
-		_, writeErr = fmt.Fprintf(file, "%s marca preservada tras truncar el informe %s\n",
-			endMarker,
-			time.Now().UTC().Format(time.RFC3339Nano))
+	var writeErr error
+	for _, chunk := range [][]byte{head, []byte(truncationNote), tail, []byte(markerLine)} {
+		if writeErr = writeChunk(chunk); writeErr != nil {
+			break
+		}
 	}
 	if writeErr == nil {
 		writeErr = file.Sync()
 	}
-	closeErr := file.Close()
-	return errors.Join(writeErr, closeErr)
+	return errors.Join(writeErr, file.Close())
 }

@@ -19,7 +19,7 @@ La CLI utiliza la carpeta de caché local del usuario:
 
 Subcarpeta: `SOPTRAZ/diagnostics`.
 
-Cada ejecución crea un informe temporal `soptraz-run-*.txt`; si termina normalmente sin errores importantes, el archivo se elimina al cerrar. Los informes con incidentes quedan en esa carpeta. Se conservan hasta 30 informes, protegiendo el que acaba de recuperarse durante el inicio actual. Los eventos estructurados se limitan a 64 KiB y 4 MiB por archivo; un volcado nativo excepcionalmente grande del runtime se recorta al siguiente inicio, preservando el inicio del informe y su marca de cierre o recuperación. Se aplican permisos restrictivos donde el sistema operativo los admite. Para encontrar la carpeta exacta en cualquier equipo, ejecutar `soptraz diagnostics-path`.
+Cada ejecución crea un informe temporal `soptraz-run-*.txt`; si termina normalmente sin errores importantes, el archivo se elimina al cerrar. Los informes con incidentes quedan en esa carpeta. Se conservan hasta 30 informes, protegiendo el que acaba de recuperarse durante el inicio actual. Los eventos estructurados se limitan a 64 KiB y 4 MiB por archivo; un volcado nativo excepcionalmente grande del runtime se recorta al siguiente inicio, preservando el encabezado, los últimos 64 KiB de la traza y su marca de cierre o recuperación. El contenido intermedio se omite para respetar el límite. Se aplican permisos restrictivos donde el sistema operativo los admite. Para encontrar la carpeta exacta en cualquier equipo, ejecutar `soptraz diagnostics-path`.
 
 ## Qué se registra
 

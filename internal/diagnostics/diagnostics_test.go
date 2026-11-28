@@ -452,6 +452,8 @@ func TestStartupBoundsOversizedRuntimeReportAndPreservesCleanMarker(t *testing.T
 	builder.WriteString("SOPTRAZ — INFORME TÉCNICO DE EJECUCIÓN\n")
 	builder.WriteString("fatal error: simulated runtime dump\n")
 	builder.WriteString(strings.Repeat("stack frame diagnostic data\n", (maxLogBytes/20)+100))
+	const tailSentinel = "FINAL_FATAL_STACK_FRAME_SENTINEL"
+	builder.WriteString(tailSentinel + "\n")
 	builder.WriteString("CIERRE NORMAL: previous clean shutdown\n")
 	if err := os.WriteFile(path, []byte(builder.String()), 0o600); err != nil {
 		t.Fatalf("write oversized report fixture: %v", err)
@@ -474,7 +476,7 @@ func TestStartupBoundsOversizedRuntimeReportAndPreservesCleanMarker(t *testing.T
 	if err != nil {
 		t.Fatalf("read bounded report: %v", err)
 	}
-	for _, expected := range []string{"fatal error: simulated runtime dump", "INFORME TRUNCADO", "CIERRE NORMAL: marca preservada"} {
+	for _, expected := range []string{"SOPTRAZ — INFORME TÉCNICO DE EJECUCIÓN", "fatal error: simulated runtime dump", "INFORME TRUNCADO", tailSentinel, "CIERRE NORMAL: marca preservada"} {
 		if !strings.Contains(string(raw), expected) {
 			t.Errorf("bounded report does not contain %q", expected)
 		}
