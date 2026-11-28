@@ -77,16 +77,13 @@ El adaptador Windows está implementado en modo read-only. Usa SCM local con `SC
 
 ## Lo que todavía no está implementado
 
-- Adaptadores criptográficos que hablen Roughtime/NTS, validen firmas/respuestas, nonces, replay y límites de protocolo.
-- Política operativa de provisión, independencia real de operadores, rotación/revocación de trust anchors y pruebas multioperador.
-- Persistencia SQLite v3 de LastAcceptedTrustedTime, evidencia y procedencia; rollback resistente a restauración de backups.
-- Conexión de la política a TUF y mecanismo de referencia temporal compatible con go-tuf.
+- Adaptador nativo de diagnóstico read-only para macOS timed; las señales Linux/Windows siguen clasificadas como `system` y no aportan autenticación criptográfica.
+- Adaptadores Roughtime/NTS que validen firmas/respuestas, nonce, replay, sesión NTS-KE/TLS y límites de protocolo.
+- Provisión operativa de fuentes, independencia real de operadores, rotación/revocación de trust anchors y pruebas multioperador.
+- Persistencia SQLite v3 de `LastAcceptedTrustedTime`, evidencias y procedencia; además de una estrategia contra rollback por restauración de backups locales.
+- Recuperación temporal online y conexión de la política con el flujo de actualización.
+- Referencia temporal compatible con go-tuf. El Updater oficial actual no recibe este contrato; esta entrega no altera su reloj de referencia ni introduce `UnsafeSetRefTime`.
 
-- Adaptador nativo de diagnóstico read-only para macOS timed; los adaptadores Linux (adjtimex) y Windows (W32Time vía SCM) y el DTO SystemTimeDiagnostics ya están implementados. Las señales de estos sistemas siguen clasificadas como system y no aportan autenticación criptográfica.
-- Pruebas de NTS y Roughtime en laboratorio, incluidas claves/raíces, nonce, replay, incertidumbre, fuentes contradictorias y rotación.
-- Política de selección y combinación de varias fuentes independientes.
-- Persistencia SQLite v3 de LastAcceptedTrustedTime y migración v2 → v3 sin convertir fechas locales antiguas en evidencia.
-- Recuperación temporal online y conexión al flujo de actualización.
-- Referencia temporal compatible con go-tuf. El Updater oficial actual no recibe este contrato; esta entrega no altera su reloj de referencia ni introduce UnsafeSetRefTime.
+La política de aceptación en memoria ya implementa allowlist exacta, operador único por lote, límites de incertidumbre, intersección común máxima y piso anti-rollback. La validación criptográfica, frescura y persistencia siguen siendo puertas distintas y pendientes.
 
-Por tanto, la creación del paquete no habilita el catálogo offline, no devuelve VerifiedTarget y no cambia el estado de aceptación de M1.4.
+Por tanto, el paquete no habilita el catálogo offline, no devuelve `VerifiedTarget` y no cambia el estado de aceptación de M1.4.
