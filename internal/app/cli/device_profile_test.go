@@ -18,11 +18,11 @@ func TestRunDeviceProfileJSONProducesReadOnlyReport(t *testing.T) {
 	}
 
 	var report struct {
-		CollectionStatus string                         `json:"collection_status"`
-		Observations     moduleprofile.Observations     `json:"observations"`
-		Profile          moduleprofile.Profile          `json:"profile"`
-		SourceErrors     []platformprofile.SourceError   `json:"source_errors"`
-		MutationsApplied bool                           `json:"mutations_applied"`
+		CollectionStatus string                        `json:"collection_status"`
+		Observations     moduleprofile.Observations    `json:"observations"`
+		Profile          moduleprofile.Profile         `json:"profile"`
+		SourceErrors     []platformprofile.SourceError `json:"source_errors"`
+		MutationsApplied bool                          `json:"mutations_applied"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
 		t.Fatalf("invalid device profile JSON: %v; output=%s", err, stdout.String())
@@ -44,6 +44,16 @@ func TestRunDeviceProfileJSONProducesReadOnlyReport(t *testing.T) {
 		if value > moduleprofile.Yes {
 			t.Fatalf("invalid tri-state value %d in JSON report", value)
 		}
+	}
+}
+
+
+func TestDeviceCollectionStatusTreatsZeroValueEnumsAsUnknown(t *testing.T) {
+	result := platformprofile.Result{
+		SourceErrors: []platformprofile.SourceError{{Source: "windows.smbios", Message: "unavailable"}},
+	}
+	if got := deviceCollectionStatus(result); got != "unavailable" {
+		t.Fatalf("zero-value observations status = %q, want unavailable", got)
 	}
 }
 
